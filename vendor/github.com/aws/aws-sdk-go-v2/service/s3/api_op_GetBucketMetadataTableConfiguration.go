@@ -9,10 +9,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-//	We recommend that you retrieve your S3 Metadata configurations by using the V2 [GetBucketMetadataTableConfiguration]
+//	We recommend that you retrieve your S3 Metadata configurations by using the V2 [GetBucketMetadataConfiguration]
 //
 // API operation. We no longer recommend using the V1
 // GetBucketMetadataTableConfiguration API operation.
@@ -53,7 +52,7 @@ import (
 // [CreateBucketMetadataConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucketMetadataConfiguration.html
 // [Accelerating data discovery with S3 Metadata]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/metadata-tables-overview.html
 //
-// [GetBucketMetadataTableConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketMetadataTableConfiguration.html
+// [GetBucketMetadataConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketMetadataConfiguration.html
 func (c *Client) GetBucketMetadataTableConfiguration(ctx context.Context, params *GetBucketMetadataTableConfigurationInput, optFns ...func(*Options)) (*GetBucketMetadataTableConfigurationOutput, error) {
 	if params == nil {
 		params = &GetBucketMetadataTableConfigurationInput{}
@@ -111,12 +110,6 @@ func (c *Client) addOperationGetBucketMetadataTableConfigurationMiddlewares(stac
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -124,12 +117,6 @@ func (c *Client) addOperationGetBucketMetadataTableConfigurationMiddlewares(stac
 		return err
 	}
 	if err = addRecordResponseTiming(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
@@ -142,9 +129,6 @@ func (c *Client) addOperationGetBucketMetadataTableConfigurationMiddlewares(stac
 		return err
 	}
 	if err = addOpGetBucketMetadataTableConfigurationValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "GetBucketMetadataTableConfiguration"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {

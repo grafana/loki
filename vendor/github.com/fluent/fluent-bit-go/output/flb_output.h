@@ -34,7 +34,7 @@ struct flb_plugin_proxy_context {
 };
 
 /* This structure is used for initialization.
- * It matches the one in proxy/go/go.c in fluent-bit source code.
+ * It matches the one in src/proxy/go/go.h in fluent-bit source code.
  */
 struct flbgo_output_plugin {
     void *_;

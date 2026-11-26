@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -147,16 +148,19 @@ func TestFormat_VectorAggregation(t *testing.T) {
 }
 
 func TestFormat_LabelAggregation(t *testing.T) {
-	MaxCharsPerLine = 20
+	orig := MaxCharsPerLine
+	t.Cleanup(func() { MaxCharsPerLine = orig })
 
 	cases := []struct {
-		name string
-		in   string
-		exp  string
+		name     string
+		in       string
+		maxChars int
+		exp      string
 	}{
 		{
-			name: "approx_count_distinct",
-			in:   `approx_count_distinct(mac, {job="loki", instance="localhost"}|logfmt[1m]) by (version)`,
+			name:     "approx_count_distinct",
+			in:       `approx_count_distinct(mac, {job="loki", instance="localhost"}|logfmt[1m]) by (version)`,
+			maxChars: 20,
 			exp: `approx_count_distinct(
   mac,
   {job="loki", instance="localhost"}
@@ -164,12 +168,78 @@ func TestFormat_LabelAggregation(t *testing.T) {
 ) by (version)`,
 		},
 		{
-			name: "approx_count_distinct_ungrouped",
-			in:   `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			name:     "approx_count_distinct_ungrouped",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			maxChars: 20,
 			exp: `approx_count_distinct(
   mac,
   {foo="bar"} [1d]
 )`,
+		},
+		{
+			name:     "approx_count_distinct_empty_by",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			maxChars: 20,
+			exp: `approx_count_distinct(
+  mac,
+  {foo="bar"} [1d]
+) by ()`,
+		},
+		{
+			name:     "compact omitted grouping uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			maxChars: 100,
+			exp:      `approx_count_distinct(mac,{foo="bar"}[1d])`,
+		},
+		{
+			name:     "compact empty by uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			maxChars: 100,
+			exp:      `approx_count_distinct(mac,{foo="bar"}[1d]) by ()`,
+		},
+		{
+			name:     "compact by labels uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+			maxChars: 100,
+			exp:      `approx_count_distinct(mac,{foo="bar"}[1d]) by (version)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			MaxCharsPerLine = c.maxChars
+			expr, err := ParseExpr(c.in)
+			require.NoError(t, err)
+			require.Equal(t, c.exp, Prettify(expr))
+		})
+	}
+}
+
+func TestLabelAggregationExpr_String(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "omitted grouping",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			want: `approx_count_distinct(mac,{foo="bar"}[1d])`,
+		},
+		{
+			name: "empty by",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			want: `approx_count_distinct(mac,{foo="bar"}[1d]) by ()`,
+		},
+		{
+			name: "by labels",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+			want: `approx_count_distinct(mac,{foo="bar"}[1d]) by (version)`,
+		},
+		{
+			name: "pipeline offset and multiple labels",
+			in:   `approx_count_distinct(mac, {foo="bar"} | json [1h] offset 5m) by (version, region)`,
+			want: `approx_count_distinct(mac,{foo="bar"} | json[1h] offset 5m0s) by (version,region)`,
 		},
 	}
 
@@ -177,26 +247,206 @@ func TestFormat_LabelAggregation(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			expr, err := ParseExpr(c.in)
 			require.NoError(t, err)
-			got := Prettify(expr)
-			assert.Equal(t, c.exp, got)
+			require.Equal(t, c.want, expr.String())
+		})
+	}
+}
+
+func TestFormat_EmptyGrouping(t *testing.T) {
+	old := MaxCharsPerLine
+	MaxCharsPerLine = 20
+	defer func() { MaxCharsPerLine = old }()
+
+	cases := []struct {
+		name string
+		in   string
+		exp  string
+	}{
+		{
+			name: "range aggregation without grouping",
+			in:   `avg_over_time({foo="bar"} | unwrap baz [5m])`,
+			exp: `avg_over_time(
+  {foo="bar"}
+    | unwrap baz [5m]
+)`,
+		},
+		{
+			name: "range aggregation by ()",
+			in:   `avg_over_time({foo="bar"} | unwrap baz [5m]) by ()`,
+			exp: `avg_over_time(
+  {foo="bar"}
+    | unwrap baz [5m]
+) by ()`,
+		},
+		{
+			name: "range aggregation without ()",
+			in:   `quantile_over_time(0.9, {foo="bar"} | unwrap baz [5m]) without ()`,
+			exp: `quantile_over_time(
+  0.9,
+  {foo="bar"}
+    | unwrap baz [5m]
+) without ()`,
+		},
+		{
+			name: "range aggregation by labels",
+			in:   `avg_over_time({foo="bar"} | unwrap baz [5m]) by (a, b)`,
+			exp: `avg_over_time(
+  {foo="bar"}
+    | unwrap baz [5m]
+) by (a, b)`,
+		},
+		{
+			// by () and no grouping are the same for a vector aggregation, so neither is printed.
+			name: "vector aggregation by ()",
+			in:   `sum by () (rate({foo="bar"}[5m]))`,
+			exp: `sum(
+  rate(
+    {foo="bar"} [5m]
+  )
+)`,
+		},
+		{
+			name: "vector aggregation without ()",
+			in:   `sum without () (rate({foo="bar"}[5m]))`,
+			exp: `sum without ()(
+  rate(
+    {foo="bar"} [5m]
+  )
+)`,
+		},
+		{
+			name: "label aggregation by ()",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			exp: `approx_count_distinct(
+  mac,
+  {foo="bar"} [1d]
+) by ()`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(c.in)
+			require.NoError(t, err)
+
+			pretty := Prettify(expr)
+			require.Equal(t, c.exp, pretty)
+
+			// What matters is that the formatted query is the same query.
+			reparsed, err := ParseExpr(pretty)
+			require.NoError(t, err)
+			require.Equal(t, expr.String(), reparsed.String())
 		})
 	}
 }
 
 func TestFormat_CountDistinctSketch(t *testing.T) {
-	MaxCharsPerLine = 20
+	orig := MaxCharsPerLine
+	t.Cleanup(func() { MaxCharsPerLine = orig })
 
-	expr, err := ParseExpr(`approx_count_distinct(mac, {job="loki", instance="localhost"}|json[1h]) by (version)`)
-	require.NoError(t, err)
-	labelAgg, ok := expr.(*LabelAggregationExpr)
-	require.True(t, ok)
-
-	got := Prettify(NewCountDistinctSketchFromLabelAggregation(labelAgg))
-	require.Equal(t, `__count_distinct_sketch__(
+	cases := []struct {
+		name     string
+		in       string
+		maxChars int
+		exp      string
+	}{
+		{
+			name:     "by labels",
+			in:       `approx_count_distinct(mac, {job="loki", instance="localhost"}|json[1h]) by (version)`,
+			maxChars: 20,
+			exp: `__count_distinct_sketch__(
   mac,
   {job="loki", instance="localhost"}
     | json [1h]
-) by (version)`, got)
+) by (version)`,
+		},
+		{
+			name:     "omitted grouping",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			maxChars: 20,
+			exp: `__count_distinct_sketch__(
+  mac,
+  {foo="bar"} [1d]
+)`,
+		},
+		{
+			name:     "empty by",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			maxChars: 20,
+			exp: `__count_distinct_sketch__(
+  mac,
+  {foo="bar"} [1d]
+) by ()`,
+		},
+		{
+			name:     "compact omitted grouping uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			maxChars: 100,
+			exp:      `__count_distinct_sketch__(mac,{foo="bar"}[1d])`,
+		},
+		{
+			name:     "compact empty by uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			maxChars: 100,
+			exp:      `__count_distinct_sketch__(mac,{foo="bar"}[1d]) by ()`,
+		},
+		{
+			name:     "compact by labels uses String",
+			in:       `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+			maxChars: 100,
+			exp:      `__count_distinct_sketch__(mac,{foo="bar"}[1d]) by (version)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			MaxCharsPerLine = c.maxChars
+			expr, err := ParseExpr(c.in)
+			require.NoError(t, err)
+			labelAgg, ok := expr.(*LabelAggregationExpr)
+			require.True(t, ok)
+			require.Equal(t, c.exp, Prettify(NewCountDistinctSketchFromLabelAggregation(labelAgg)))
+		})
+	}
+}
+
+func TestCountDistinctSketchExpr_String(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "omitted grouping",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d])`,
+			want: `__count_distinct_sketch__(mac,{foo="bar"}[1d])`,
+		},
+		{
+			name: "empty by",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d]) by ()`,
+			want: `__count_distinct_sketch__(mac,{foo="bar"}[1d]) by ()`,
+		},
+		{
+			name: "by labels",
+			in:   `approx_count_distinct(mac, {foo="bar"}[1d]) by (version)`,
+			want: `__count_distinct_sketch__(mac,{foo="bar"}[1d]) by (version)`,
+		},
+		{
+			name: "pipeline offset and multiple labels",
+			in:   `approx_count_distinct(mac, {foo="bar"} | json [1h] offset 5m) by (version, region)`,
+			want: `__count_distinct_sketch__(mac,{foo="bar"} | json[1h] offset 5m0s) by (version,region)`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(c.in)
+			require.NoError(t, err)
+			labelAgg, ok := expr.(*LabelAggregationExpr)
+			require.True(t, ok)
+			require.Equal(t, c.want, NewCountDistinctSketchFromLabelAggregation(labelAgg).String())
+		})
+	}
 }
 
 func TestFormat_LabelReplace(t *testing.T) {
@@ -454,6 +704,46 @@ func TestFormat_BinOp(t *testing.T) {
 			require.NoError(t, err)
 			got := Prettify(expr)
 			assert.Equal(t, c.exp, got)
+		})
+	}
+}
+
+func TestFormat_EmptyVectorMatching(t *testing.T) {
+	old := MaxCharsPerLine
+	MaxCharsPerLine = 20
+	defer func() { MaxCharsPerLine = old }()
+
+	lhs := `sum(rate({job="loki"}[5m]))`
+	rhs := `sum(rate({job="loki-prod"}[5m]))`
+
+	cases := []struct {
+		name string
+		op   string
+		exp  string
+	}{
+		{name: "on ()", op: `* on ()`, exp: `* on ()`},
+		{name: "on () bool", op: `> bool on ()`, exp: `> bool on ()`},
+		{name: "on () group_left", op: `* on () group_left`, exp: `* on () group_left`},
+		{name: "on () group_right with labels", op: `* on () group_right (node)`, exp: `* on () group_right (node)`},
+		{name: "on labels", op: `* on (instance)`, exp: `* on (instance)`},
+		{name: "ignoring () group_left with labels", op: `* ignoring () group_left (node)`, exp: `* ignoring () group_left (node)`},
+		{name: "ignoring () group_right", op: `* ignoring () group_right`, exp: `* ignoring () group_right`},
+		// ignoring () and no clause are the same, so neither is printed.
+		{name: "ignoring ()", op: `* ignoring ()`, exp: `*`},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			expr, err := ParseExpr(lhs + " " + c.op + " " + rhs)
+			require.NoError(t, err)
+
+			pretty := Prettify(expr)
+			require.Equal(t, c.exp, strings.Split(pretty, "\n")[5])
+
+			// What matters is that the formatted query is the same query.
+			reparsed, err := ParseExpr(pretty)
+			require.NoError(t, err)
+			require.Equal(t, expr.String(), reparsed.String())
 		})
 	}
 }

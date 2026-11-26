@@ -40,7 +40,7 @@ type subConnWrapper struct {
 
 	listener func(balancer.SubConnState)
 
-	scUpdateCh *buffer.Unbounded
+	scUpdateCh *buffer.Unbounded[any]
 
 	// The following fields are only referenced in the context of a work
 	// serializing buffer and don't need to be protected by a mutex.

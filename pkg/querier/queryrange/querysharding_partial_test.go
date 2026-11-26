@@ -17,28 +17,27 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
-// TestASTMapperware_PartialStatsOnError runs a two-leg sharded query where the
+// TestASTMapperware_DiscardedWorkStatsOnError runs a two-leg sharded query where the
 // left leg completes while the right leg fails. The completed leg's usage is not
-// part of the failing Downstream call's results, so without the partial-stats
-// collector it would be dropped along with the engine result.
-func TestASTMapperware_PartialStatsOnError(t *testing.T) {
+// part of the failing Downstream call's results, so without the discarded-work
+// context it would be dropped along with the engine result.
+func TestASTMapperware_DiscardedWorkStatsOnError(t *testing.T) {
 	const (
 		bytesPerShard = 1000
 		shardsPerLeg  = 2
 	)
 
-	limitErr := wrapErr(logqlmodel.ErrQuerierTooManyBytes, httpgrpc.Errorf(http.StatusBadRequest, "query too large to execute on a single querier: (query: 5GB, limit: 1GB)"))
+	limitErr := wrapErr(logqlerr.ErrQuerierTooManyBytes, httpgrpc.Errorf(http.StatusBadRequest, "query too large to execute on a single querier: (query: 5GB, limit: 1GB)"))
 
 	var (
 		leftCalls   atomic.Int64
@@ -90,13 +89,14 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		ShardingConfigs{config.PeriodConfig{IndexType: types.IndexTypeTSDB}},
+		[]config.PeriodConfig{{IndexType: types.IndexTypeTSDB}},
 		testEngineOpts,
 		handler,
 		handler,
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{
 			maxSeries:               math.MaxInt32,
 			maxQueryParallelism:     4,
@@ -104,13 +104,12 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 			queryTimeout:            time.Minute,
 		},
 		shardsPerLeg,
-		[]string{},
 	)
 
 	query := `count_over_time({app="left"}[1h]) / count_over_time({app="right"}[1h])`
 	req := defaultReq()
 	req.Query = query
-	req.Plan = &plan.QueryPlan{AST: syntax.MustParseExpr(query)}
+	req.Plan = testutil.MustPlan(query)
 
 	data := &queryData{}
 	ctx := user.InjectOrgID(context.WithValue(context.Background(), ctxKey, data), "1")
@@ -119,7 +118,7 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 	countBefore := failedQueryUsageCount(t, server.FailureLimit)
 
 	_, err := StatsCollectorMiddleware().Wrap(mware).Do(ctx, req)
-	require.ErrorIs(t, err, logqlmodel.ErrQuerierTooManyBytes)
+	require.ErrorIs(t, err, logqlerr.ErrQuerierTooManyBytes)
 	require.False(t, gateTimeout.Load(), "the left leg never completed, the test did not exercise the intended path")
 	require.Equal(t, int64(shardsPerLeg), leftCalls.Load())
 
@@ -129,7 +128,7 @@ func TestASTMapperware_PartialStatsOnError(t *testing.T) {
 	// responses were accumulated before the failing leg cancelled it, so accept
 	// one shard up to the whole leg. Nothing else in this query reports usage:
 	// the failing shard carries no statistics and neither does the index lookup,
-	// so without the partial-stats collector this is 0B.
+	// so without the discarded-work context this is 0B.
 	kept := make([]string, 0, shardsPerLeg)
 	for shards := 1; shards <= shardsPerLeg; shards++ {
 		kept = append(kept, util.HumanizeBytes(uint64(shards*bytesPerShard)))
@@ -157,13 +156,14 @@ func TestASTMapperware_QuerierBytesLimitIsClassifiedAsLimit(t *testing.T) {
 	})
 
 	mware := newASTMapperware(
-		ShardingConfigs{config.PeriodConfig{IndexType: types.IndexTypeTSDB}},
+		[]config.PeriodConfig{{IndexType: types.IndexTypeTSDB}},
 		testEngineOpts,
 		handler,
 		handler,
 		handler,
 		log.NewNopLogger(),
 		nilShardingMetrics,
+		Config{},
 		fakeLimits{
 			maxSeries:               math.MaxInt32,
 			maxQueryParallelism:     1,
@@ -172,18 +172,17 @@ func TestASTMapperware_QuerierBytesLimitIsClassifiedAsLimit(t *testing.T) {
 			maxQuerierBytesRead:     10,
 		},
 		0,
-		[]string{},
 	)
 
 	query := `avg_over_time({app="foo"} | json busy="utilization" | unwrap busy [5m])`
 	req := defaultReq()
 	req.Query = query
-	req.Plan = &plan.QueryPlan{AST: syntax.MustParseExpr(query)}
+	req.Plan = testutil.MustPlan(query)
 
 	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
 	require.Error(t, err)
 
-	requireSentinelClassification(t, err, logqlmodel.ErrQuerierTooManyBytes,
+	requireSentinelClassification(t, err, logqlerr.ErrQuerierTooManyBytes,
 		server.FailureLimit, "querier_too_large",
 		http.StatusBadRequest, fmt.Sprintf(limErrQuerierTooManyBytesShardableTmpl, "100 B", "10 B"))
 }
@@ -202,22 +201,22 @@ func TestQuerySizeLimitSpecs(t *testing.T) {
 	}{
 		"max_query_bytes_read": {
 			maxQueryBytesReadSpec, "MaxQueryBytesRead",
-			logqlmodel.ErrMaxQueryBytesRead, limErrQueryTooManyBytesTmpl,
+			logqlerr.ErrMaxQueryBytesRead, limErrQueryTooManyBytesTmpl,
 			server.FailureLimit, "max_query_bytes_read",
 		},
 		"max_querier_bytes_read": {
 			maxQuerierBytesReadSpec, "MaxQuerierBytesRead",
-			logqlmodel.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesTmpl,
+			logqlerr.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesTmpl,
 			server.FailureLimit, "querier_too_large",
 		},
 		"max_querier_bytes_read_shardable": {
 			maxQuerierBytesReadShardableSpec, "MaxQuerierBytesRead",
-			logqlmodel.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesShardableTmpl,
+			logqlerr.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesShardableTmpl,
 			server.FailureLimit, "querier_too_large",
 		},
 		"max_querier_bytes_read_unshardable": {
 			maxQuerierBytesReadUnshardableSpec, "MaxQuerierBytesRead",
-			logqlmodel.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesUnshardableTmpl,
+			logqlerr.ErrQuerierTooManyBytes, limErrQuerierTooManyBytesUnshardableTmpl,
 			server.FailureLimit, "querier_too_large",
 		},
 	} {

@@ -1,5 +1,5 @@
 exclude = [
-  "test-data/**/*",
+  "testdata/**/*",
   "vendor/**/*",
 ]
 

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -22,16 +24,16 @@ func Test(t *testing.T) {
 	}
 
 	tt := []ent{
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(10, 0), 10},
-		{labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"), time.Unix(100, 0), 20},
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(15, 0), 15},
-		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0), 5},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(10, 0).UTC(), 10},
+		{labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"), time.Unix(100, 0).UTC(), 20},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(15, 0).UTC(), 15},
+		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0).UTC(), 5},
 		// Zero uncompressed size must survive decode into a reused Stream;
 		// decodeRow skips zero cells, so it has to Reset first.
 		{labels.FromStrings("cluster", "test", "app", "empty"), time.Unix(1, 0), 0},
 	}
 
-	tracker := streams.NewBuilder(nil, 1024, 0)
+	tracker := streams.NewBuilder(nil, 1024, 0, streams.DefaultShardLayout())
 	for _, tc := range tt {
 		tracker.Record(tc.Labels, tc.Time, tc.Size)
 	}
@@ -44,29 +46,29 @@ func Test(t *testing.T) {
 		{
 			ID:               1,
 			Labels:           labels.FromStrings("cluster", "test", "app", "foo"),
-			MinTimestamp:     time.Unix(9, 0),
-			MaxTimestamp:     time.Unix(15, 0),
+			MinTimestamp:     time.Unix(9, 0).UTC(),
+			MaxTimestamp:     time.Unix(15, 0).UTC(),
 			Rows:             3,
 			UncompressedSize: 30,
-			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "foo"))),
+			ShardBucket:      int64(streams.DefaultShardLayout().BucketFromLabels(labels.FromStrings("cluster", "test", "app", "foo"))),
 		},
 		{
 			ID:               2,
 			Labels:           labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"),
-			MinTimestamp:     time.Unix(100, 0),
-			MaxTimestamp:     time.Unix(100, 0),
+			MinTimestamp:     time.Unix(100, 0).UTC(),
+			MaxTimestamp:     time.Unix(100, 0).UTC(),
 			Rows:             1,
 			UncompressedSize: 20,
-			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"))),
+			ShardBucket:      int64(streams.DefaultShardLayout().BucketFromLabels(labels.FromStrings("cluster", "test", "app", "bar", "special", "yes"))),
 		},
 		{
 			ID:               3,
 			Labels:           labels.FromStrings("cluster", "test", "app", "empty"),
-			MinTimestamp:     time.Unix(1, 0),
-			MaxTimestamp:     time.Unix(1, 0),
+			MinTimestamp:     time.Unix(1, 0).UTC(),
+			MaxTimestamp:     time.Unix(1, 0).UTC(),
 			Rows:             1,
 			UncompressedSize: 0,
-			ShardBucket:      int64(streams.ShardBucket(labels.FromStrings("cluster", "test", "app", "empty"))),
+			ShardBucket:      int64(streams.DefaultShardLayout().BucketFromLabels(labels.FromStrings("cluster", "test", "app", "empty"))),
 		},
 	}
 
@@ -89,6 +91,34 @@ func Test(t *testing.T) {
 	}
 
 	require.Equal(t, expect, actual)
+}
+
+func TestBuilder_Flush(t *testing.T) {
+	t.Run("writes a section of version 4 whose page descriptors have no checksum", func(t *testing.T) {
+		builder := streams.NewBuilder(nil, 1024, 0, streams.DefaultShardLayout())
+		builder.Record(labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(10, 0), 10)
+
+		obj, closer, err := buildObject(builder)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		section := obj.Sections()[0]
+		require.Equal(t, uint32(4), section.Type.Version)
+
+		dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
+		require.NoError(t, err)
+		md, err := dec.SectionMetadata(t.Context())
+		require.NoError(t, err)
+		pageSets, err := result.Collect(dec.Pages(t.Context(), md.Columns))
+		require.NoError(t, err)
+		require.NotEmpty(t, pageSets)
+		for _, descs := range pageSets {
+			require.NotEmpty(t, descs)
+			for _, desc := range descs {
+				require.Zero(t, desc.DeprecatedCrc32)
+			}
+		}
+	})
 }
 
 func copyLabels(in labels.Labels) labels.Labels {

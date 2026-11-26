@@ -99,24 +99,99 @@ func NewTracer(opts ...TracerOpt) *Tracer {
 	return t
 }
 
-func (t *Tracer) maybeKeyAttr(attrs []attribute.KeyValue, r *kgo.Record) []attribute.KeyValue {
+func (t *Tracer) keyAttr(r *kgo.Record) (attribute.KeyValue, bool) {
 	if r.Key == nil {
-		return attrs
+		return attribute.KeyValue{}, false
 	}
-	var keykey string
 	if t.keyFormatter != nil {
-		k, err := t.keyFormatter(r)
-		if err != nil || !utf8.ValidString(k) {
-			return attrs
+		key, err := t.keyFormatter(r)
+		if err != nil || !utf8.ValidString(key) {
+			return attribute.KeyValue{}, false
 		}
-		keykey = k
-	} else {
-		if !utf8.Valid(r.Key) {
-			return attrs
-		}
-		keykey = string(r.Key)
+		return semconv.MessagingKafkaMessageKeyKey.String(key), true
 	}
-	return append(attrs, semconv.MessagingKafkaMessageKeyKey.String(keykey))
+	if !utf8.Valid(r.Key) {
+		return attribute.KeyValue{}, false
+	}
+	return semconv.MessagingKafkaMessageKeyKey.String(string(r.Key)), true
+}
+
+func (t *Tracer) publishAttrs(r *kgo.Record) []attribute.KeyValue {
+	topic := r.Topic
+	key, hasKey := t.keyAttr(r)
+	tombstone := r.Key != nil && r.Value == nil
+	n := 4
+	if hasKey {
+		n++
+	}
+	if t.clientID != "" {
+		n++
+	}
+	if tombstone {
+		n++
+	}
+
+	attrs := make([]attribute.KeyValue, 0, n)
+	attrs = append(attrs,
+		semconv.MessagingSystemKey.String("kafka"),
+		semconv.MessagingDestinationKindTopic,
+		semconv.MessagingDestinationName(topic),
+		semconv.MessagingOperationPublish,
+	)
+	if hasKey {
+		attrs = append(attrs, key)
+	}
+	if t.clientID != "" {
+		attrs = append(attrs, semconv.MessagingKafkaClientIDKey.String(t.clientID))
+	}
+	if tombstone {
+		attrs = append(attrs, semconv.MessagingKafkaMessageTombstoneKey.Bool(true))
+	}
+	return attrs
+}
+
+func (t *Tracer) consumerAttrs(r *kgo.Record, operation attribute.KeyValue) []attribute.KeyValue {
+	topic := r.Topic
+	partition := r.Partition
+	offset := r.Offset
+	key, hasKey := t.keyAttr(r)
+	tombstone := r.Key != nil && r.Value == nil
+	n := 6
+	if hasKey {
+		n++
+	}
+	if t.clientID != "" {
+		n++
+	}
+	if t.consumerGroup != "" {
+		n++
+	}
+	if tombstone {
+		n++
+	}
+
+	attrs := make([]attribute.KeyValue, 0, n)
+	attrs = append(attrs,
+		semconv.MessagingSystemKey.String("kafka"),
+		semconv.MessagingSourceKindTopic,
+		semconv.MessagingSourceName(topic),
+		operation,
+		semconv.MessagingKafkaSourcePartition(int(partition)),
+		semconv.MessagingKafkaMessageOffsetKey.Int64(offset),
+	)
+	if hasKey {
+		attrs = append(attrs, key)
+	}
+	if t.clientID != "" {
+		attrs = append(attrs, semconv.MessagingKafkaClientIDKey.String(t.clientID))
+	}
+	if t.consumerGroup != "" {
+		attrs = append(attrs, semconv.MessagingKafkaConsumerGroupKey.String(t.consumerGroup))
+	}
+	if tombstone {
+		attrs = append(attrs, semconv.MessagingKafkaMessageTombstoneKey.Bool(true))
+	}
+	return attrs
 }
 
 // WithProcessSpan starts a new span for the "process" operation on a consumer
@@ -130,24 +205,7 @@ func (t *Tracer) maybeKeyAttr(attrs []attribute.KeyValue, r *kgo.Record) []attri
 // iteration of your processing for the record.
 func (t *Tracer) WithProcessSpan(r *kgo.Record) (context.Context, trace.Span) {
 	// Set up the span options.
-	attrs := []attribute.KeyValue{
-		semconv.MessagingSystemKey.String("kafka"),
-		semconv.MessagingSourceKindTopic,
-		semconv.MessagingSourceName(r.Topic),
-		semconv.MessagingOperationProcess,
-		semconv.MessagingKafkaSourcePartition(int(r.Partition)),
-		semconv.MessagingKafkaMessageOffsetKey.Int64(r.Offset),
-	}
-	attrs = t.maybeKeyAttr(attrs, r)
-	if t.clientID != "" {
-		attrs = append(attrs, semconv.MessagingKafkaClientIDKey.String(t.clientID))
-	}
-	if t.consumerGroup != "" {
-		attrs = append(attrs, semconv.MessagingKafkaConsumerGroupKey.String(t.consumerGroup))
-	}
-	if r.Key != nil && r.Value == nil {
-		attrs = append(attrs, semconv.MessagingKafkaMessageTombstoneKey.Bool(true))
-	}
+	attrs := t.consumerAttrs(r, semconv.MessagingOperationProcess)
 	opts := []trace.SpanStartOption{
 		trace.WithAttributes(attrs...),
 		trace.WithSpanKind(trace.SpanKindConsumer),
@@ -178,19 +236,7 @@ func (t *Tracer) WithProcessSpan(r *kgo.Record) (context.Context, trace.Span) {
 // hook.
 func (t *Tracer) OnProduceRecordBuffered(r *kgo.Record) {
 	// Set up span options.
-	attrs := []attribute.KeyValue{
-		semconv.MessagingSystemKey.String("kafka"),
-		semconv.MessagingDestinationKindTopic,
-		semconv.MessagingDestinationName(r.Topic),
-		semconv.MessagingOperationPublish,
-	}
-	attrs = t.maybeKeyAttr(attrs, r)
-	if t.clientID != "" {
-		attrs = append(attrs, semconv.MessagingKafkaClientIDKey.String(t.clientID))
-	}
-	if r.Key != nil && r.Value == nil {
-		attrs = append(attrs, semconv.MessagingKafkaMessageTombstoneKey.Bool(true))
-	}
+	attrs := t.publishAttrs(r)
 	opts := []trace.SpanStartOption{
 		trace.WithAttributes(attrs...),
 		trace.WithSpanKind(trace.SpanKindProducer),
@@ -230,24 +276,7 @@ func (t *Tracer) OnProduceRecordUnbuffered(r *kgo.Record, err error) {
 // processing.
 func (t *Tracer) OnFetchRecordBuffered(r *kgo.Record) {
 	// Set up the span options.
-	attrs := []attribute.KeyValue{
-		semconv.MessagingSystemKey.String("kafka"),
-		semconv.MessagingSourceKindTopic,
-		semconv.MessagingSourceName(r.Topic),
-		semconv.MessagingOperationReceive,
-		semconv.MessagingKafkaSourcePartition(int(r.Partition)),
-		semconv.MessagingKafkaMessageOffsetKey.Int64(r.Offset),
-	}
-	attrs = t.maybeKeyAttr(attrs, r)
-	if t.clientID != "" {
-		attrs = append(attrs, semconv.MessagingKafkaClientIDKey.String(t.clientID))
-	}
-	if t.consumerGroup != "" {
-		attrs = append(attrs, semconv.MessagingKafkaConsumerGroupKey.String(t.consumerGroup))
-	}
-	if r.Key != nil && r.Value == nil {
-		attrs = append(attrs, semconv.MessagingKafkaMessageTombstoneKey.Bool(true))
-	}
+	attrs := t.consumerAttrs(r, semconv.MessagingOperationReceive)
 	opts := []trace.SpanStartOption{
 		trace.WithAttributes(attrs...),
 		trace.WithSpanKind(trace.SpanKindConsumer),

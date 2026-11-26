@@ -3,9 +3,14 @@ package index
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
+
+// Constant taken from thanos https://github.com/thanos-io/thanos/pull/3557.
+// Research has not been done into whether this is the best number for Loki's indexes.
+const labelValueSymbolsCacheSize = 1024
 
 // streamSymbols is StreamReader's equivalent of Symbols.
 //
@@ -27,11 +32,22 @@ type streamSymbols struct {
 	// There are not many label names compared to label values, and they
 	// make up half of all lookups, so holding them in memory is a good trade-off.
 	labelNameSymbols map[uint32]string
+
+	// labelValueSymbolsCache is a direct cache of label value symbols,
+	// keyed on the low bits of the ordinal.
+	// An entry answers for ordinal n only when it holds n and a non-empty
+	// symbol, so the zero value is a miss and a collision costs a re-read
+	// rather than the wrong symbol.
+	labelValueSymbolsMtx   sync.Mutex
+	labelValueSymbolsCache [labelValueSymbolsCacheSize]struct {
+		ordinal uint32
+		symbol  string
+	}
 }
 
 // newStreamSymbols scans the symbol section once, validating its CRC,
 // capturing the sparse offset table, and building labelNameSymbols.
-func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFactory, off int, isLabelName func(symbol string) bool) (*streamSymbols, error) {
+func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFactory, off int, isLabelName func(symbol []byte) bool) (*streamSymbols, error) {
 	decbuf := factory.NewDecbufAtChecked(ctx, off, castagnoliTable)
 	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {
@@ -54,9 +70,11 @@ func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFact
 		if i%symbolFactor == 0 {
 			s.offsets = append(s.offsets, decbuf.Offset())
 		}
-		symbol := decbuf.UvarintStr()
+		// Read the symbol as bytes rather than as a string because we're going to
+		// throw away most symbols, so allocating a string is unnecessary.
+		symbol := decbuf.UnsafeUvarintBytes()
 		if isLabelName(symbol) {
-			s.labelNameSymbols[uint32(i)] = symbol
+			s.labelNameSymbols[uint32(i)] = string(symbol)
 		}
 	}
 	if err := decbuf.Err(); err != nil {
@@ -65,6 +83,7 @@ func newStreamSymbols(ctx context.Context, factory *streamenc.FilePoolDecbufFact
 	return s, nil
 }
 
+// Lookup resolves ordinal n either from a file or a local cache.
 func (s *streamSymbols) Lookup(n uint32) (string, error) {
 	if symbol, ok := s.labelNameSymbols[n]; ok {
 		return symbol, nil
@@ -74,6 +93,29 @@ func (s *streamSymbols) Lookup(n uint32) (string, error) {
 		return "", fmt.Errorf("unknown symbol offset %d", n)
 	}
 
+	cacheIndex := n % labelValueSymbolsCacheSize
+	s.labelValueSymbolsMtx.Lock()
+	if entry := s.labelValueSymbolsCache[cacheIndex]; entry.ordinal == n && entry.symbol != "" {
+		s.labelValueSymbolsMtx.Unlock()
+		return entry.symbol, nil
+	}
+	s.labelValueSymbolsMtx.Unlock()
+
+	symbol, err := s.lookup(n)
+	if err != nil {
+		return "", err
+	}
+
+	s.labelValueSymbolsMtx.Lock()
+	s.labelValueSymbolsCache[cacheIndex].ordinal = n
+	s.labelValueSymbolsCache[cacheIndex].symbol = symbol
+	s.labelValueSymbolsMtx.Unlock()
+
+	return symbol, nil
+}
+
+// lookup resolves ordinal n from the file.
+func (s *streamSymbols) lookup(n uint32) (string, error) {
 	decbuf := s.factory.NewDecbufAtUnchecked(context.Background(), s.off)
 	defer decbuf.Close()
 	if err := decbuf.Err(); err != nil {

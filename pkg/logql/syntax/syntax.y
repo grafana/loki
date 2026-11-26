@@ -41,6 +41,9 @@ import (
   labelExtractionExpressionList []log.LabelExtractionExpr
   unwrapExpr *UnwrapExpr
   offsetExpr *OffsetExpr
+  bucketSpec *BucketSpec
+  number float64
+  numbers []float64
 }
 
 %start root
@@ -70,6 +73,11 @@ import (
 %type <labelExtractionExpressionList> labelExtractionExpressionList
 %type <unwrapExpr> unwrapExpr
 %type <offsetExpr> offsetExpr
+%type <bucketSpec> bucketSpec
+%type <number> signedNumber
+%type <numbers> signedNumbers
+%type <metricExpr> histogramFuncExpr histogramRangeAggregationExpr
+%type <op> histogramOp
 
 %token <bytes> BYTES
 %token <str> IDENTIFIER STRING NUMBER FUNCTION_FLAG
@@ -89,6 +97,9 @@ import (
 %left <binOp> ADD SUB
 %left <binOp> MUL DIV MOD
 %right <binOp> POW
+
+// Declared after the operators so that the numbers of the tokens above do not change.
+%token <val> HISTOGRAM_OVER_TIME BUCKETS HISTOGRAM_QUANTILE HISTOGRAM_QUANTILES HISTOGRAM_FRACTION HISTOGRAM_COUNT HISTOGRAM_SUM HISTOGRAM_AVG
 
 %%
 
@@ -318,8 +329,8 @@ labelExtractionExpressionList:
   ;
 
 ipLabelFilter:
-    IDENTIFIER EQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1,log.LabelFilterEqual) }
-  | IDENTIFIER NEQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1, log.LabelFilterNotEqual) }
+    IDENTIFIER EQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = mustNewIPLabelFilter($5, $1, log.LabelFilterEqual) }
+  | IDENTIFIER NEQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = mustNewIPLabelFilter($5, $1, log.LabelFilterNotEqual) }
   ;
 
 unitFilter:
@@ -327,23 +338,23 @@ unitFilter:
     | bytesFilter    { $$ = $1 }
 
 durationFilter:
-      IDENTIFIER GT DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
-    | IDENTIFIER GTE DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
-    | IDENTIFIER LT DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterLesserThan, $1, $3) }
-    | IDENTIFIER LTE DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
-    | IDENTIFIER NEQ DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterNotEqual, $1, $3) }
-    | IDENTIFIER EQ DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
-    | IDENTIFIER CMP_EQ DURATION  { $$ = log.NewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
+      IDENTIFIER GT DURATION      { $$ = mustNewDurationLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
+    | IDENTIFIER GTE DURATION     { $$ = mustNewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
+    | IDENTIFIER LT DURATION      { $$ = mustNewDurationLabelFilter(log.LabelFilterLesserThan, $1, $3) }
+    | IDENTIFIER LTE DURATION     { $$ = mustNewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
+    | IDENTIFIER NEQ DURATION     { $$ = mustNewDurationLabelFilter(log.LabelFilterNotEqual, $1, $3) }
+    | IDENTIFIER EQ DURATION      { $$ = mustNewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
+    | IDENTIFIER CMP_EQ DURATION  { $$ = mustNewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
     ;
 
 bytesFilter:
-      IDENTIFIER GT BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
-    | IDENTIFIER GTE BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
-    | IDENTIFIER LT BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterLesserThan, $1, $3) }
-    | IDENTIFIER LTE BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
-    | IDENTIFIER NEQ BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterNotEqual, $1, $3) }
-    | IDENTIFIER EQ BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
-    | IDENTIFIER CMP_EQ BYTES { $$ = log.NewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
+      IDENTIFIER GT BYTES     { $$ = mustNewBytesLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
+    | IDENTIFIER GTE BYTES    { $$ = mustNewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
+    | IDENTIFIER LT BYTES     { $$ = mustNewBytesLabelFilter(log.LabelFilterLesserThan, $1, $3) }
+    | IDENTIFIER LTE BYTES    { $$ = mustNewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
+    | IDENTIFIER NEQ BYTES    { $$ = mustNewBytesLabelFilter(log.LabelFilterNotEqual, $1, $3) }
+    | IDENTIFIER EQ BYTES     { $$ = mustNewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
+    | IDENTIFIER CMP_EQ BYTES { $$ = mustNewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
     ;
 
 numberFilter:
@@ -521,5 +532,57 @@ grouping:
     | WITHOUT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS   { $$ = &Grouping{ Without: true , Groups: $3 } }
     | BY OPEN_PARENTHESIS CLOSE_PARENTHESIS               { $$ = &Grouping{ Without: false , Groups: nil } }
     | WITHOUT OPEN_PARENTHESIS CLOSE_PARENTHESIS          { $$ = &Grouping{ Without: true , Groups: nil } }
+    ;
+
+// Histograms. These rules are at the end of the grammar so that the numbers of the rules above, and with them
+// the generated tables and actions, do not change.
+
+metricExpr:
+      histogramFuncExpr               { $$ = $1 }
+    | histogramRangeAggregationExpr   { $$ = $1 }
+    ;
+
+histogramRangeAggregationExpr:
+      HISTOGRAM_OVER_TIME OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                                  { $$ = newRangeAggregationExpr($3, OpRangeTypeHistogram, nil, nil) }
+    | HISTOGRAM_OVER_TIME OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS grouping                         { $$ = newRangeAggregationExpr($3, OpRangeTypeHistogram, $5, nil) }
+    | HISTOGRAM_OVER_TIME OPEN_PARENTHESIS bucketSpec COMMA logRangeExpr CLOSE_PARENTHESIS                 { $$ = newBucketedRangeAggregationExpr($5, OpRangeTypeHistogram, nil, $3) }
+    | HISTOGRAM_OVER_TIME OPEN_PARENTHESIS bucketSpec COMMA logRangeExpr CLOSE_PARENTHESIS grouping        { $$ = newBucketedRangeAggregationExpr($5, OpRangeTypeHistogram, $7, $3) }
+    ;
+
+bucketSpec:
+      BUCKETS OPEN_PARENTHESIS signedNumbers CLOSE_PARENTHESIS { $$ = newBucketSpec($3) }
+    ;
+
+// A number as an argument of a histogram function. Unlike a NUMBER token it can be signed, and it can be
+// Inf, which the lexer returns as an IDENTIFIER because it is not a number to it.
+signedNumber:
+      NUMBER                { $$ = mustParseNumber("", $1) }
+    | ADD NUMBER            { $$ = mustParseNumber(OpTypeAdd, $2) }
+    | SUB NUMBER            { $$ = mustParseNumber(OpTypeSub, $2) }
+    | IDENTIFIER            { $$ = mustParseInf("", $1) }
+    | ADD IDENTIFIER        { $$ = mustParseInf(OpTypeAdd, $2) }
+    | SUB IDENTIFIER        { $$ = mustParseInf(OpTypeSub, $2) }
+    ;
+
+signedNumbers:
+      signedNumber                        { $$ = []float64{ $1 } }
+    | signedNumbers COMMA signedNumber    { $$ = append($1, $3) }
+    ;
+
+histogramFuncExpr:
+      HISTOGRAM_QUANTILE OPEN_PARENTHESIS signedNumber COMMA metricExpr CLOSE_PARENTHESIS
+        { $$ = mustNewHistogramFuncExpr($5, OpHistogramQuantile, "", []float64{ $3 }) }
+    | HISTOGRAM_QUANTILES OPEN_PARENTHESIS metricExpr COMMA STRING COMMA signedNumbers CLOSE_PARENTHESIS
+        { $$ = mustNewHistogramFuncExpr($3, OpHistogramQuantiles, $5, $7) }
+    | HISTOGRAM_FRACTION OPEN_PARENTHESIS signedNumber COMMA signedNumber COMMA metricExpr CLOSE_PARENTHESIS
+        { $$ = mustNewHistogramFuncExpr($7, OpHistogramFraction, "", []float64{ $3, $5 }) }
+    | histogramOp OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS
+        { $$ = mustNewHistogramFuncExpr($3, $1, "", nil) }
+    ;
+
+histogramOp:
+      HISTOGRAM_COUNT { $$ = OpHistogramCount }
+    | HISTOGRAM_SUM   { $$ = OpHistogramSum }
+    | HISTOGRAM_AVG   { $$ = OpHistogramAvg }
     ;
 %%

@@ -58,6 +58,9 @@ type IndexReader interface {
 	// LabelNames returns all the unique label names present in the index in sorted order.
 	LabelNames(matchers ...*labels.Matcher) ([]string, error)
 
+	// ShardPostings restricts an existing postings list to a shard candidate range.
+	ShardPostings(index.Postings, index.FingerprintFilter) index.Postings
+
 	// NewSeriesScan returns a scan over the series of one pass over a postings
 	// list. The caller owns the returned scan and must Close it.
 	NewSeriesScan() index.SeriesScan
@@ -68,8 +71,19 @@ type IndexReader interface {
 
 // PostingsForMatchers assembles a single postings iterator against the index reader
 // based on the given matchers. The resulting postings are not ordered by series.
-func PostingsForMatchers(ix IndexReader, fpFilter index.FingerprintFilter, ms ...*labels.Matcher) (index.Postings, error) {
+// The caller must Close them once done iterating.
+func PostingsForMatchers(ix IndexReader, fpFilter index.FingerprintFilter, ms ...*labels.Matcher) (_ index.Postings, err error) {
 	var its, notIts []index.Postings
+	defer func() {
+		if err != nil {
+			for _, p := range its {
+				p.Close()
+			}
+			for _, p := range notIts {
+				p.Close()
+			}
+		}
+	}()
 	// See which label must be non-empty.
 	// Optimization for case like {l=~".", l!="1"}.
 	labelMustBeSet := make(map[string]bool, len(ms))
@@ -289,6 +303,7 @@ func labelValuesWithMatchers(r IndexReader, name string, matchers ...*labels.Mat
 	if err != nil {
 		return nil, err
 	}
+	defer p.Close()
 
 	scan := r.NewSeriesScan()
 	defer scan.Close()
@@ -323,6 +338,7 @@ func labelNamesWithMatchers(r IndexReader, matchers ...*labels.Matcher) ([]strin
 	if err != nil {
 		return nil, err
 	}
+	defer p.Close()
 
 	var postings []storage.SeriesRef
 	for p.Next() {

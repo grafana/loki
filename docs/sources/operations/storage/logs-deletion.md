@@ -9,7 +9,7 @@ weight: 700
 Grafana Loki supports the deletion of log entries from a specified stream.
 Log entries that fall within a specified time window and match an optional line filter are those that will be deleted.
 
-Log entry deletion is supported when the TSDB index is configured as the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
+Log entry deletion requires the TSDB index store.
 
 The compactor component exposes REST [endpoints](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#compactor) that process delete requests.
 Hitting the endpoint specifies the streams and the time window.
@@ -34,7 +34,7 @@ Be very careful when enabling retention. It is strongly recommended that you als
 - `filter-only`: Log lines matching the query in the delete request are filtered out when querying Loki. They are not removed from storage.
 - `filter-and-delete`: Log lines matching the query in the delete request are filtered out when querying Loki, and they are also removed from storage. This is the default.
 
-A delete request may be canceled within a configurable cancellation period. Set the `delete_request_cancel_period` in the compactor's YAML configuration or on the command line when invoking Loki. Its default value is 24h. To cancel a delete request that has already started processing, pass the `force=true` query parameter to the cancellation endpoint.
+A delete request may be canceled within a configurable cancellation period. Set the `delete_request_cancel_period` in the compactor's YAML configuration or on the command line when invoking Loki. Its default value is 24h. A request can be canceled without the `force` query parameter only while it is unprocessed and still within this period. After the cancellation period elapses, or once the compactor has started processing the request, pass `force=true` to the cancellation endpoint to cancel it. A delete request that has already been fully processed can no longer be canceled, even with `force=true`.
 
 Delete requests that include a line filter are split into smaller requests that each cover no more than `delete_max_interval` (24h by default). You can request a smaller split for a single request with the `max_interval` query parameter, but it cannot be larger than `delete_max_interval`. Delete requests without a line filter are not split. Refer to the [HTTP API reference](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/#request-log-deletion) for the full set of request parameters.
 

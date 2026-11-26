@@ -116,9 +116,11 @@ type testFileLoader struct{}
 
 func (testFileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
 	parseLog := slog.New(slog.NewTextHandler(io.Discard, nil))
+	//nolint:forbidigo // parses real PromQL rule expressions, like the production file loader
 	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, parser.NewParser(parser.Options{}), parseLog)
 }
 
 func (testFileLoader) Parse(query string) (parser.Expr, error) {
+	//nolint:forbidigo // parses a real PromQL expression, not LogQL labels
 	return parser.NewParser(parser.Options{}).ParseExpr(query)
 }

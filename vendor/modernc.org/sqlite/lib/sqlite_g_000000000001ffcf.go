@@ -5,5 +5,3 @@
 package sqlite3
 
 const WCHAR_MAX = 2147483647
-
-const WCHAR_MIN = -2147483648

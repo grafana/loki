@@ -260,6 +260,7 @@ func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
 	if !strings.Contains(query, "@") {
 		return true
 	}
+	//nolint:forbidigo // parses a PromQL expression, not LogQL labels
 	expr, err := parser.NewParser(parser.Options{}).ParseExpr(query)
 	if err != nil {
 		// We are being pessimistic in such cases.
@@ -268,7 +269,7 @@ func (s resultsCache) isAtModifierCachable(r Request, maxCacheTime int64) bool {
 	}
 
 	// This resolves the start() and end() used with the @ modifier.
-	expr, err = promql.PreprocessExpr(expr, r.GetStart(), r.GetEnd(), time.Duration(r.GetStep()))
+	expr, err = promql.PreprocessExpr(expr, r.GetStart(), r.GetEnd(), time.Duration(r.GetStep())*time.Millisecond)
 	if err != nil {
 		level.Warn(s.logger).Log("msg", "failed to preprocess query, considering @ modifier as not cachable", "query", query, "err", err)
 		return false

@@ -205,12 +205,12 @@ var File_google_monitoring_v3_snooze_proto protoreflect.FileDescriptor
 
 const file_google_monitoring_v3_snooze_proto_rawDesc = "" +
 	"\n" +
-	"!google/monitoring/v3/snooze.proto\x12\x14google.monitoring.v3\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a!google/monitoring/v3/common.proto\"\x8e\x03\n" +
-	"\x06Snooze\x12\x17\n" +
-	"\x04name\x18\x01 \x01(\tB\x03\xe0A\bR\x04name\x12F\n" +
-	"\bcriteria\x18\x03 \x01(\v2%.google.monitoring.v3.Snooze.CriteriaB\x03\xe0A\x02R\bcriteria\x12C\n" +
-	"\binterval\x18\x04 \x01(\v2\".google.monitoring.v3.TimeIntervalB\x03\xe0A\x02R\binterval\x12&\n" +
-	"\fdisplay_name\x18\x05 \x01(\tB\x03\xe0A\x02R\vdisplayName\x1aj\n" +
+	"!google/monitoring/v3/snooze.proto\x12\x14google.monitoring.v3\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a!google/monitoring/v3/common.proto\"\x92\x03\n" +
+	"\x06Snooze\x12\x18\n" +
+	"\x04name\x18\x01 \x01(\tB\x04\xe2A\x01\bR\x04name\x12G\n" +
+	"\bcriteria\x18\x03 \x01(\v2%.google.monitoring.v3.Snooze.CriteriaB\x04\xe2A\x01\x02R\bcriteria\x12D\n" +
+	"\binterval\x18\x04 \x01(\v2\".google.monitoring.v3.TimeIntervalB\x04\xe2A\x01\x02R\binterval\x12'\n" +
+	"\fdisplay_name\x18\x05 \x01(\tB\x04\xe2A\x01\x02R\vdisplayName\x1aj\n" +
 	"\bCriteria\x12F\n" +
 	"\bpolicies\x18\x01 \x03(\tB*\xfaA'\n" +
 	"%monitoring.googleapis.com/AlertPolicyR\bpolicies\x12\x16\n" +

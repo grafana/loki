@@ -40,7 +40,7 @@ provide a safer, more convenient API.
 var atom atomic.Uint32
 atom.Store(42)
 atom.Sub(2)
-atom.CAS(40, 11)
+atom.CompareAndSwap(40, 11)
 ```
 
 See the [documentation][doc] for a complete API specification.

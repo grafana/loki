@@ -82,7 +82,7 @@ func (f *PartFile) Close() error {
 	}
 
 	if err := f.fd.Close(); err != nil {
-		return fmt.Errorf("filed to close part file: %s: %s", filename, err)
+		return fmt.Errorf("failed to close part file: %s: %s", filename, err)
 	}
 
 	f.fd = nil

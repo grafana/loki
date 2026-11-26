@@ -8,6 +8,7 @@ type Query struct {
 	End               time.Time
 	Step              time.Duration
 	Quiet             bool
+	ShowWarnings      bool
 	Limit             int
 	TargetLabels      []string
 	AggregateByLabels bool

@@ -76,7 +76,7 @@ func validate(v reflect.Value) []pathError {
 	switch v.Kind() {
 	case reflect.Invalid:
 		return nil
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Pointer, reflect.Interface:
 		return validate(v.Elem())
 	case reflect.Struct:
 		err := callValidateIfPossible(v)
@@ -195,7 +195,7 @@ func stringifyMapKey(val reflect.Value) string {
 		return v.String()
 	default:
 		switch val.Kind() {
-		case reflect.Ptr, reflect.Interface, reflect.Struct, reflect.Slice, reflect.Array, reflect.Map:
+		case reflect.Pointer, reflect.Interface, reflect.Struct, reflect.Slice, reflect.Array, reflect.Map:
 			return fmt.Sprintf("[%T key]", val.Interface())
 		default:
 			return fmt.Sprintf("%v", val.Interface())

@@ -21,7 +21,7 @@ func Test_DecodePushRequest(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		expected    []logproto.Stream
-		expectedErr bool
+		expectedErr string
 		actual      string
 	}{
 		{
@@ -117,7 +117,7 @@ func Test_DecodePushRequest(t *testing.T) {
 		},
 		{
 			name:        "string without quotes in stream label value",
-			expectedErr: true,
+			expectedErr: "Skip: do not know how to skip: 78",
 			actual: `{
 			"streams": [
 				{
@@ -159,14 +159,85 @@ func Test_DecodePushRequest(t *testing.T) {
 			]
 		}`,
 		},
+		{
+			name: "null in stream label value",
+			expected: []logproto.Stream{
+				{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 123456789012345),
+							Line:      "super line",
+						},
+					},
+					Labels: `{nothing="null", test="test"}`,
+				},
+			},
+			actual: `{
+			"streams": [
+				{
+					"stream": {
+						"test": "test",
+						"nothing": null
+					},
+					"values":[
+						[ "123456789012345", "super line" ]
+					]
+				}
+			]
+		}`,
+		},
+
+		{
+			name:        "null stream",
+			expectedErr: "stream must be an object",
+			actual: `{
+			"streams": [
+				{
+					"stream": null,
+					"values":[
+						[ "123456789012345", "super line" ]
+					]
+				}
+			]
+		}`,
+		},
+
+		{
+			name:        "invalid top level field",
+			expected:    nil,
+			expectedErr: "found unknown field",
+			actual: `{
+				"invalid": {}
+			}`,
+		},
+
+		{
+			name:        "invalid field",
+			expected:    nil,
+			expectedErr: "reading Stream: found unknown field",
+			actual: `{
+				"streams": [
+				  {
+						"stream": {
+					    "job": "push-payload-test"
+						},
+						"values": [
+						  ["123456789012345", "super line"]
+						],
+						"invalid": []
+				  },
+				]
+			}`,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var actual logproto.PushRequest
 			closer := io.NopCloser(strings.NewReader(tc.actual))
 
 			err := DecodePushRequest(closer, &actual)
-			if tc.expectedErr {
+			if tc.expectedErr != "" {
 				require.Error(t, err)
+				require.ErrorContains(t, err, tc.expectedErr)
 				return
 			}
 			require.NoError(t, err)

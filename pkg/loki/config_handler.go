@@ -2,9 +2,11 @@ package loki
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"github.com/grafana/dskit/tenant"
 	"go.yaml.in/yaml/v4"
@@ -12,6 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
+
+var errConfigFieldNotFound = errors.New("config field not found")
 
 func yamlMarshalUnmarshal(in interface{}) (map[string]interface{}, error) {
 	yamlBytes, err := yaml.Marshal(in)
@@ -117,6 +121,69 @@ func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 
 		writeYAMLResponse(w, output)
 	}
+}
+
+// exposedConfigHandler always returns exactly allowedFields. A field missing from the actual config
+// is an operator misconfiguration (a typo in allowedFields), not a client error, so it's a 500.
+func exposedConfigHandler(actualCfg any, allowedFields []string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		if len(allowedFields) == 0 {
+			writeYAMLResponse(w, map[string]any{})
+			return
+		}
+		result, err := extractConfigPaths(actualCfg, allowedFields)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeYAMLResponse(w, result)
+	}
+}
+
+func extractConfigPaths(cfg any, paths []string) (map[string]any, error) {
+	cfgMap, err := yamlMarshalUnmarshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]any)
+	for _, path := range paths {
+		val, ok := lookupConfigPath(cfgMap, path)
+		if !ok {
+			return nil, fmt.Errorf("%w: %q", errConfigFieldNotFound, path)
+		}
+		setNestedValue(result, strings.Split(path, "."), val)
+	}
+	return result, nil
+}
+
+// setNestedValue writes val into node at the given path segments, reusing (rather than replacing)
+// any intermediate map already created there by an earlier path, so paths sharing a common ancestor
+// merge into one tree instead of clobbering each other.
+func setNestedValue(node map[string]any, segments []string, val any) {
+	for _, segment := range segments[:len(segments)-1] {
+		next, ok := node[segment].(map[string]any)
+		if !ok {
+			next = make(map[string]any)
+			node[segment] = next
+		}
+		node = next
+	}
+	node[segments[len(segments)-1]] = val
+}
+
+func lookupConfigPath(m map[string]interface{}, path string) (any, bool) {
+	var cur any = m
+	for _, segment := range strings.Split(path, ".") {
+		asMap, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		cur, ok = asMap[segment]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 func filterLimitFields(limits any, allowlist []string) (map[string]any, error) {

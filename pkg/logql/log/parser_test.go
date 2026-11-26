@@ -2,12 +2,13 @@ package log
 
 import (
 	"fmt"
+	"strings"
 	"testing"
-
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 func Test_jsonParser_Parse(t *testing.T) {
@@ -119,6 +120,17 @@ func Test_jsonParser_Parse(t *testing.T) {
 			nil,
 		},
 		{
+			"empty root key and whitespace subkey values",
+			[]byte(`{"": "a", " ": {" ":"b"}}`),
+			labels.EmptyLabels(),
+			labels.FromStrings("", "b"),
+			map[string][]string{
+				"": {" ", " "},
+			},
+			NoParserHints(),
+			nil,
+		},
+		{
 			"escaped",
 			[]byte(`{"counter":1,"foo":"foo\\\"bar", "price": {"_net_":5.56909}}`),
 			labels.EmptyLabels(),
@@ -200,10 +212,9 @@ func Test_jsonParser_Parse(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("__error__", "JSONParserErr",
 				"__error_details__", "Value looks like object, but can't find closing '}' symbol",
-				"__preserve_error__", "true",
 			),
 			map[string][]string{},
-			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			parserHintsRequiring("__error__"),
 			nil,
 		},
 		{
@@ -271,6 +282,17 @@ func Test_jsonParser_Parse(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a root key whose sanitized name is empty is dropped on every line", func(t *testing.T) {
+		j := NewJSONParser(false)
+		lbs := labels.FromStrings("foo", "bar")
+		b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
+		for range 2 {
+			b.Reset()
+			_, _ = j.Process(0, []byte(`{" ":"1","baz":"2"}`), b)
+			require.Equal(t, labels.FromStrings("baz", "2", "foo", "bar"), b.LabelsResult().Labels())
+		}
+	})
 }
 
 func TestKeyShortCircuit(t *testing.T) {
@@ -285,6 +307,7 @@ func TestKeyShortCircuit(t *testing.T) {
 	hints.keepGoing = false
 
 	lbs.parserKeyHints = hints
+	lbs.labelFilterHints = hints
 
 	for _, tt := range []struct {
 		name                 string
@@ -308,6 +331,44 @@ func TestKeyShortCircuit(t *testing.T) {
 	}
 }
 
+func TestLineShortCircuit(t *testing.T) {
+	jsonLine := []byte(`{"foo":"bar","baz":"qux"}`)
+	logfmtLine := []byte(`foo=bar baz=qux`)
+
+	for _, tt := range []struct {
+		name string
+		line []byte
+		p    Stage
+	}{
+		{"json", jsonLine, NewJSONParser(false)},
+		{"logfmt", logfmtLine, NewLogfmtParser(false, false)},
+		{"regexp", logfmtLine, mustStage(NewRegexpParser(`foo=(?P<foo>\w+)`))},
+		{"pattern", logfmtLine, mustStage(NewPatternParser(`foo=<foo> <_>`))},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, skipLine := range []bool{true, false} {
+				hints := newFakeParserHints()
+				hints.extractAll = true
+				hints.skipLine = skipLine
+
+				lbs := NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
+				lbs.parserKeyHints = hints
+				lbs.labelFilterHints = hints
+
+				_, ok := tt.p.Process(0, tt.line, lbs)
+				if skipLine {
+					require.False(t, ok)
+					require.Zero(t, hints.checkCount, "the parser read a key of a line that the hints skip")
+					require.Zero(t, lbs.LabelsResult().Labels().Len())
+				} else {
+					require.True(t, ok)
+					require.NotZero(t, lbs.LabelsResult().Labels().Len())
+				}
+			}
+		})
+	}
+}
+
 func TestLabelShortCircuit(t *testing.T) {
 	simpleJsn := []byte(`{
       "data": "Click Here",
@@ -327,6 +388,7 @@ func TestLabelShortCircuit(t *testing.T) {
 
 	lbs := NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
 	lbs.parserKeyHints = hints
+	lbs.labelFilterHints = hints
 
 	tests := []struct {
 		name string
@@ -363,10 +425,13 @@ type fakeParseHints struct {
 	count      int
 	keepGoing  bool
 	extractAll bool
+	extracted  map[string]struct{}
+	skipLine   bool
 }
 
-func (p *fakeParseHints) Extracted(_ string) bool {
-	return false
+func (p *fakeParseHints) Extracted(key string) bool {
+	_, ok := p.extracted[key]
+	return ok
 }
 
 func (p *fakeParseHints) ShouldExtract(key string) bool {
@@ -382,8 +447,12 @@ func (p *fakeParseHints) NoLabels() bool {
 	return false
 }
 
-func (p *fakeParseHints) RecordExtracted(_ string) {
+func (p *fakeParseHints) RecordExtracted(key string) {
 	p.count++
+	if p.extracted == nil {
+		p.extracted = map[string]struct{}{}
+	}
+	p.extracted[key] = struct{}{}
 }
 
 func (p *fakeParseHints) AllRequiredExtracted() bool {
@@ -393,14 +462,15 @@ func (p *fakeParseHints) AllRequiredExtracted() bool {
 func (p *fakeParseHints) Reset() {
 	p.checkCount = 0
 	p.count = 0
-}
-
-func (p *fakeParseHints) PreserveError() bool {
-	return false
+	clear(p.extracted)
 }
 
 func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) bool {
 	return p.keepGoing
+}
+
+func (p *fakeParseHints) ShouldParseLine(_ []byte, _ *LabelsBuilder) bool {
+	return !p.skipLine
 }
 
 func TestJSONExpressionParser(t *testing.T) {
@@ -664,7 +734,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				logqlmodel.ErrorLabel, errJSON,
+				logqlerr.ErrorLabel, errJSON,
 			),
 			NoParserHints(),
 			nil,
@@ -677,10 +747,9 @@ func TestJSONExpressionParser(t *testing.T) {
 			},
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				logqlmodel.ErrorLabel, errJSON,
-				logqlmodel.PreserveErrorLabel, "true",
+				logqlerr.ErrorLabel, errJSON,
 			),
-			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			parserHintsRequiring("__error__"),
 			nil,
 		},
 		{
@@ -837,51 +906,55 @@ func Benchmark_Parser(b *testing.B) {
 	for _, tt := range []struct {
 		name                 string
 		line                 string
-		s                    Stage
-		LabelParseHints      []string //  hints to reduce label extractions.
+		newStage             func() Stage // builds a parser for each sub-benchmark, because a parser caches its hint decisions
+		LabelParseHints      []string     //  hints to reduce label extractions.
 		LabelFilterParseHint *labels.Matcher
 	}{
-		{"json", jsonLine, NewJSONParser(false), []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
-		{"jsonParser-not json line", nginxline, NewJSONParser(false), []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
-		{"unpack", packedLike, NewUnpackParser(), []string{"pod"}, labels.MustNewMatcher(labels.MatchEqual, "app", "nope")},
-		{"unpack-not json line", nginxline, NewUnpackParser(), []string{"pod"}, labels.MustNewMatcher(labels.MatchEqual, "app", "nope")},
-		{"logfmt", logfmtLine, NewLogfmtParser(false, false), []string{"info", "throughput", "org_id"}, labels.MustNewMatcher(labels.MatchEqual, "latency", "nope")},
-		{"regex greedy", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), []string{"path"}, labels.MustNewMatcher(labels.MatchEqual, "path", "nope")},
-		{"regex status digits", nginxline, mustStage(NewRegexpParser(`HTTP/1.1" (?P<statuscode>\d{3}) `)), []string{"statuscode"}, labels.MustNewMatcher(labels.MatchEqual, "status_code", "nope")},
-		{"pattern", nginxline, mustStage(NewPatternParser(`<_> "<method> <path> <_>"<_>`)), []string{"path"}, labels.MustNewMatcher(labels.MatchEqual, "method", "nope")},
+		{"json", jsonLine, func() Stage { return NewJSONParser(false) }, []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
+		{"jsonParser-not json line", nginxline, func() Stage { return NewJSONParser(false) }, []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
+		{"unpack", packedLike, func() Stage { return NewUnpackParser() }, []string{"pod"}, labels.MustNewMatcher(labels.MatchEqual, "app", "nope")},
+		{"unpack-not json line", nginxline, func() Stage { return NewUnpackParser() }, []string{"pod"}, labels.MustNewMatcher(labels.MatchEqual, "app", "nope")},
+		{"logfmt", logfmtLine, func() Stage { return NewLogfmtParser(false, false) }, []string{"info", "throughput", "org_id"}, labels.MustNewMatcher(labels.MatchEqual, "latency", "nope")},
+		{"regex greedy", nginxline, func() Stage { return mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)) }, []string{"path"}, labels.MustNewMatcher(labels.MatchEqual, "path", "nope")},
+		{"regex status digits", nginxline, func() Stage { return mustStage(NewRegexpParser(`HTTP/1.1" (?P<statuscode>\d{3}) `)) }, []string{"statuscode"}, labels.MustNewMatcher(labels.MatchEqual, "status_code", "nope")},
+		{"pattern", nginxline, func() Stage { return mustStage(NewPatternParser(`<_> "<method> <path> <_>"<_>`)) }, []string{"path"}, labels.MustNewMatcher(labels.MatchEqual, "method", "nope")},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
 			line := []byte(tt.line)
 			b.Run("no labels hints", func(b *testing.B) {
 				b.ReportAllocs()
+				stage := tt.newStage()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = tt.s.Process(0, line, builder)
+					_, _ = stage.Process(0, line, builder)
 					builder.LabelsResult()
 				}
 			})
 
 			b.Run("labels hints", func(b *testing.B) {
 				b.ReportAllocs()
+				stage := tt.newStage()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
+				builder.parserKeyHints = NewParserHint(nil, tt.LabelParseHints, false, false, "")
 
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = tt.s.Process(0, line, builder)
+					_, _ = stage.Process(0, line, builder)
 					builder.LabelsResult()
 				}
 			})
 
 			b.Run("inline stages", func(b *testing.B) {
 				b.ReportAllocs()
+				stage := tt.newStage()
 				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
+				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil")
+				builder.labelFilterHints = NewLabelFilterHints(stages)
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = tt.s.Process(0, line, builder)
+					_, _ = stage.Process(0, line, builder)
 					builder.LabelsResult()
 				}
 			})
@@ -931,20 +1004,21 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 	for _, tt := range []struct {
 		name                 string
 		line                 string
-		s                    Stage
-		LabelParseHints      []string //  hints to reduce label extractions.
+		newStage             func() Stage // builds a parser for each sub-benchmark, because a parser caches its hint decisions
+		LabelParseHints      []string     //  hints to reduce label extractions.
 		LabelFilterParseHint *labels.Matcher
 	}{
-		{"json", jsonLine, NewJSONParser(true), []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
+		{"json", jsonLine, func() Stage { return NewJSONParser(true) }, []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
 			line := []byte(tt.line)
 			b.Run("no labels hints", func(b *testing.B) {
 				b.ReportAllocs()
+				stage := tt.newStage()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = tt.s.Process(0, line, builder)
+					_, _ = stage.Process(0, line, builder)
 					builder.LabelsResult()
 				}
 				expectedJSONPath := map[string][]string{
@@ -979,29 +1053,17 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 
 			b.Run("labels hints", func(b *testing.B) {
 				b.ReportAllocs()
+				stage := tt.newStage()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
+				builder.parserKeyHints = NewParserHint(nil, tt.LabelParseHints, false, false, "")
 
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = tt.s.Process(0, line, builder)
+					_, _ = stage.Process(0, line, builder)
 					builder.LabelsResult()
 				}
 
 				expectedJSONPath := map[string][]string{
-					"proxy_protocol_addr":      {"proxy_protocol_addr"},
-					"remote_addr":              {"remote_addr"},
-					"remote_user":              {"remote_user"},
-					"upstream_addr":            {"upstream_addr"},
-					"the_real_ip":              {"the_real_ip"},
-					"protocol":                 {"protocol"},
-					"upstream_name":            {"upstream_name"},
-					"response_status":          {"response", "status"},
-					"invalid":                  {"invalid"},
-					"timestamp":                {"timestamp"},
-					"response_upstream_status": {"response", "upstream_status"},
-					"response_size":            {"response", "size"},
-					"response_size_sent":       {"response", "size_sent"},
 					"response_latency_seconds": {"response", "latency_seconds"},
 				}
 
@@ -1012,12 +1074,14 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 
 			b.Run("inline stages", func(b *testing.B) {
 				b.ReportAllocs()
+				stage := tt.newStage()
 				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
+				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil")
+				builder.labelFilterHints = NewLabelFilterHints(stages)
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = tt.s.Process(0, line, builder)
+					_, _ = stage.Process(0, line, builder)
 					builder.LabelsResult()
 				}
 
@@ -1052,7 +1116,7 @@ func BenchmarkKeyExtraction(b *testing.B) {
 	logFmt := []byte(`data="Click Here" size=36 style=bold name=text1 hOffset=250 vOffset=100 alignment=center onMouseUp="sun1.opacity = (sun1.opacity / 100) * 90;"`)
 
 	lbs := NewBaseLabelsBuilder().ForLabels(labels.EmptyLabels(), 0)
-	lbs.parserKeyHints = NewParserHint([]string{"name"}, nil, false, true, "", nil)
+	lbs.parserKeyHints = parserHintsRequiring("name")
 
 	benchmarks := []struct {
 		name string
@@ -1174,10 +1238,22 @@ func Test_regexpParser_Parse(t *testing.T) {
 			for key, value := range tt.structuredMetadata {
 				b.Set(StructuredMetadataLabel, key, value)
 			}
-			_, _ = tt.parser.Process(0, tt.line, b)
+			_, ok := tt.parser.Process(0, tt.line, b)
+			require.True(t, ok)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
+
+	t.Run("extracts nothing when no stage needs a label", func(t *testing.T) {
+		lbs := labels.FromStrings("app", "foo")
+		hints := NewParserHint(nil, nil, false, true, "")
+		b := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false).ForLabels(lbs, labels.StableHash(lbs))
+		b.Reset()
+
+		_, ok := mustStage(NewRegexpParser("status=(?P<status>\\w+)")).Process(0, []byte("status=200"), b)
+		require.True(t, ok)
+		require.Equal(t, lbs, b.LabelsResult().Labels())
+	})
 }
 
 func TestLogfmtParser_parse(t *testing.T) {
@@ -1210,9 +1286,8 @@ func TestLogfmtParser_parse(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"__error__", "LogfmtParserErr",
 				"__error_details__", "logfmt syntax error at pos 8 : unexpected '='",
-				"__preserve_error__", "true",
 			),
-			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			parserHintsRequiring("__error__"),
 			nil,
 		},
 		{
@@ -1324,7 +1399,6 @@ func TestLogfmtParser_parse(t *testing.T) {
 			NoParserHints(),
 			nil,
 		},
-		// string interning should not cache conflicts across streams
 		{
 			"no duplicate property",
 			[]byte(`foo="foo bar" foobar=10ms`),
@@ -1432,26 +1506,24 @@ func TestLogfmtParser_parse(t *testing.T) {
 		},
 	}
 
-	{
-		p := NewLogfmtParser(false, false)
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
-				b.Reset()
-				// Set structured metadata if specified
-				for key, value := range tt.structuredMetadata {
-					b.Set(StructuredMetadataLabel, key, value)
-				}
-				_, _ = p.Process(0, tt.line, b)
-				require.Equal(t, tt.want, b.LabelsResult().Labels())
-			})
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewLogfmtParser(false, false)
+			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
+			b.Reset()
+			// Set structured metadata if specified
+			for key, value := range tt.structuredMetadata {
+				b.Set(StructuredMetadataLabel, key, value)
+			}
+			_, _ = p.Process(0, tt.line, b)
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
+		})
 	}
 
 	t.Run("strict", func(t *testing.T) {
-		p := NewLogfmtParser(true, false)
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
+				p := NewLogfmtParser(true, false)
 				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 				b.Reset()
 				// Set structured metadata if specified
@@ -1468,6 +1540,86 @@ func TestLogfmtParser_parse(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("a key whose sanitized name is empty is dropped on every line", func(t *testing.T) {
+		p := NewLogfmtParser(false, true)
+		lbs := labels.FromStrings("foo", "bar")
+		b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
+		for range 2 {
+			b.Reset()
+			_, _ = p.Process(0, []byte("\u00a0=1 baz=2"), b)
+			require.Equal(t, labels.FromStrings("baz", "2", "foo", "bar"), b.LabelsResult().Labels())
+		}
+	})
+
+	t.Run("a key is extracted and an empty key is dropped after the key cache is full", func(t *testing.T) {
+		p := NewLogfmtParser(false, false)
+		lbs := labels.FromStrings("foo", "bar")
+		b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
+		for i := range MaxParserFieldCacheSize + 1 {
+			b.Reset()
+			_, _ = p.Process(0, fmt.Appendf(nil, "key%d=x", i), b)
+		}
+
+		b.Reset()
+		_, _ = p.Process(0, []byte("\u00a0=1 late=1"), b)
+		require.Equal(t, labels.FromStrings("foo", "bar", "late", "1"), b.LabelsResult().Labels())
+	})
+}
+
+func TestParsers_collisionAcrossStreams(t *testing.T) {
+	for _, tt := range []struct {
+		name            string
+		parser          Stage
+		line            string
+		collidingStream labels.Labels
+		wantColliding   labels.Labels
+		freeStream      labels.Labels
+		wantFree        labels.Labels
+	}{
+		{
+			"logfmt renames the key only for the stream that holds the label",
+			NewLogfmtParser(false, false), `foo=1`,
+			labels.FromStrings("foo", "bar"), labels.FromStrings("foo", "bar", "foo_extracted", "1"),
+			labels.EmptyLabels(), labels.FromStrings("foo", "1"),
+		},
+		{
+			"json root key is renamed only for the stream that holds the label",
+			NewJSONParser(false), `{"foo":"1"}`,
+			labels.FromStrings("foo", "bar"), labels.FromStrings("foo", "bar", "foo_extracted", "1"),
+			labels.EmptyLabels(), labels.FromStrings("foo", "1"),
+		},
+		{
+			"json nested key is renamed only for the stream that holds the label",
+			NewJSONParser(false), `{"foo":{"bar":"1"}}`,
+			labels.FromStrings("foo_bar", "x"), labels.FromStrings("foo_bar", "x", "foo_bar_extracted", "1"),
+			labels.EmptyLabels(), labels.FromStrings("foo_bar", "1"),
+		},
+		{
+			"regexp renames the capture only for the stream that holds the label",
+			mustStage(NewRegexpParser(`(?P<foo>\d)`)), `1`,
+			labels.FromStrings("foo", "bar"), labels.FromStrings("foo", "bar", "foo_extracted", "1"),
+			labels.EmptyLabels(), labels.FromStrings("foo", "1"),
+		},
+		{
+			"unpack renames the key only for the stream that holds the label",
+			NewUnpackParser(), `{"foo":"1","_entry":"x"}`,
+			labels.FromStrings("foo", "bar"), labels.FromStrings("foo", "bar", "foo_extracted", "1"),
+			labels.EmptyLabels(), labels.FromStrings("foo", "1"),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			b := NewBaseLabelsBuilder().ForLabels(tt.collidingStream, labels.StableHash(tt.collidingStream))
+			b.Reset()
+			_, _ = tt.parser.Process(0, []byte(tt.line), b)
+			require.Equal(t, tt.wantColliding, b.LabelsResult().Labels())
+
+			b = NewBaseLabelsBuilder().ForLabels(tt.freeStream, labels.StableHash(tt.freeStream))
+			b.Reset()
+			_, _ = tt.parser.Process(0, []byte(tt.line), b)
+			require.Equal(t, tt.wantFree, b.LabelsResult().Labels())
+		})
+	}
 }
 
 func TestLogfmtParser_keepEmpty(t *testing.T) {
@@ -1740,6 +1892,26 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			),
 			map[string]string{"app": "foo_sm"},
 		},
+		{
+			"rename to a key also in the line, source first",
+			[]byte(`code=200 status=500`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("status", "200"),
+			nil,
+		},
+		{
+			"rename to a key also in the line, source last",
+			[]byte(`status=500 code=200`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("status", "200"),
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1829,10 +2001,9 @@ func Test_unpackParser_Parse(t *testing.T) {
 			labels.EmptyLabels(),
 			labels.FromStrings("__error__", "JSONParserErr",
 				"__error_details__", "expecting json object(6), but it is not",
-				"__preserve_error__", "true",
 			),
 			[]byte(`"app":"foo","namespace":"prod","_entry":"some message","pod":{"uid":"1"}`),
-			NewParserHint([]string{"__error__"}, nil, false, true, "", nil),
+			parserHintsRequiring("__error__"),
 			nil,
 		},
 		{
@@ -2048,4 +2219,266 @@ func BenchmarkJsonExpressionParser(b *testing.B) {
 			}
 		})
 	}
+}
+
+// BenchmarkLogfmtExpressionParserNames measures the paths of the logfmt expression parser that depend on
+// the names that it asks for: a name that the line has, a key that is renamed, a name that the line lacks,
+// and a grouping on every name.
+func BenchmarkLogfmtExpressionParserNames(b *testing.B) {
+	line := []byte(`level=info ts=2020-12-14T21:25:20.947307459Z caller=metrics.go:83 org_id=29 traceID=c80e691e8db08e2 ` +
+		`latency=fast query="sum by (object_name) (rate(({container=\"metrics-generator\"})[1m]))" query_type=metric ` +
+		`range_type=range length=1h0m0s step=1m0s duration=6.246061ms status=200 limit=1000 returned_lines=0 throughput=3.0MB`)
+	names := []string{"level", "caller", "org_id", "latency"}
+
+	exprs := func(names []string) []LabelExtractionExpr {
+		out := make([]LabelExtractionExpr, 0, len(names))
+		for _, n := range names {
+			out = append(out, NewLabelExtractionExpr(n, n))
+		}
+		return out
+	}
+
+	benchmarks := []struct {
+		name   string
+		stream labels.Labels
+		names  []string
+		hints  ParserHint
+	}{
+		{"names that the line has", labels.FromStrings("cluster", "qa"), names, nil},
+		// Two names clash with a stream label, so the parser renames their keys.
+		{"names that clash with a stream label", labels.FromStrings("cluster", "qa", "level", "stream", "caller", "stream"), names, nil},
+		// The line has none of the names, so the parser writes an empty label for each.
+		{"names that the line lacks", labels.FromStrings("cluster", "qa"), []string{"missing_a", "missing_b", "missing_c", "missing_d"}, nil},
+		// A grouping on every name lets the parser stop as soon as it has read them all.
+		{"grouping on every name", labels.FromStrings("cluster", "qa"), names, NewParserHint(nil, names, false, false, "")},
+		// The grouping does not need the renamed name, so the parser stops at the first key.
+		{"grouping that does not need the renamed name", labels.FromStrings("cluster", "qa", "level", "stream"), []string{"level"}, NewParserHint(nil, []string{"level"}, false, false, "")},
+	}
+	for _, bb := range benchmarks {
+		b.Run(bb.name, func(b *testing.B) {
+			p := mustStage(NewLogfmtExpressionParser(exprs(bb.names), false))
+			builder := NewBaseLabelsBuilder().ForLabels(bb.stream, labels.StableHash(bb.stream))
+			if bb.hints != nil {
+				builder.parserKeyHints = bb.hints
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for n := 0; n < b.N; n++ {
+				builder.Reset()
+				_, result = p.Process(0, line, builder)
+			}
+		})
+	}
+}
+
+func TestLogfmtExpressionParserRenamedKeys(t *testing.T) {
+	exprs := []LabelExtractionExpr{
+		NewLabelExtractionExpr("foo", "foo"),
+		NewLabelExtractionExpr("foo_extracted", "foo_extracted"),
+		NewLabelExtractionExpr("bar", "bar"),
+	}
+	base := labels.FromStrings("foo", "l")
+
+	for _, tt := range []struct {
+		name string
+		line string
+		want labels.Labels
+	}{
+		{
+			// The renamed key finds the name taken by the literal key later in the line. It must not
+			// stop the parser: the key after the pair is still needed.
+			name: "renamed key before the literal key",
+			line: `foo=p foo_extracted=lit bar=b`,
+			want: labels.FromStrings("foo", "l", "foo_extracted", "lit", "bar", "b"),
+		},
+		{
+			name: "literal key before the renamed key",
+			line: `foo_extracted=lit foo=p bar=b`,
+			want: labels.FromStrings("foo", "l", "foo_extracted", "lit", "bar", "b"),
+		},
+		{
+			// The name `foo_extracted` is asked for, but the line has no literal key. The empty label
+			// that stands for a missing key must not take the place of the renamed value.
+			name: "renamed key only",
+			line: `foo=p bar=b`,
+			want: labels.FromStrings("foo", "l", "foo_extracted", "p", "bar", "b"),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			parser, err := NewLogfmtExpressionParser(exprs, false)
+			require.NoError(t, err)
+
+			b := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false).
+				ForLabels(base, labels.StableHash(base))
+			b.Reset()
+			_, _ = parser.Process(0, []byte(tt.line), b)
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
+		})
+	}
+}
+
+// With a grouping on every name of the expression, the parser stops once all of them are extracted.
+// The empty label that stands for a missing key must not count as extracted, or the parser stops
+// after the first name.
+// A name that the line lacks gets an empty label, but not when an earlier stage extracted the name.
+func TestLogfmtExpressionParserKeepsTheValueOfAnEarlierStage(t *testing.T) {
+	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("foo", "foo")}, false)
+	require.NoError(t, err)
+
+	base := labels.FromStrings("app", "x")
+	b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+	b.Reset()
+	_, _ = NewJSONParser(false).Process(0, []byte(`{"foo":"first"}`), b)
+	_, _ = parser.Process(0, []byte(`other=x`), b)
+	require.Equal(t, labels.FromStrings("app", "x", "foo", "first"), b.LabelsResult().Labels())
+}
+
+// A skipped renamed key may end the loop only when no other asked name can still change. The result must
+// not depend on where that key is in the line. An earlier stage extracted `b` here, and the line has `b`
+// too, so `b` has the same value in both orders, whichever value wins.
+func TestLogfmtExpressionParserEarlyExitDoesNotDependOnKeyOrder(t *testing.T) {
+	exprs := []LabelExtractionExpr{NewLabelExtractionExpr("app", "app"), NewLabelExtractionExpr("b", "b")}
+	run := func(t *testing.T, line string) labels.Labels {
+		parser, err := NewLogfmtExpressionParser(exprs, false)
+		require.NoError(t, err)
+
+		base := labels.FromStrings("app", "x")
+		b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+		b.parserKeyHints = NewParserHint(nil, []string{"app", "b"}, false, false, "")
+		b.Reset()
+		_, _ = NewJSONParser(false).Process(0, []byte(`{"b":"first"}`), b)
+		_, _ = parser.Process(0, []byte(line), b)
+		return b.LabelsResult().Labels()
+	}
+
+	renamedFirst := run(t, `app=y b=second`)
+	renamedLast := run(t, `b=second app=y`)
+	require.Equal(t, renamedLast, renamedFirst)
+}
+
+func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
+	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
+		NewLabelExtractionExpr("a", "a"),
+		NewLabelExtractionExpr("b", "b"),
+	}, false)
+	require.NoError(t, err)
+
+	base := labels.FromStrings("app", "x")
+	b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+	b.parserKeyHints = NewParserHint(nil, []string{"a", "b"}, false, false, "")
+	b.Reset()
+	_, _ = parser.Process(0, []byte(`a=1 b=2`), b)
+	require.Equal(t, labels.FromStrings("app", "x", "a", "1", "b", "2"), b.LabelsResult().Labels())
+}
+
+// A grouping or a label filter on a renamed name asks the hints only for that name, so the parser must
+// still read the key that the expression renames.
+func TestLogfmtExpressionParserReadsTheSourceKeyOfARequiredName(t *testing.T) {
+	for _, line := range []string{`code=200 status=500`, `status=500 code=200`} {
+		t.Run(line, func(t *testing.T) {
+			parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
+				NewLabelExtractionExpr("status", "code"),
+			}, false)
+			require.NoError(t, err)
+
+			base := labels.FromStrings("app", "x")
+			b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+			b.parserKeyHints = NewParserHint(nil, []string{"status"}, false, false, "")
+			b.Reset()
+			_, _ = parser.Process(0, []byte(line), b)
+			require.Equal(t, labels.FromStrings("app", "x", "status", "200"), b.LabelsResult().Labels())
+		})
+	}
+}
+
+// askedHints records the names that a parser asks the hints about.
+type askedHints struct {
+	ParserHint
+	asked []string
+}
+
+func (h *askedHints) ShouldExtract(key string) bool {
+	h.asked = append(h.asked, key)
+	return h.ParserHint.ShouldExtract(key)
+}
+
+// readFillers reports whether the parser asked about a key that comes after the keys of the query.
+func (h *askedHints) readFillers() bool {
+	for _, k := range h.asked {
+		if strings.HasPrefix(k, "filler_") {
+			return true
+		}
+	}
+	return false
+}
+
+// A key that a stream label holds is renamed. When the grouping does not need the renamed name, the parser
+// stops reading the line unless another name of an expression is still wanted.
+func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
+	var fillers strings.Builder
+	for i := 0; i < 29; i++ {
+		fmt.Fprintf(&fillers, " filler_%d=v%d", i, i)
+	}
+
+	tests := []struct {
+		name        string
+		names       []string
+		required    []string
+		line        string
+		want        labels.Labels
+		wantFillers bool
+	}{
+		{
+			name:     "the only name clashes and the grouping does not need the renamed one",
+			names:    []string{"app"},
+			required: []string{"app"},
+			line:     "app=y" + fillers.String(),
+			want:     labels.FromStrings("app", "x"),
+		},
+		{
+			name:     "no other name is needed",
+			names:    []string{"app", "b"},
+			required: []string{"app"},
+			line:     "app=y" + fillers.String() + " b=1",
+			want:     labels.FromStrings("app", "x", "b", ""),
+		},
+		{
+			name:        "another name is needed and comes later",
+			names:       []string{"app", "b"},
+			required:    []string{"app", "b"},
+			line:        "app=y" + fillers.String() + " b=1",
+			want:        labels.FromStrings("app", "x", "b", "1"),
+			wantFillers: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exprs := make([]LabelExtractionExpr, 0, len(tt.names))
+			for _, n := range tt.names {
+				exprs = append(exprs, NewLabelExtractionExpr(n, n))
+			}
+			parser, err := NewLogfmtExpressionParser(exprs, false)
+			require.NoError(t, err)
+
+			hints := &askedHints{ParserHint: NewParserHint(nil, tt.required, false, false, "")}
+			base := labels.FromStrings("app", "x")
+			b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
+			b.parserKeyHints = hints
+			b.Reset()
+			_, ok := parser.Process(0, []byte(tt.line), b)
+			require.True(t, ok)
+			require.Equal(t, tt.want, b.LabelsResult().Labels())
+			require.Equal(t, tt.wantFillers, hints.readFillers(), "asked: %v", hints.asked)
+		})
+	}
+}
+
+// parserHintsRequiring returns hints that ask the parsers to extract names.
+func parserHintsRequiring(names ...string) *ParserHints {
+	stages := Stages{NewLogfmtParser(false, false)}
+	for _, name := range names {
+		stages = append(stages, NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, name, "")))
+	}
+	return NewParserHint(stages, nil, false, true, "")
 }

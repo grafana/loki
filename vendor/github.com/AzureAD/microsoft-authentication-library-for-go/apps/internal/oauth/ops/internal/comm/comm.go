@@ -240,9 +240,10 @@ func (c *Client) do(ctx context.Context, req *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("server response error:\n %w", err)
 	}
-	defer reply.Body.Close()
 
 	data, err := c.readBody(reply)
+	// A close error can't change the result after the response body has been consumed.
+	_ = reply.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("could not read the body of an HTTP Response: %w", err)
 	}
@@ -274,7 +275,7 @@ func (c *Client) do(ctx context.Context, req *http.Request) ([]byte, error) {
 
 // checkResp checks a response object o make sure it is a pointer to a struct.
 func (c *Client) checkResp(v reflect.Value) error {
-	if v.Kind() != reflect.Ptr {
+	if v.Kind() != reflect.Pointer {
 		return fmt.Errorf("bug: resp argument must a *struct, was %T", v.Interface())
 	}
 	v = v.Elem()

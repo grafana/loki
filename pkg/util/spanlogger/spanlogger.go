@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/spanlogger" //lint:ignore faillint // This package is the wrapper that should be used.
+	"github.com/grafana/dskit/spanlogger" // this package is the wrapper other Loki code should import
 	"github.com/grafana/dskit/tenant"
 	"go.opentelemetry.io/otel/trace"
 )

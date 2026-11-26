@@ -8,14 +8,15 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // sectionType identifies postings sections in a data object.
 var sectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "postings",
-	Version:   columnar.FormatVersion,
+	Namespace: format.SectionNamespace,
+	Kind:      format.PostingsSectionKind,
+	Version:   columnar.DefaultFormatVersion,
 }
 
 // ColumnType identifies the type of a column in the postings section.
@@ -180,8 +181,8 @@ type Section struct {
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
-	} else if section.Type.Version != columnar.FormatVersion {
-		return nil, fmt.Errorf("unsupported section version: got=%d want=%d", section.Type.Version, columnar.FormatVersion)
+	} else if !columnar.IsSupportedVersion(section.Type.Version) {
+		return nil, fmt.Errorf("unsupported section version: got=%d", section.Type.Version)
 	}
 
 	dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
@@ -228,6 +229,16 @@ func (s *Section) init() error {
 // Unrecognized columns (e.g., when running older code against newer postings
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
+
+// UncompressedSize returns the uncompressed size of all columns of the
+// section, from the section metadata. It reads no pages.
+func (s *Section) UncompressedSize() uint64 {
+	var size uint64
+	for _, column := range s.inner.Columns() {
+		size += column.Metadata().UncompressedSize
+	}
+	return size
+}
 
 // A Column represents one of the columns in the postings section. Valid columns
 // can only be retrieved by calling [Section.Columns].

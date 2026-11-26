@@ -24,30 +24,80 @@ var (
 var (
 	tenantStreamsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_streams",
-		"The current number of streams per tenant, including streams outside the active window.",
-		[]string{"tenant"},
+		"The current number of streams per tenant and policy, including streams outside the active window.",
+		[]string{"tenant", "policy"},
 		nil,
 	)
 	tenantActiveStreamsDesc = prometheus.NewDesc(
 		"loki_ingest_limits_active_streams",
-		"The current number of active streams per tenant.",
-		[]string{"tenant"},
+		"The current number of active streams per tenant and policy.",
+		[]string{"tenant", "policy"},
 		nil,
 	)
 )
 
-// getPolicyBucketAndLimit determines which policy bucket to use and the max streams limit
+// getPolicyBucketAndStreamsLimit determines which policy bucket to use and the max streams limit
 // for a given tenant and policy. Returns the policy bucket name and the max streams limit.
 // The policy bucket will be the input policy name only if the max streams limit is overridden for the policy.
-func (s *usageStore) getPolicyBucketAndStreamsLimit(tenant, policy string) (policyBucket string, maxStreams uint64) {
-	defaultMaxStreams := uint64(s.limits.MaxGlobalStreamsPerUser(tenant) / s.numPartitions)
+//
+// It is shared by usageStore and streamShardStore so both derive the same
+// per-partition budget and policy bucket.
+func getPolicyBucketAndStreamsLimit(limits Limits, numPartitions int, tenant, policy string) (policyBucket string, maxStreams uint64) {
+	defaultMaxStreams := uint64(limits.MaxGlobalStreamsPerUser(tenant) / numPartitions)
 
 	if policy != noPolicy {
-		if policyMaxStreams, exists := s.limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); exists {
-			return policy, uint64(policyMaxStreams / s.numPartitions) // Use policy-specific bucket
+		if policyMaxStreams, exists := limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); exists {
+			return policy, uint64(policyMaxStreams / numPartitions) // Use policy-specific bucket
 		}
 	}
 	return noPolicy, defaultMaxStreams // Use default bucket (noPolicy)
+}
+
+// resolveIdleExpiry returns how long a stream in the policy bucket may go
+// unseen before it is evicted by EvictIdle, or 0 if the bucket has no idle
+// expiry. The shared noPolicy bucket never has one, as it holds the streams
+// of every policy that does not override the stream limits.
+//
+// It is shared by usageStore and streamShardStore so both evict the same
+// streams.
+func resolveIdleExpiry(limits Limits, tenant, policyBucket string) time.Duration {
+	if policyBucket == noPolicy {
+		return 0
+	}
+	expiry, ok := limits.PolicyLimitsServiceStreamsExpiry(tenant, policyBucket)
+	if !ok || expiry <= 0 {
+		return 0
+	}
+	return expiry
+}
+
+// policyBucketUsage is the per-policy-bucket state of a partition in
+// usageStore and streamShardStore.
+type policyBucketUsage interface {
+	map[uint64]streamUsage | *streamShardPolicyUsage
+}
+
+// tenantIdleExpiries returns the idle expiry of each of the tenant's policy
+// buckets that has one, resolving each policy once rather than once per
+// partition.
+func tenantIdleExpiries[B policyBucketUsage](limits Limits, tenant string, partitions map[int32]map[string]B) map[string]time.Duration {
+	var expiries map[string]time.Duration
+	seen := make(map[string]struct{})
+	for _, policies := range partitions {
+		for policy := range policies {
+			if _, ok := seen[policy]; ok {
+				continue
+			}
+			seen[policy] = struct{}{}
+			if expiry := resolveIdleExpiry(limits, tenant, policy); expiry > 0 {
+				if expiries == nil {
+					expiries = make(map[string]time.Duration)
+				}
+				expiries[policy] = expiry
+			}
+		}
+	}
+	return expiries
 }
 
 // usageStore stores per-tenant stream usage data.
@@ -66,6 +116,17 @@ type usageStore struct {
 }
 
 const noPolicy = ""
+
+// addTenantPolicy adds n to the count for the tenant and policy in m,
+// creating the per-tenant map if it does not exist.
+func addTenantPolicy(m map[string]map[string]uint64, tenant, policy string, n uint64) {
+	policies, ok := m[tenant]
+	if !ok {
+		policies = make(map[string]uint64)
+		m[tenant] = policies
+	}
+	policies[policy] += n
+}
 
 // tenantUsage contains the per-partition stream usage for a tenant.
 // The structure is: partition -> policy -> streamHash -> streamUsage
@@ -194,11 +255,18 @@ func (s *usageStore) TenantActiveStreams(tenant string) iter.Seq2[string, stream
 }
 
 func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenAt time.Time) error {
-	if !s.withinActiveWindow(seenAt.UnixNano()) {
+	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, metadata.IngestionPolicy)
+	expiry := resolveIdleExpiry(s.limits, tenant, policyBucket)
+
+	cutOff := s.activeWindow
+	if expiry > 0 {
+		cutOff = min(s.activeWindow, expiry)
+	}
+	if seenAt.Before(s.clock.Now().Add(-cutOff)) {
 		return errOutsideActiveWindow
 	}
+
 	partition := s.getPartitionForHash(metadata.StreamHash)
-	policyBucket, _ := s.getPolicyBucketAndStreamsLimit(tenant, metadata.IngestionPolicy)
 	s.withLock(tenant, func(i int) {
 		s.update(i, tenant, partition, policyBucket, metadata, seenAt)
 	})
@@ -221,7 +289,7 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 			partition := s.getPartitionForHash(m.StreamHash)
 
 			// Determine which policy bucket to use and the max streams limit
-			policyBucket, maxStreams := s.getPolicyBucketAndStreamsLimit(tenant, m.IngestionPolicy)
+			policyBucket, maxStreams := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, m.IngestionPolicy)
 
 			s.checkInitMap(i, tenant, partition, policyBucket)
 			streams := s.stripes[i][tenant][partition][policyBucket]
@@ -266,38 +334,26 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 	return toProduce, accepted, rejected, nil
 }
 
-func (s *usageStore) UpdateRates(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) ([]streamUsage, error) {
-	if !s.withinActiveWindow(seenAt.UnixNano()) {
-		return nil, errOutsideActiveWindow
-	}
-	var (
-		updated = make([]streamUsage, 0, len(metadata))
-		cutoff  = seenAt.Add(-s.activeWindow).UnixNano()
-	)
+// markProduced marks this stream's metadata as already produced, so
+// UpdateCond does not produce a second record for it within the produce
+// interval. Enabling stream sharding durability then does not change the
+// number of records on the topic. It reports whether the stream is tracked.
+//
+// An untracked stream is ignored rather than created: an entry created here
+// would count towards the stream limits with a zero lastSeenAt until it is
+// evicted.
+func (s *usageStore) markProduced(tenant string, metadata *proto.StreamMetadata, now time.Time) bool {
+	partition := s.getPartitionForHash(metadata.StreamHash)
+	policyBucket, _ := getPolicyBucketAndStreamsLimit(s.limits, s.numPartitions, tenant, metadata.IngestionPolicy)
+	var marked bool
 	s.withLock(tenant, func(i int) {
-		for _, m := range metadata {
-			partition := s.getPartitionForHash(m.StreamHash)
-			s.checkInitMap(i, tenant, partition, noPolicy)
-			streams := s.stripes[i][tenant][partition][noPolicy]
-			stream, ok := streams[m.StreamHash]
-
-			// If the stream does not exist, or exists but has expired,
-			// we need to check if accepting it would exceed the maximum
-			// stream limit.
-			if !ok || stream.lastSeenAt < cutoff {
-				if ok {
-					// The stream has expired, delete it so it doesn't count
-					// towards the active streams.
-					delete(streams, m.StreamHash)
-				}
-			}
-			s.updateWithBuckets(i, tenant, partition, noPolicy, m, seenAt)
-			got, _ := s.get(i, tenant, partition, m.StreamHash)
-			got.rateBuckets = getActiveRateBuckets(got.rateBuckets, s.withinRateWindow)
-			updated = append(updated, got)
+		if _, ok := s.stripes[i][tenant][partition][policyBucket][metadata.StreamHash]; !ok {
+			return
 		}
+		s.setLastProducedAt(i, tenant, partition, metadata.StreamHash, policyBucket, now)
+		marked = true
 	})
-	return updated, nil
+	return marked
 }
 
 // Evict evicts all streams that have not been seen within the window.
@@ -311,6 +367,31 @@ func (s *usageStore) Evict() map[string]int {
 					for streamHash, stream := range streams {
 						if stream.lastSeenAt < cutoff {
 							delete(s.stripes[i][tenant][partition][policy], streamHash)
+							evicted[tenant]++
+						}
+					}
+				}
+			}
+		}
+	})
+	return evicted
+}
+
+// EvictIdle evicts the streams of policy buckets with an idle expiry that
+// have not been seen within it, see [resolveIdleExpiry].
+func (s *usageStore) EvictIdle() map[string]int {
+	now := s.clock.Now()
+	evicted := make(map[string]int)
+	s.forEachLock(func(i int) {
+		for tenant, partitions := range s.stripes[i] {
+			expiries := tenantIdleExpiries(s.limits, tenant, partitions)
+			for _, policies := range partitions {
+				for policy, expiry := range expiries {
+					cutoff := now.Add(-expiry).UnixNano()
+					streams := policies[policy]
+					for streamHash, stream := range streams {
+						if stream.lastSeenAt < cutoff {
+							delete(streams, streamHash)
 							evicted[tenant]++
 						}
 					}
@@ -345,40 +426,46 @@ func (s *usageStore) Describe(descs chan<- *prometheus.Desc) {
 func (s *usageStore) Collect(metrics chan<- prometheus.Metric) {
 	var (
 		cutoff = s.clock.Now().Add(-s.activeWindow).UnixNano()
-		active = make(map[string]int)
-		total  = make(map[string]int)
+		active = make(map[string]map[string]uint64)
+		total  = make(map[string]map[string]uint64)
 	)
 	// Count both the total number of active streams and the total number of
-	// streams for each tenants.
+	// streams for each tenant and policy.
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
 			for _, policies := range partitions {
-				for _, streams := range policies {
+				for policy, streams := range policies {
 					for _, stream := range streams {
-						total[tenant]++
+						addTenantPolicy(total, tenant, policy, 1)
 						if stream.lastSeenAt >= cutoff {
-							active[tenant]++
+							addTenantPolicy(active, tenant, policy, 1)
 						}
 					}
 				}
 			}
 		}
 	})
-	for tenant, numActiveStreams := range active {
-		metrics <- prometheus.MustNewConstMetric(
-			tenantActiveStreamsDesc,
-			prometheus.GaugeValue,
-			float64(numActiveStreams),
-			tenant,
-		)
+	for tenant, policies := range active {
+		for policy, numActiveStreams := range policies {
+			metrics <- prometheus.MustNewConstMetric(
+				tenantActiveStreamsDesc,
+				prometheus.GaugeValue,
+				float64(numActiveStreams),
+				tenant,
+				policy,
+			)
+		}
 	}
-	for tenant, numStreams := range total {
-		metrics <- prometheus.MustNewConstMetric(
-			tenantStreamsDesc,
-			prometheus.GaugeValue,
-			float64(numStreams),
-			tenant,
-		)
+	for tenant, policies := range total {
+		for policy, numStreams := range policies {
+			metrics <- prometheus.MustNewConstMetric(
+				tenantStreamsDesc,
+				prometheus.GaugeValue,
+				float64(numStreams),
+				tenant,
+				policy,
+			)
+		}
 	}
 }
 
@@ -398,51 +485,6 @@ func (s *usageStore) update(i int, tenant string, partition int32, policyBucket 
 	if stream.lastSeenAt <= seenAtUnixNano {
 		stream.lastSeenAt = seenAtUnixNano
 	}
-	s.stripes[i][tenant][partition][policyBucket][streamHash] = stream
-}
-
-// Duplicate of update but also updates the rate buckets. This allows us to
-// isolate the changes needed to support UpdateRates RPC without affecting
-// the ExceedsLimits RPCs.
-func (s *usageStore) updateWithBuckets(i int, tenant string, partition int32, policyBucket string, metadata *proto.StreamMetadata, seenAt time.Time) {
-	s.checkInitMap(i, tenant, partition, policyBucket)
-	streamHash := metadata.StreamHash
-	// Get the stats for the stream.
-	stream, ok := s.stripes[i][tenant][partition][policyBucket][streamHash]
-	cutoff := seenAt.Add(-s.activeWindow).UnixNano()
-	// If the stream does not exist, or it has expired, reset it.
-	if !ok || stream.lastSeenAt < cutoff {
-		stream.hash = streamHash
-		stream.totalSize = 0
-		stream.policy = policyBucket
-		stream.rateBuckets = make([]rateBucket, s.numBuckets)
-	} else if len(stream.rateBuckets) == 0 {
-		// If the stream exists but rateBuckets is not initialized (e.g., created via Update()),
-		// initialize it now. This can happen when ExceedsLimits creates a stream, then
-		// UpdateRates is called for the same stream.
-		stream.rateBuckets = make([]rateBucket, s.numBuckets)
-	}
-
-	seenAtUnixNano := seenAt.UnixNano()
-	if stream.lastSeenAt <= seenAtUnixNano {
-		stream.lastSeenAt = seenAtUnixNano
-	}
-	stream.totalSize += metadata.TotalSize
-	// rate buckets are implemented as a circular list. To update a rate
-	// bucket we must first calculate the bucket index.
-	bucketNum := seenAtUnixNano / int64(s.bucketSize)
-	bucketIdx := int(bucketNum % int64(s.numBuckets))
-	bucket := stream.rateBuckets[bucketIdx]
-	// Once we have found the bucket, we then need to check if it is an old
-	// bucket outside the rate window. If it is, we must reset it before we
-	// can re-use it.
-	bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
-	if bucket.timestamp < bucketStart {
-		bucket.timestamp = bucketStart
-		bucket.size = 0
-	}
-	bucket.size += metadata.TotalSize
-	stream.rateBuckets[bucketIdx] = bucket
 	s.stripes[i][tenant][partition][policyBucket][streamHash] = stream
 }
 
@@ -513,9 +555,9 @@ func (s *usageStore) newActiveWindowFunc(now time.Time) func(t int64) bool {
 }
 
 // withinRateWindow returns true if t is within the rate window.
-func (s *usageStore) withinRateWindow(t int64) bool {
-	return s.clock.Now().Add(-s.rateWindow).UnixNano() <= t
-}
+// func (s *usageStore) withinRateWindow(t int64) bool {
+// 	return s.clock.Now().Add(-s.rateWindow).UnixNano() <= t
+// }
 
 // newRateWindowFunc returns a func that returns true if t is within
 // the rate window. It memoizes the start of the rate time window.
@@ -559,21 +601,4 @@ func getActiveRateBuckets(buckets []rateBucket, withinRateWindow func(int64) boo
 		}
 	}
 	return result
-}
-
-func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint64) (stream streamUsage, ok bool) {
-	partitions, ok := s.stripes[i][tenant]
-	if !ok {
-		return
-	}
-	policies, ok := partitions[partition]
-	if !ok {
-		return
-	}
-	streams, ok := policies[noPolicy]
-	if !ok {
-		return
-	}
-	stream, ok = streams[streamHash]
-	return
 }

@@ -1,14 +1,16 @@
 package compactor
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,106 +20,146 @@ import (
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
 const indexMergeIterations = 3
 
-// tocReplacer is the subset of *metastore.TableOfContentsWriter the
-// coordinator needs.
-type tocReplacer interface {
-	ReplaceIndexPointers(
-		ctx context.Context,
-		window time.Time,
-		tenant string,
-		oldPaths []string,
-		newEntries []metastore.TableOfContentsEntry,
-	) (bool, error)
-}
-
-// runFunc executes one single-root physical.Plan as a workflow.
-// Injected via the coordinator's runPlan field so unit tests can swap in a
-// recorder without standing up a scheduler + worker pair.
-type runFunc func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error)
+// errStalePlan marks a log compaction plan whose source index run the ToC no
+// longer lists in full.
+var errStalePlan = errors.New("source index no longer exists in ToC")
 
 // coordinator drives the per-tenant compaction workers. Each iteration
 // re-reads the ToC and re-plans, so a crash recovers on the next pass.
 type coordinator struct {
-	cfg             Config
-	logger          log.Logger
-	bucket          objstore.Bucket
-	runPlan         runFunc
-	metastoreWriter tocReplacer
+	cfg    Config
+	logger log.Logger
+	bucket objstore.Bucket
+	// indexDispatcher runs IndexMerge plans. logDispatcher runs LogMerge and
+	// IndexFilter plans. They have separate concurrency limits.
+	indexDispatcher *planDispatcher
+	logDispatcher   *planDispatcher
+	// pairDispatcher runs the tasks of the coupled planner. It has no
+	// concurrency limit of its own, because the task slots of each tenant
+	// admit the tasks.
+	pairDispatcher *planDispatcher
+	publisher      *tocPublisher
 	// clock is injected so tests can pin the current time; production
 	// wiring sets it to time.Now.
-	clock   func() time.Time
+	clock func() time.Time
+	// sleep blocks for the given duration or until ctx is cancelled. Injected
+	// so tests can make per-tenant backoff waits instant and deterministic.
+	sleep   func(ctx context.Context, d time.Duration)
 	metrics *coordinatorMetrics
 	limits  Limits
+	// logMergePlanningStrategy decides when a log index needs compaction and
+	// groups its runs into merge tasks by size level.
+	logMergePlanningStrategy *v2.SizeLeveledStrategy
+	// sweeps dispatches the deletion sweeps. It is nil if the deletion sweep
+	// is disabled.
+	sweeps *sweepScheduler
+
+	// indexOnlyTenants holds the tenants that planner version 2 skips,
+	// because they have only index compaction enabled.
+	indexOnlyTenants indexOnlyTenants
 }
 
 // newCoordinator constructs a coordinator wired to a real
-// *metastore.TableOfContentsWriter and a workflow.Runner. The runPlan field
-// is set to the package-private runPlan helper closing over the supplied
-// runner so unit tests can override it independently.
+// *metastore.TableOfContentsWriter and a workflow.Runner. bucket is the index
+// storage. dataBucket is the root of the data object storage. Only the
+// deletion sweep uses dataBucket, so it may be nil if the sweep is disabled.
 func newCoordinator(
 	cfg Config,
 	logger log.Logger,
 	bucket objstore.Bucket,
+	dataBucket objstore.BucketReader,
 	runner workflow.Runner,
 	metastoreWriter *metastore.TableOfContentsWriter,
 	reg prometheus.Registerer,
 	limits Limits,
-) *coordinator {
-	return &coordinator{
-		cfg:    cfg,
-		logger: logger,
-		bucket: bucket,
-		runPlan: func(ctx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
-			return runPlan(ctx, logger, runner, opts, plan)
+) (*coordinator, error) {
+	logMergePlanningStrategy, err := v2.NewSizeLeveledStrategy(v2.DefaultSizeLevelBase, v2.DefaultSizeLevelRatio, cfg.LogMaxRunsPerTask)
+	if err != nil {
+		return nil, fmt.Errorf("log merge planning strategy: %w", err)
+	}
+	run := func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
+		return runPlan(ctx, logger, runner, opts, plan)
+	}
+	metrics := newCoordinatorMetrics(reg)
+	c := &coordinator{
+		cfg:             cfg,
+		logger:          logger,
+		bucket:          bucket,
+		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		pairDispatcher:  newPlanDispatcher(logger, run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		publisher: &tocPublisher{
+			writer:  metastoreWriter,
+			timeout: cfg.ToCConsolidateTimeout,
+			dryRun:  cfg.DryRun,
 		},
-		metastoreWriter: metastoreWriter,
-		clock:           time.Now,
-		metrics:         newCoordinatorMetrics(reg),
-		limits:          limits,
+		clock:                    time.Now,
+		sleep:                    sleepUntil,
+		metrics:                  metrics,
+		limits:                   limits,
+		logMergePlanningStrategy: logMergePlanningStrategy,
+	}
+	if cfg.DeletionSweep.Enabled {
+		c.sweeps = newSweepScheduler(cfg.DeletionSweep, log.With(logger, "component", "deletion-sweep"), dataBucket, limits, run, metrics.taskAttemptsTotal)
+	}
+	return c, nil
+}
+
+// sleepUntil blocks for d or returns early when ctx is cancelled. A
+// non-positive d returns immediately.
+func sleepUntil(ctx context.Context, d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
 	}
 }
 
-// Run reconciles the set of per-tenant workers against the compacted windows'
-// ToCs and filtered by the per-tenant runtime config every PollingInterval
-// until ctx is cancelled, then drains all workers.
+// Run keeps one worker running for each tenant that has work in a compacted
+// window's ToC and is enabled for compaction. It re-checks every
+// PollingInterval until ctx is cancelled, then waits for all workers to exit.
+//
+// If the deletion sweep is enabled, Run also keeps one sweep loop running for
+// each tenant that the sweep scheduler discovers and that has the sweep
+// enabled.
+//
+// Cancelling ctx stops new dispatches and retries. A dispatch in progress
+// runs its tasks to completion, then swaps the ToC if every task succeeded.
+// Run returns after the slowest one finishes. Nothing bounds that wait, so
+// the process supervisor must allow for it.
 func (c *coordinator) Run(ctx context.Context) error {
 	level.Info(c.logger).Log(
 		"msg", "starting dataobj compaction coordinator",
 		"polling_interval", c.cfg.PollingInterval,
-		"plan_version", c.cfg.PlanVersion,
+		"planner_version", c.cfg.PlannerVersion,
 	)
-
-	workers := make(map[string]context.CancelFunc)
-	var wg sync.WaitGroup
-
-	c.reconcile(ctx, workers, &wg)
-
-	ticker := time.NewTicker(c.cfg.PollingInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			for _, cancel := range workers {
-				cancel()
-			}
-			wg.Wait()
-			return ctx.Err()
-		case <-ticker.C:
-			c.reconcile(ctx, workers, &wg)
+	compaction := newTenantsSupervisor(c.logger, c.cfg.PollingInterval, c.discoverTenants, c.compactionEnabled, c.runTenant)
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return compaction.Run(gctx) })
+	g.Go(func() error {
+		if c.sweeps == nil {
+			return nil
 		}
-	}
+		return c.sweeps.supervisor(c.cfg.PollingInterval).Run(gctx)
+	})
+	return g.Wait()
 }
 
 // windows returns the metastore-aligned windows the coordinator compacts on
 // each pass, newest first: the current window followed by cfg.WindowLookback
-// older windows. With the default lookback of 0 this is the current window.
+// older windows.
 func (c *coordinator) windows() []time.Time {
 	current := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
 	out := make([]time.Time, 0, c.cfg.WindowLookback+1)
@@ -127,111 +169,80 @@ func (c *coordinator) windows() []time.Time {
 	return out
 }
 
-// reconcile brings the live worker set in line with the compacted windows' ToCs
-// and the per-tenant enable override. workers is owned solely by the single Run
-// goroutine, so it needs no synchronization.
-func (c *coordinator) reconcile(ctx context.Context, workers map[string]context.CancelFunc, wg *sync.WaitGroup) {
-	discovered, allOK := c.discoverUniqueTenants(ctx)
-
-	// Per-tenant metric series are dropped by the worker goroutine on exit (see
-	// startWorker), not here, so a still-draining worker cannot resurrect a
-	// series after this cancel.
-	for tenant, cancel := range workers {
-		// A worker stays alive whenever any phase runs; runLog is irrelevant to
-		// liveness because it implies runIndex.
-		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
-			cancel()
-			delete(workers, tenant)
-		}
+// compactionEnabled reports whether the planner of cfg.PlannerVersion has work
+// to do for tenant, so the supervisor runs a worker for it.
+//
+// Planner version 1 runs any tenant with a compaction phase enabled. Log
+// compaction implies index compaction, so the index phase decides. Planner
+// version 2 runs only tenants with log compaction enabled, because every merge
+// rewrites log data. It warns once for each tenant that has only index
+// compaction enabled, because that tenant gets no compaction.
+func (c *coordinator) compactionEnabled(tenant string) bool {
+	runIndex, runLog := c.limits.CompactionPhases(tenant)
+	if c.cfg.PlannerVersion != plannerVersionCoupled {
+		return runIndex
 	}
+	c.indexOnlyTenants.observe(c.logger, tenant, runIndex && !runLog)
+	return runLog
+}
 
-	// Starting a worker for a discovered tenant is always safe, even when a
-	// window's ToC failed to load (allOK=false): a tenant present in any
-	// successfully-read window has real work. This is what lets a populated
-	// older window run while the current window's ToC does not yet exist.
-	for tenant := range discovered {
-		if _, running := workers[tenant]; running {
-			continue
+// indexOnlyTenants holds the tenants that planner version 2 warned about,
+// because they have only index compaction enabled.
+//
+// indexOnlyTenants is safe for concurrent use.
+type indexOnlyTenants struct {
+	warnedMu sync.Mutex
+	warned   map[string]struct{}
+}
+
+// observe warns once when tenant becomes index only, and forgets tenant when
+// it no longer is, so a later change warns again.
+func (t *indexOnlyTenants) observe(logger log.Logger, tenant string, indexOnly bool) {
+	t.warnedMu.Lock()
+	defer t.warnedMu.Unlock()
+	_, warned := t.warned[tenant]
+	switch {
+	case indexOnly && !warned:
+		if t.warned == nil {
+			t.warned = make(map[string]struct{})
 		}
-		if runIndex, _ := c.limits.CompactionPhases(tenant); !runIndex {
-			continue
-		}
-		c.startWorker(ctx, workers, wg, tenant)
+		t.warned[tenant] = struct{}{}
+		level.Warn(logger).Log("msg", "pair-compaction: tenant has index compaction enabled but log compaction disabled, so planner version 2 does not compact it", "tenant", tenant)
+	case !indexOnly && warned:
+		delete(t.warned, tenant)
 	}
+}
 
-	// Absence-driven cancellation requires an authoritative picture: only when
-	// every window read cleanly is a tenant's absence from the union conclusive.
-	// A transient read failure on any window leaves the running set untouched so
-	// a tenant present only in the unread window is not spuriously cancelled.
-	if !allOK {
+// runTenant runs the compaction loop of cfg.PlannerVersion for tenant until ctx
+// is cancelled. It deletes the tenant's per-tenant metric series when the loop
+// exits.
+func (c *coordinator) runTenant(ctx context.Context, tenant string) {
+	defer c.metrics.deleteTenant(tenant)
+	if c.cfg.PlannerVersion == plannerVersionCoupled {
+		c.newPairCompactor(tenant).run(ctx)
 		return
 	}
-
-	// Workers just started above are all in discovered, so this cancel-absent
-	// pass can never cancel a freshly-started worker. Any new startWorker call
-	// must keep that invariant (only start tenants present in discovered).
-	for tenant, cancel := range workers {
-		if _, present := discovered[tenant]; !present {
-			cancel()
-			delete(workers, tenant)
-		}
-	}
+	c.runTenantLoop(ctx, tenant)
 }
 
-// discoverUniqueTenants unions the tenant sets of every compacted window's ToC. allOK is
-// true only when every window read cleanly (a missing ToC or transient error on
-// any window clears it); reconcile uses allOK to gate absence-driven
-// cancellation so an unread window never causes a spurious cancel.
-func (c *coordinator) discoverUniqueTenants(ctx context.Context) (map[string]struct{}, bool) {
-	discovered := make(map[string]struct{})
-	allOK := true
+// discoverTenants returns the union of the tenants with a ToC in every
+// compacted window.
+//
+// A window with no ToCs contributes no tenants. This happens after each window
+// boundary and in windows that received no data. A listing error fails the
+// call, because a partial result could make a tenant with work look absent.
+func (c *coordinator) discoverTenants(ctx context.Context) (map[string]struct{}, error) {
+	tenants := make(map[string]struct{})
 	for _, window := range c.windows() {
-		tenants, ok := c.discover(ctx, window)
-		if !ok {
-			allOK = false
-			continue
+		listed, err := metastore.ListTableOfContentsTenants(ctx, c.bucket, window)
+		if err != nil {
+			return nil, fmt.Errorf("list ToCs for window %s: %w", window, err)
 		}
-		for tenant := range tenants {
-			discovered[tenant] = struct{}{}
+		for _, tenant := range listed {
+			tenants[tenant] = struct{}{}
 		}
 	}
-	return discovered, allOK
-}
-
-// startWorker launches a long-lived runTenantLoop goroutine for tenant and
-// records its cancel func in workers. The goroutine deletes the tenant's
-// per-tenant metric series as its final action.
-func (c *coordinator) startWorker(ctx context.Context, workers map[string]context.CancelFunc, wg *sync.WaitGroup, tenant string) {
-	wctx, cancel := context.WithCancel(ctx)
-	workers[tenant] = cancel
-	wg.Go(func() {
-		defer c.metrics.deleteTenant(tenant)
-		c.runTenantLoop(wctx, tenant)
-	})
-}
-
-// discover reads one window's ToC and returns the set of tenants it references.
-// ok is false on any read error (missing ToC or transient); discoverAll folds
-// that into its allOK result so reconcile can leave the running set untouched
-// when the picture is incomplete. Only a successfully read ToC is authoritative
-// enough to conclude a tenant was removed. Membership is by map key.
-func (c *coordinator) discover(ctx context.Context, window time.Time) (map[string]struct{}, bool) {
-	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
-	if err != nil {
-		if c.bucket.IsObjNotFoundErr(err) {
-			level.Debug(c.logger).Log("msg", "no ToC for window; leaving workers as-is",
-				"window", window, "err", err)
-		} else {
-			level.Warn(c.logger).Log("msg", "discover: load tenant indexes failed; leaving workers as-is",
-				"window", window, "err", err)
-		}
-		return nil, false
-	}
-	out := make(map[string]struct{}, len(indexes))
-	for tenant := range indexes {
-		out[tenant] = struct{}{}
-	}
-	return out, true
+	return tenants, nil
 }
 
 // compactionStats reports the results of a single tenant compaction. The zero
@@ -242,121 +253,348 @@ type compactionStats struct {
 	dispatched int
 }
 
-// compactTenantLogs dispatches LogMerge tasks for a single index and swaps the
-// ToC. Stats are zero-valued on any no-op (terminal index or race-loss swap).
+// Merge returns the field-wise sum of s and other.
+func (s compactionStats) Merge(other compactionStats) compactionStats {
+	return compactionStats{
+		removed:    s.removed + other.removed,
+		added:      s.added + other.added,
+		dispatched: s.dispatched + other.dispatched,
+	}
+}
+
+// layoutKey identifies a stream layout as a map key. Two layouts have equal
+// keys if and only if they are equal.
+type layoutKey struct {
+	schemaLabels string
+	shardBuckets uint32
+	streamOrder  streams.StreamOrder
+}
+
+// String returns k in a form for logs and errors.
+func (k layoutKey) String() string {
+	return fmt.Sprintf("{schema=%q shards=%d order=%d}", k.schemaLabels, k.shardBuckets, k.streamOrder)
+}
+
+func newLayoutKey(layout streams.Layout) layoutKey {
+	return layoutKey{
+		schemaLabels: strings.Join(layout.SchemaLabels(), ","),
+		shardBuckets: layout.ShardLayout().Buckets(),
+		streamOrder:  layout.StreamOrder(),
+	}
+}
+
+// replaceLogIndex swaps sourceIndexRun for newRuns, which hold one run per
+// dispatched task.
+func (c *coordinator) replaceLogIndex(
+	ctx context.Context,
+	tenant string,
+	window time.Time,
+	sourceIndexRun indexRun,
+	newRuns []metastore.IndexRunEntries,
+) (compactionStats, error) {
+	if len(newRuns) == 0 {
+		return compactionStats{}, fmt.Errorf("replace source log index %s: no replacement runs", sourceIndexRun)
+	}
+
+	// Replace every index object of the run, because the ToC writer refuses a
+	// swap that leaves part of a run.
+	swapped, err := c.publisher.Replace(ctx, tenant, window, sourceIndexRun.paths(), newRuns)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("replace source log index %s: %w", sourceIndexRun, err)
+	}
+	if !swapped {
+		return compactionStats{}, nil
+	}
+	return compactionStats{
+		removed:    1,
+		added:      len(newRuns),
+		dispatched: len(newRuns),
+	}, nil
+}
+
+// compactTenantLogs plans and then executes the log compaction of one index.
+// Stats are zero-valued on any no-op.
 func (c *coordinator) compactTenantLogs(
 	ctx context.Context,
 	tenant string,
 	window time.Time,
-	converged indexEntry,
+	sourceIndexRun indexRun,
 ) (compactionStats, error) {
-	entryLogger := log.With(c.logger, "tenant", tenant, "entry", converged.Path)
-	sections, sortSchema, err := logSectionRefsFor(ctx, c.bucket, tenant, converged.Path)
+	plan, err := c.planLogCompaction(ctx, tenant, window, sourceIndexRun)
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("reading log section refs: %w", err)
+		return compactionStats{}, err
 	}
+	return c.executeLogCompaction(ctx, tenant, plan)
+}
 
-	runs := v2.CalculateRuns(sections, compareSortKey)
-	if v2.IsConverged(sections, compareSortKey) || v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) {
+// planLogCompaction decides how to compact the logs of one layout-homogeneous
+// index. It reads the index but dispatches nothing and changes no state.
+//
+// It plans LogMerge tasks that keep the sort schema of the source index. An
+// IndexFilter of the source index keeps the runs that the strategy does not
+// merge, and the runs of the merges that the maximum key size skips.
+// Compaction never changes the layout of an object.
+//
+// planLogCompaction returns a plan with no work if the index has no sections
+// for tenant, is below the minimum compaction size, needs no compaction, or
+// has a sort prefix above the maximum key size in every planned merge.
+func (c *coordinator) planLogCompaction(
+	ctx context.Context,
+	tenant string,
+	window time.Time,
+	sourceIndexRun indexRun,
+) (logCompactionPlan, error) {
+	sections, shardBuckets, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndexRun)
+	if err != nil {
+		return logCompactionPlan{}, fmt.Errorf("reading log section refs: %w", err)
+	}
+	if len(sections) == 0 {
+		return logCompactionPlan{}, nil
+	}
+	return c.planLogMerge(tenant, window, sourceIndexRun, shardBuckets, sections)
+}
+
+// planLogMerge plans the k-way merge of sections, which must share a sort
+// schema. shardBuckets is the shard layout of the source index.
+func (c *coordinator) planLogMerge(
+	tenant string,
+	window time.Time,
+	sourceIndexRun indexRun,
+	shardBuckets indexpointers.ShardBuckets,
+	sections []v2.Section[logSortPrefix],
+) (logCompactionPlan, error) {
+	entryLogger := log.With(c.logger, "tenant", tenant, "entry", sourceIndexRun.String())
+	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
+	singleRuns := countSingleObjectRuns(runs)
+	if v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) ||
+		!c.logMergePlanningStrategy.NeedsCompaction(runs) {
 		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
+		return logCompactionPlan{singleObjectRuns: singleRuns}, nil
+	}
+
+	merges, unmerged := c.logMergePlanningStrategy.Plan(runs, tenant)
+	if len(merges) == 0 {
+		return logCompactionPlan{}, fmt.Errorf("no log merge tasks to execute for source index %s: %d runs, %d unmerged", sourceIndexRun, len(runs), len(unmerged))
+	}
+
+	keys := newSectionKeySizes(sections)
+	merges, skipped := skipOversizedMerges(entryLogger, c.metrics, uint64(c.cfg.LogMaxKeySize), tenant, keys, merges)
+	if len(merges) == 0 {
+		return logCompactionPlan{}, nil
+	}
+	unmergedRuns := skipped
+	for _, run := range unmerged {
+		unmergedRuns = append(unmergedRuns, &compactionv2pb.RunRef{Sections: run.Sections()})
+	}
+
+	var splitter logTaskSplitter = newNoopLogTaskSplitter(keys)
+	if c.cfg.LogMaxTaskSize > 0 {
+		splitter = newSizeLogTaskSplitter(entryLogger, uint64(c.cfg.LogMaxTaskSize), keys)
+	}
+	var specs []*compactionv2pb.TaskSpec
+	for _, merge := range merges {
+		specs = append(specs, splitter.split(merge)...)
+	}
+
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmergedRuns))
+	logMergeTaskDetails(entryLogger, specs)
+
+	plan := logCompactionPlan{
+		window:           window,
+		sourceIndexRun:   sourceIndexRun,
+		shardBuckets:     shardBuckets,
+		tasks:            make([]logCompactionTask, 0, len(specs)+1),
+		singleObjectRuns: singleRuns,
+	}
+	for _, spec := range specs {
+		plan.tasks = append(plan.tasks, newLogMergeTask(spec))
+	}
+	if len(unmergedRuns) > 0 {
+		filter, err := indexFilterForUnmerged(sourceIndexRun, unmergedRuns)
+		if err != nil {
+			return logCompactionPlan{}, err
+		}
+		plan.tasks = append(plan.tasks, filter)
+	}
+	return plan, nil
+}
+
+// skipOversizedMerges removes the merges whose largest sort prefix is above
+// maxKeySize bytes, and returns the runs of the removed merges. A maxKeySize
+// of 0 disables the check.
+//
+// A merge writes all records of one sort prefix into one object, and the task
+// splitter cannot cut a sort prefix. Such a merge makes an object too large
+// for a worker, so its tasks fail on every attempt. A failed task also cancels
+// the other tasks of the plan, so the whole index never compacts.
+//
+// The returned runs must stay unmerged, because no task rewrites their data.
+func skipOversizedMerges(logger log.Logger, metrics *coordinatorMetrics, maxKeySize uint64, tenant string, keys sectionKeySizes, merges []*compactionv2pb.TaskSpec) (kept []*compactionv2pb.TaskSpec, skipped []*compactionv2pb.RunRef) {
+	if maxKeySize == 0 {
+		return merges, nil
+	}
+	for _, merge := range merges {
+		key, size := keys.largestKey(merge.Runs)
+		if size <= maxKeySize {
+			kept = append(kept, merge)
+			continue
+		}
+		level.Warn(logger).Log(
+			"msg", "log-compaction: skipping merge, because a sort prefix is larger than the maximum key size",
+			"runs", len(merge.Runs),
+			"shard_bucket", key.prefix.ShardBucket,
+			"sort_prefix", strings.Join(key.labels, ","),
+			"size", size,
+			"max_key_size", maxKeySize,
+		)
+		metrics.logMergeSkippedMergesTotal.WithLabelValues(tenant).Inc()
+		skipped = append(skipped, merge.Runs...)
+	}
+	return kept, skipped
+}
+
+// executeLogCompaction dispatches the tasks of plan and swaps its source index
+// for the results. Stats are zero-valued if plan has no work or the swap is a
+// no-op.
+//
+// It reads the latest ToC of the window first. It returns an error that wraps
+// errStalePlan if the ToC no longer lists every index object of the source
+// index run.
+func (c *coordinator) executeLogCompaction(
+	ctx context.Context,
+	tenant string,
+	plan logCompactionPlan,
+) (compactionStats, error) {
+	if !plan.hasWork() {
 		return compactionStats{}, nil
 	}
 
-	tasks := v2.Plan(runs, tenant, c.cfg.LogMaxRunsPerTask, sortSchema)
-
-	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "tasks", len(tasks))
-	logLogTaskDetails(entryLogger, tasks)
-
-	resultEntries := make([]*metastore.TableOfContentsEntry, len(tasks))
-	g, gctx := errgroup.WithContext(ctx)
-	if c.cfg.LogMaxRunningCompactionTasks > 0 {
-		g.SetLimit(c.cfg.LogMaxRunningCompactionTasks)
-	}
-	for i, ts := range tasks {
-		g.Go(func() error {
-			plan := buildLogMergePlan(tenant, window, ts)
-			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "log-merge"}}
-			rec, err := c.runPlan(gctx, opts, plan)
-			if err != nil {
-				return err
-			}
-			if rec == nil {
-				return nil
-			}
-			artifacts, err := v2.ReadResultRecord(rec)
-			if err != nil {
-				return err
-			}
-			if len(artifacts) == 0 {
-				return nil
-			}
-			if len(artifacts) > 1 {
-				return fmt.Errorf("log-merge job produced %d artifacts, want 1", len(artifacts))
-			}
-			minTS, maxTS := taskBounds(ts)
-			resultEntries[i] = &metastore.TableOfContentsEntry{
-				Path:                 artifacts[0].Path,
-				StartTime:            time.Unix(0, minTS).UTC(),
-				EndTime:              time.Unix(0, maxTS).UTC(),
-				UncompressedLogsSize: taskUncompressedLogsSize(ts),
-			}
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return compactionStats{}, fmt.Errorf("failed to execute log-merge tasks: %w", err)
-	}
-
-	newEntries := make([]metastore.TableOfContentsEntry, 0, len(resultEntries))
-	for _, e := range resultEntries {
-		if e != nil {
-			newEntries = append(newEntries, *e)
-		}
-	}
-	if len(newEntries) == 0 {
-		return compactionStats{}, nil
-	}
-
-	// A converged row of 0 uncompressed size means unknown. Legacy objects
-	// carry positive-but-wrong internal stats (line length only, omitting
-	// structured metadata), so persisting 0 keeps the row unknown and lets us
-	// later distinguish and backfill those indexes without rescanning.
-	if converged.UncompressedLogsSize == 0 {
-		for i := range newEntries {
-			newEntries[i].UncompressedLogsSize = 0
-		}
-	}
-
-	oldPaths := []string{converged.Path}
-	stats := compactionStats{
-		removed:    len(oldPaths),
-		added:      len(newEntries),
-		dispatched: len(tasks),
-	}
-
-	if c.cfg.DryRun {
-		return compactionStats{dispatched: len(tasks)}, nil
-	}
-
-	c.fillFileSizes(ctx, newEntries)
-
-	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
-	defer cancel()
-	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
+	// A swap leaves the old index objects in storage, so only the ToC shows
+	// that the plan is stale. A swap by another writer while the tasks run is
+	// still safe, because our swap then fails and writes nothing.
+	exists, err := existsInToC(ctx, c.bucket, tenant, plan.window, plan.sourceIndexRun.paths())
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("failed to replace index pointers after log-compaction: %w", err)
+		return compactionStats{}, fmt.Errorf("check source index %s exists in ToC: %w", plan.sourceIndexRun, err)
 	}
-	if !swapped {
-		level.Debug(entryLogger).Log("msg", "log-compaction ToC replace race-loss / already-converged",
-			"window", window)
-		return compactionStats{}, nil
+	if !exists {
+		return compactionStats{}, fmt.Errorf("%w: %s", errStalePlan, plan.sourceIndexRun)
 	}
 
-	level.Debug(entryLogger).Log("msg", "log-compaction step completed for index", "index_files_added", stats.added, "index_files_removed", stats.removed, "tasks_dispatched", stats.dispatched)
+	artifacts, err := c.logDispatcher.RunToCompletion(ctx, tenant, plan.physicalPlans(tenant))
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("failed to execute log compaction tasks: %w", err)
+	}
+	// Detach only after Run. Run needs ctx to stop retries at shutdown or a
+	// tenant stop, but the ToC swap must still publish the finished tasks. Without the swap,
+	// the next pass runs the tasks again.
+	ctx = context.WithoutCancel(ctx)
+	newRuns, err := outputRuns(plan.plannedRuns(), artifacts)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("build log ToC entries: %w", err)
+	}
+
+	stats, err := c.replaceLogIndex(ctx, tenant, plan.window, plan.sourceIndexRun, newRuns)
+	if err != nil {
+		return compactionStats{}, err
+	}
+	if stats.removed == 0 {
+		level.Debug(c.logger).Log("msg", "log-compaction step for index was a no-op", "tenant", tenant, "entry", plan.sourceIndexRun.String())
+	} else {
+		level.Debug(c.logger).Log("msg", "log-compaction step completed for index", "tenant", tenant, "entry", plan.sourceIndexRun.String(), "indexes_added", stats.added, "index_objects_added", entryCount(newRuns), "indexes_removed", stats.removed, "tasks_dispatched", stats.dispatched)
+	}
 	return stats, nil
 }
 
-func logLogTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
+// existsInToC reports whether the latest ToC of the tenant's window lists every
+// index object in paths. A missing ToC is an error, because planning read it.
+func existsInToC(ctx context.Context, bucket objstore.Bucket, tenant string, window time.Time, paths []string) (bool, error) {
+	entries, err := loadTenantIndexes(ctx, bucket, window, tenant)
+	if err != nil {
+		return false, err
+	}
+	listed := make(map[string]struct{}, len(entries))
+	for _, e := range entries {
+		listed[e.Path] = struct{}{}
+	}
+	for _, path := range paths {
+		if _, ok := listed[path]; !ok {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// countSingleObjectRuns returns the number of runs that hold exactly one
+// object. A run holds one object when all its sections share one path,
+// because an object can have many sections.
+func countSingleObjectRuns(runs []v2.Run) int {
+	var count int
+	for _, run := range runs {
+		sections := run.Sections()
+		if len(sections) == 0 {
+			continue
+		}
+		path := sections[0].ObjectPath
+		if !slices.ContainsFunc(sections[1:], func(s *compactionv2pb.SectionRef) bool { return s.ObjectPath != path }) {
+			count++
+		}
+	}
+	return count
+}
+
+// indexFilterForUnmerged returns an IndexFilter task that keeps only the
+// unmerged runs from sourceIndexRun. Its run takes the time range of the
+// unmerged runs.
+func indexFilterForUnmerged(sourceIndexRun indexRun, unmerged []*compactionv2pb.RunRef) (indexFilterTask, error) {
+	var objectPaths []string
+	for _, run := range unmerged {
+		for _, section := range run.Sections {
+			objectPaths = append(objectPaths, section.ObjectPath)
+		}
+	}
+	slices.Sort(objectPaths)
+	objectPaths = slices.Compact(objectPaths)
+	sourceIndexPaths, err := sourcePathsInKeyOrder(sourceIndexRun)
+	if err != nil {
+		return indexFilterTask{}, err
+	}
+	return indexFilterTask{
+		sourceIndexPaths: sourceIndexPaths,
+		objectPaths:      objectPaths,
+		inputRange:       runsTimeRange(unmerged),
+	}, nil
+}
+
+// sourcePathsInKeyOrder returns the paths of the index objects of run in
+// posting key order. A worker that reads them as one sequence needs that
+// order, and the ToC does not promise an order for its entries.
+//
+// It returns an error that wraps errCorruptIndex if run has several index
+// objects and one has no posting key bounds, or if the key ranges of two
+// overlap. A worker could not read such a run as one sequence.
+func sourcePathsInKeyOrder(run indexRun) ([]string, error) {
+	entries := slices.Clone(run.entries)
+	if len(entries) > 1 {
+		for _, entry := range entries {
+			if entry.PostingKeys.IsZero() {
+				return nil, fmt.Errorf("%w: index object %s of run %s has no posting key bounds", errCorruptIndex, entry.Path, run)
+			}
+		}
+	}
+	slices.SortStableFunc(entries, func(a, b indexpointers.IndexPointer) int {
+		return cmp.Or(a.PostingKeys.Min().Compare(b.PostingKeys.Min()), a.PostingKeys.Max().Compare(b.PostingKeys.Max()))
+	})
+	paths := make([]string, len(entries))
+	for i, entry := range entries {
+		if i > 0 && entries[i-1].PostingKeys.Max().Compare(entry.PostingKeys.Min()) >= 0 {
+			return nil, fmt.Errorf("%w: index objects %s and %s of run %s have overlapping posting key ranges", errCorruptIndex, entries[i-1].Path, entry.Path, run)
+		}
+		paths[i] = entry.Path
+	}
+	return paths, nil
+}
+
+func logMergeTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 	// Only log the first 20 tasks
 	tasksCnt := min(len(tasks), 20)
 	for _, task := range tasks[:tasksCnt] {
@@ -377,106 +615,246 @@ func logLogTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 	}
 }
 
-// compactTenant performs one index-compaction pass for a tenant and window.
-func (c *coordinator) compactTenant(ctx context.Context, tenant string, window time.Time, entries []indexEntry) (compactionStats, error) {
-	windowLogger := log.With(c.logger, "tenant", tenant, "window", window)
-	sections, err := indexSectionRefsFor(ctx, c.bucket, tenant, entries)
+// compactTenantIndexes performs one index-compaction pass for a tenant and window.
+// It runs in three steps:
+//
+//  1. Read every index run once, with indexReadConcurrency runs at once.
+//  2. Group the runs by stream layout and plan the merges of each group. This
+//     step reads nothing from the bucket.
+//  3. Run the merges of each group and swap the ToC.
+//
+// Runs in different layout groups never merge. compactTenantIndexes skips a
+// corrupt run, so the run does not block the other runs of the tenant. A failed
+// group does not stop the other groups.
+//
+// Any other error in step 1 fails the whole pass. Such an error can be
+// temporary, for example a failed bucket request, so the next pass reads every
+// run again.
+//
+// The stats count every group that succeeded, even when the error is non-nil.
+//
+// When ctx is done, no new group starts. The error is the shutdown error only
+// if no group failed, so a shutdown does not hide a real failure.
+func (c *coordinator) compactTenantIndexes(ctx context.Context, tenant string, window time.Time, entries []indexpointers.IndexPointer) (compactionStats, error) {
+	reads, err := c.readIndexRuns(ctx, tenant, window, groupIndexRuns(entries))
 	if err != nil {
-		return compactionStats{}, fmt.Errorf("discover index section bounds: %w", err)
+		return compactionStats{}, fmt.Errorf("read index runs: %w", err)
 	}
 
-	runs := v2.CalculateRuns(sections, compareIndexSortKey)
+	groups := make(map[layoutKey]*layoutGroup)
+	for _, read := range reads {
+		// An index run without stats sections for tenant has no layout. Such
+		// runs share the zero key, so they merge only with each other.
+		var key layoutKey
+		if read.hasLayout {
+			key = newLayoutKey(read.layout)
+		}
+		group, found := groups[key]
+		if !found {
+			group = newLayoutGroup(read.layout, read.hasLayout)
+			groups[key] = group
+		}
+		group.add(read)
+	}
+
+	var total compactionStats
+	var errs []error
+	failGroup := func(key layoutKey, group *layoutGroup, err error) {
+		err = fmt.Errorf("layout group %s: %w", key, err)
+		errs = append(errs, err)
+		level.Warn(c.logger).Log("msg", "index-merge: layout group failed",
+			"tenant", tenant, "window", window, "indexes", len(group.runs), "err", err)
+		c.metrics.indexMergeFailedGroupsTotal.WithLabelValues(tenant).Inc()
+	}
+
+	var plans []indexMergePlan
+	for key, group := range groups {
+		plan, err := c.planIndexMerge(tenant, window, key, group)
+		if err != nil {
+			failGroup(key, group, err)
+			continue
+		}
+		if plan.hasWork() {
+			plans = append(plans, plan)
+		}
+	}
+
+	stop := func(shutdownErr error) (compactionStats, error) {
+		if len(errs) > 0 {
+			return total, errors.Join(errs...)
+		}
+		return total, shutdownErr
+	}
+	for _, plan := range plans {
+		if err := ctx.Err(); err != nil {
+			return stop(err)
+		}
+		stats, err := c.executeIndexMerge(ctx, tenant, window, plan)
+		if err != nil {
+			// A Canceled error is an interruption only when ctx is done. While
+			// ctx is live, a Canceled error comes from somewhere else, for
+			// example a bucket client, so it counts as a group failure and
+			// does not hide one.
+			if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+				return stop(err)
+			}
+			failGroup(plan.key, plan.group, err)
+			continue
+		}
+		total = total.Merge(stats)
+	}
+	return total, errors.Join(errs...)
+}
+
+// readIndexRuns reads every run in runs with readIndexRun, up to
+// indexReadConcurrency runs at once. It returns the reads in the order of runs.
+//
+// A window can hold tens of thousands of runs. Each read makes several bucket
+// requests and holds the prefetch buffers of its objects. The limit bounds both
+// the time and the memory of the step.
+//
+// It skips and counts a corrupt run, and leaves it out of the result. Any other
+// error stops every read and returns the error.
+func (c *coordinator) readIndexRuns(ctx context.Context, tenant string, window time.Time, runs []indexRun) ([]indexRunRead, error) {
+	reads := make([]indexRunRead, len(runs))
+	corrupt := make([]bool, len(runs))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(indexReadConcurrency)
+	for i, run := range runs {
+		group.Go(func() error {
+			// After a failure or a shutdown, skip the runs that did not
+			// start. A pass can hold tens of thousands of them.
+			if err := groupCtx.Err(); err != nil {
+				return err
+			}
+			read, err := readIndexRun(groupCtx, c.bucket, tenant, run)
+			if errors.Is(err, errCorruptIndex) {
+				skipCorruptIndex(c.logger, c.metrics, tenant, window, run.String(), phaseLabelIndexMerge, err)
+				corrupt[i] = true
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			reads[i] = read
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+
+	out := reads[:0]
+	for i, read := range reads {
+		if !corrupt[i] {
+			out = append(out, read)
+		}
+	}
+	return out, nil
+}
+
+// skipCorruptIndex logs and counts a corrupt index that phase skipped. index
+// names it in the log: an index path or an index run description.
+func skipCorruptIndex(logger log.Logger, metrics *coordinatorMetrics, tenant string, window time.Time, index, phase string, err error) {
+	level.Error(logger).Log("msg", "skipping corrupt index",
+		"tenant", tenant, "window", window, "index", index, "phase", phase, "err", err)
+	metrics.corruptIndexesTotal.WithLabelValues(tenant, phase).Inc()
+}
+
+// planIndexMerge plans the merges of group. The plan has no work when the
+// group is already converged.
+func (c *coordinator) planIndexMerge(tenant string, window time.Time, key layoutKey, group *layoutGroup) (indexMergePlan, error) {
+	windowLogger := log.With(c.logger, "tenant", tenant, "window", window)
+
+	runs := v2.CalculateRuns(group.sections, compareIndexSortKey)
 	inputRuns := len(runs)
-	c.metrics.observeIndexInputRuns(inputRuns)
-	converged := v2.IsConverged(sections, compareIndexSortKey)
-	c.metrics.observeIndexConvergence(tenant, converged, inputRuns, entries, c.clock())
+	c.metrics.indexInputRuns.Observe(float64(inputRuns))
+	converged := v2.IsConverged(group.sections, compareIndexSortKey)
+	c.metrics.observeIndexConvergence(tenant, converged, inputRuns, group.entries(), c.clock())
 	if converged {
 		level.Debug(windowLogger).Log("msg", "index-compaction: window converged, skipping", "input_runs", inputRuns)
-		return compactionStats{}, nil
+		return indexMergePlan{}, nil
 	}
 
-	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask, nil)
-	outputs := make([]string, len(tasks))
+	tasks := v2.Plan(runs, tenant, c.cfg.MaxRunsPerTask)
+	if len(tasks) == 0 {
+		return indexMergePlan{}, fmt.Errorf("no index merge tasks to execute")
+	}
 
 	level.Info(windowLogger).Log("msg", "planned index compaction tasks", "tenant", tenant, "tasks", len(tasks), "input_runs", len(runs))
 	logIndexTaskDetails(windowLogger, tasks)
 
-	g, gctx := errgroup.WithContext(ctx)
-	if c.cfg.MaxRunningCompactionTasks > 0 {
-		g.SetLimit(c.cfg.MaxRunningCompactionTasks)
+	var splitter indexTaskSplitter = noopIndexTaskSplitter{}
+	if c.cfg.MaxTaskSize > 0 {
+		splitter = newSizeIndexTaskSplitter(windowLogger, uint64(c.cfg.MaxTaskSize), group.sections)
 	}
+	merges := make([]splitIndexMerge, len(tasks))
 	for i, task := range tasks {
-		g.Go(func() error {
-			plan := buildIndexMergePlan(tenant, window, task)
-			opts := workflow.Options{Tenant: tenant, Actor: []string{"compaction", "index-merge"}}
-			rec, err := c.runPlan(gctx, opts, plan)
-			if err != nil {
-				return err
-			}
-			if rec == nil {
-				return nil
-			}
-			artifacts, err := v2.ReadResultRecord(rec)
-			if err != nil {
-				return err
-			}
-			if len(artifacts) == 0 {
-				return nil
-			}
-			if len(artifacts) > 1 {
-				return fmt.Errorf("index-merge job produced %d artifacts, want 1", len(artifacts))
-			}
-			outputs[i] = artifacts[0].Path
-			return nil
-		})
-	}
-	if err := g.Wait(); err != nil {
-		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
-	}
-
-	completedTasks := make([]*compactionv2pb.TaskSpec, 0, len(tasks))
-	completedOutputs := make([]string, 0, len(tasks))
-	for i, output := range outputs {
-		if output != "" {
-			completedTasks = append(completedTasks, tasks[i])
-			completedOutputs = append(completedOutputs, output)
+		split, err := splitter.split(task)
+		if err != nil {
+			return indexMergePlan{}, fmt.Errorf("split index merge %d: %w", i, err)
+		}
+		merges[i] = splitIndexMerge{spec: task, tasks: split}
+		if err := merges[i].validate(); err != nil {
+			return indexMergePlan{}, fmt.Errorf("split index merge %d: %w", i, err)
 		}
 	}
-	if len(completedTasks) == 0 {
-		return compactionStats{}, nil
-	}
+	return indexMergePlan{key: key, group: group, merges: merges}, nil
+}
 
-	oldPaths := taskObjectPaths(completedTasks)
-	newEntries, err := makeIndexTocEntries(completedTasks, completedOutputs, entries)
+// executeIndexMerge runs the tasks of plan and swaps their source indexes for
+// the results in the ToC.
+func (c *coordinator) executeIndexMerge(ctx context.Context, tenant string, window time.Time, plan indexMergePlan) (compactionStats, error) {
+	windowLogger := log.With(c.logger, "tenant", tenant, "window", window)
+	// Derive the planned runs before dispatch, so a bad task fails before
+	// any worker runs it.
+	planned, err := plan.plannedRuns()
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
+	}
+	plans := plan.physicalPlans(tenant, window)
+	taskArtifacts, err := c.indexDispatcher.RunToCompletion(ctx, tenant, plans)
+	if err != nil {
+		return compactionStats{}, fmt.Errorf("execute index-compaction tasks: %w", err)
+	}
+	// Detach only after Run. Run needs ctx to stop retries at shutdown or a
+	// tenant stop, but the ToC swap must still publish the finished tasks. Without the swap,
+	// the next pass runs the tasks again.
+	ctx = context.WithoutCancel(ctx)
+	artifacts, err := plan.joinArtifacts(taskArtifacts)
+	if err != nil {
+		return compactionStats{}, err
+	}
+	newRuns, err := outputRuns(planned, artifacts)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("build index ToC entries: %w", err)
 	}
 
-	if c.cfg.DryRun {
-		return compactionStats{}, nil
+	oldPaths := plan.sourcePaths()
+	removedRuns, err := plan.group.countRuns(oldPaths)
+	if err != nil {
+		return compactionStats{}, err
 	}
 
-	c.fillFileSizes(ctx, newEntries)
-
-	phase2Ctx, cancel := context.WithTimeout(ctx, c.cfg.ToCConsolidateTimeout)
-	defer cancel()
-	swapped, err := c.metastoreWriter.ReplaceIndexPointers(phase2Ctx, window, tenant, oldPaths, newEntries)
+	swapped, err := c.publisher.Replace(ctx, tenant, window, oldPaths, newRuns)
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("replace index pointers after compaction: %w", err)
 	}
 	if !swapped {
-		level.Debug(windowLogger).Log("msg", "index-compaction ToC replace race-loss")
+		level.Debug(windowLogger).Log("msg", "index-compaction ToC replace wrote nothing")
 		return compactionStats{}, nil
 	}
 
 	level.Info(windowLogger).Log("msg", "tenant cycle complete",
-		"removed_indexes", len(oldPaths),
-		"added_indexes", len(newEntries),
+		"removed_indexes", removedRuns,
+		"removed_index_objects", len(oldPaths),
+		"added_indexes", len(newRuns),
+		"added_index_objects", entryCount(newRuns),
 	)
 	return compactionStats{
-		removed:    len(oldPaths),
-		added:      len(newEntries),
-		dispatched: len(tasks),
+		removed:    removedRuns,
+		added:      len(newRuns),
+		dispatched: len(plans),
 	}, nil
 }
 
@@ -497,147 +875,118 @@ func logIndexTaskDetails(logger log.Logger, tasks []*compactionv2pb.TaskSpec) {
 	}
 }
 
-// taskBounds returns the min/max timestamp (unix nanos) across all sections
-// in a task's runs.
-func taskBounds(task *compactionv2pb.TaskSpec) (minTS, maxTS int64) {
+// runsTimeRange returns the time range of the sections of runs: from the
+// earliest section start to the latest section end.
+func runsTimeRange(runs []*compactionv2pb.RunRef) timeRange {
+	var minTS, maxTS int64
 	first := true
-	for _, run := range task.Runs {
+	for _, run := range runs {
 		for _, sec := range run.Sections {
 			if first {
 				minTS, maxTS, first = sec.MinTimestamp, sec.MaxTimestamp, false
 				continue
 			}
-			if sec.MinTimestamp < minTS {
-				minTS = sec.MinTimestamp
-			}
-			if sec.MaxTimestamp > maxTS {
-				maxTS = sec.MaxTimestamp
-			}
+			minTS = min(minTS, sec.MinTimestamp)
+			maxTS = max(maxTS, sec.MaxTimestamp)
 		}
 	}
-	return minTS, maxTS
+	return newTimeRange(time.Unix(0, minTS), time.Unix(0, maxTS))
 }
 
-// taskUncompressedLogsSize sums UncompressedSize across every section in the
-// task. A section size of 0 means "unknown" (e.g. a legacy ToC row written
-// before sizes were recorded); a single unknown input poisons the whole total,
-// so the result is 0 unless every contributing section is known.
-func taskUncompressedLogsSize(task *compactionv2pb.TaskSpec) uint64 {
-	var total uint64
-	for _, run := range task.Runs {
-		for _, sec := range run.Sections {
-			if sec.UncompressedSize == 0 {
-				return 0
-			}
-			total += uint64(sec.UncompressedSize)
-		}
-	}
-	return total
+// timeRange is an inclusive range of time, in UTC.
+type timeRange struct {
+	start, end time.Time
 }
 
-func taskObjectPaths(tasks []*compactionv2pb.TaskSpec) []string {
-	seen := make(map[string]struct{})
-	for _, task := range tasks {
-		for _, run := range task.Runs {
-			for _, section := range run.Sections {
-				seen[section.ObjectPath] = struct{}{}
-			}
-		}
-	}
-
-	paths := make([]string, 0, len(seen))
-	for path := range seen {
-		paths = append(paths, path)
-	}
-	slices.Sort(paths)
-	return paths
+// newTimeRange returns the range from start to end, both inclusive, in UTC.
+func newTimeRange(start, end time.Time) timeRange {
+	return timeRange{start: start.UTC(), end: end.UTC()}
 }
 
-// makeIndexTocEntries derives output metadata from each task's source indexes.
-func makeIndexTocEntries(tasks []*compactionv2pb.TaskSpec, outputs []string, inputs []indexEntry) ([]metastore.TableOfContentsEntry, error) {
-	byPath := make(map[string]indexEntry, len(inputs))
-	for _, input := range inputs {
-		byPath[input.Path] = input
-	}
-
-	entries := make([]metastore.TableOfContentsEntry, len(outputs))
-	for i, task := range tasks {
-		var (
-			start, end   time.Time
-			uncompressed uint64
-
-			first     = true
-			sizeKnown = true
-			seen      = make(map[string]struct{})
-		)
-		for _, run := range task.Runs {
-			for _, section := range run.Sections {
-				if _, ok := seen[section.ObjectPath]; ok {
-					continue
-				}
-				seen[section.ObjectPath] = struct{}{}
-
-				input, ok := byPath[section.ObjectPath]
-				if !ok {
-					return nil, fmt.Errorf("task references unknown index %q", section.ObjectPath)
-				}
-				if first || input.Start.Before(start) {
-					start = input.Start
-				}
-				if first || input.End.After(end) {
-					end = input.End
-				}
-				first = false
-				if input.UncompressedLogsSize == 0 {
-					sizeKnown = false
-				}
-				uncompressed += input.UncompressedLogsSize
-			}
-		}
-		if !sizeKnown {
-			uncompressed = 0
-		}
-		entries[i] = metastore.TableOfContentsEntry{
-			Path:                 outputs[i],
-			StartTime:            start.UTC(),
-			EndTime:              end.UTC(),
-			UncompressedLogsSize: uncompressed,
-		}
-	}
-	return entries, nil
-}
-
-// fileSizeStatConcurrency bounds concurrent bucket.Attributes calls when
-// filling in index FileSize before a ToC replace.
-const fileSizeStatConcurrency = 16
-
-// fillFileSizes stats each entry's object and sets FileSize. Best-effort: when
-// the stat fails (missing or not-yet-visible object) the entry keeps its zero
-// FileSize and is persisted as-is.
+// plannedRun is what planning knows about the index run that one merge
+// writes. Every entry of the run takes:
 //
-// Stats run concurrently (bounded by fileSizeStatConcurrency) because each
-// bucket.Attributes call can take tens of milliseconds; serializing hundreds
-// of entries would dominate the cycle. Each goroutine writes a distinct slice
-// element, so the concurrent writes do not race.
-func (c *coordinator) fillFileSizes(ctx context.Context, entries []metastore.TableOfContentsEntry) {
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(fileSizeStatConcurrency)
-	for i := range entries {
-		g.Go(func() error {
-			start := time.Now()
-			attrs, err := c.bucket.Attributes(gctx, entries[i].Path)
-			c.metrics.observeFileSizeStat(time.Since(start))
-			if err != nil {
-				level.Warn(c.logger).Log("msg", "attributes for output failed", "path", entries[i].Path, "err", err)
-				return nil
-			}
-			if attrs.Size > 0 {
-				entries[i].FileSize = uint64(attrs.Size)
-			}
-			return nil
+//   - the time range of the merge inputs,
+//   - the shard layout of the merge inputs.
+//
+// ReplaceIndexPointers requires one time range for all entries of a run.
+type plannedRun struct {
+	timeRange    timeRange
+	shardBuckets indexpointers.ShardBuckets
+}
+
+// entries returns the run with an entry for each artifact. Each entry takes the
+// path and the posting key bounds of its artifact. It returns an error if
+// artifacts is empty.
+func (r plannedRun) entries(artifacts []v2.ResultArtifact) (metastore.IndexRunEntries, error) {
+	if len(artifacts) == 0 {
+		return nil, errors.New("task has no artifacts")
+	}
+	run := make(metastore.IndexRunEntries, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		run = append(run, metastore.TableOfContentsEntry{
+			Path:         artifact.Path,
+			StartTime:    r.timeRange.start,
+			EndTime:      r.timeRange.end,
+			ShardBuckets: r.shardBuckets,
+			PostingKeys:  artifact.PostingKeys,
 		})
 	}
-	_ = g.Wait()
+	return run, nil
+}
+
+// outputRuns returns one run for each planned run: the ToC entries of its
+// artifacts. artifacts[i] holds the artifacts of planned[i].
+//
+// A length mismatch returns an error. It stops a ToC swap that would drop a
+// result or reference the wrong object.
+func outputRuns(planned []plannedRun, artifacts [][]v2.ResultArtifact) ([]metastore.IndexRunEntries, error) {
+	if len(planned) != len(artifacts) {
+		return nil, fmt.Errorf("got artifacts of %d tasks for %d tasks", len(artifacts), len(planned))
+	}
+	runs := make([]metastore.IndexRunEntries, 0, len(planned))
+	for i, p := range planned {
+		entries, err := p.entries(artifacts[i])
+		if err != nil {
+			return nil, fmt.Errorf("task %d: %w", i, err)
+		}
+		runs = append(runs, entries)
+	}
+	return runs, nil
+}
+
+func entryCount(runs []metastore.IndexRunEntries) int {
+	var count int
+	for _, run := range runs {
+		count += len(run)
+	}
+	return count
+}
+
+// indexTaskBounds returns the time range covered by the source indexes that
+// task merges. inputsByPath maps each source index path to its index pointer.
+func indexTaskBounds(task *compactionv2pb.TaskSpec, inputsByPath map[string]indexpointers.IndexPointer) (timeRange, error) {
+	var start, end time.Time
+	first := true
+	for _, run := range task.Runs {
+		for _, section := range run.Sections {
+			input, ok := inputsByPath[section.ObjectPath]
+			if !ok {
+				return timeRange{}, fmt.Errorf("task references unknown index %q", section.ObjectPath)
+			}
+			if first || input.StartTs.Before(start) {
+				start = input.StartTs
+			}
+			if first || input.EndTs.After(end) {
+				end = input.EndTs
+			}
+			first = false
+		}
+	}
+	if first {
+		return timeRange{}, fmt.Errorf("task has no source indexes")
+	}
+	return newTimeRange(start, end), nil
 }
 
 // phase is the current step of a tenant's flip-flop worker.
@@ -659,39 +1008,58 @@ func (p phase) flip() phase {
 type phaseOutcome int
 
 const (
-	phaseOutcomeError   phaseOutcome = iota // re-arm same phase
+	phaseOutcomeError   phaseOutcome = iota // a window or index failed
 	phaseOutcomeNoWork                      // success, nothing to do
 	phaseOutcomeSwapped                     // ToC swap applied/observed
+	// phaseOutcomeInterrupted means shutdown stopped the phase. It is not a
+	// failure, so it records no global cycle.
+	phaseOutcomeInterrupted
 )
 
-// runIndexMergePhase runs IndexMerge for the tenant's current window and swaps
-// the ToC.
-func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, window time.Time) phaseOutcome {
+// runIndexMergePhase runs IndexMerge for one window of the tenant and swaps
+// the ToC. lookback is the position of window in c.windows(), where 0 is the
+// current window.
+func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, window time.Time, lookback int) phaseOutcome {
 	start := c.clock()
 	entries, ok := c.tenantEntries(ctx, tenant, window)
 	if !ok {
+		if ctx.Err() != nil {
+			return phaseOutcomeInterrupted
+		}
 		return phaseOutcomeError
 	}
 
-	c.metrics.observeEntries(tenant, entries)
+	c.metrics.indexesPerTenantWindow.WithLabelValues(tenant, strconv.Itoa(lookback)).Set(float64(len(groupIndexRuns(entries))))
 
-	stats, err := c.compactTenant(ctx, tenant, window, entries)
+	stats, err := c.compactTenantIndexes(ctx, tenant, window, entries)
 	dur := c.clock().Sub(start)
 	if err != nil {
-		// Only the coordinator context being cancelled means shutdown. A
-		// DeadlineExceeded from the child ToCConsolidateTimeout context is an
-		// ordinary phase failure and must be logged and retried, not silently
-		// swallowed as if the worker were draining.
-		if ctx.Err() != nil {
-			return phaseOutcomeError
+		// Stop without a failure only when shutdown cancelled the work. Any
+		// other error is a phase failure, even during shutdown. This includes
+		// a DeadlineExceeded from the ToCConsolidateTimeout context.
+		//
+		// Groups that swapped before the shutdown still count as compacted.
+		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+			level.Info(c.logger).Log("msg", "index-merge phase stopped by shutdown",
+				"tenant", tenant, "window", window, "indexes_added", stats.added, "indexes_removed", stats.removed)
+			if stats.added > 0 {
+				c.metrics.observeTenantCycle(tenant, "compacted", dur, stats)
+			}
+			return phaseOutcomeInterrupted
 		}
 		level.Warn(c.logger).Log("msg", "index-merge phase failed",
 			"tenant", tenant, "window", window, "err", err)
-		c.metrics.observeTenantCycle(tenant, "failed", dur, compactionStats{})
+		// A failed group does not undo the swaps of the other groups, so the
+		// cycle still counts as compacted when any group swapped.
+		if stats.added > 0 {
+			c.metrics.observeTenantCycle(tenant, "compacted", dur, stats)
+		} else {
+			c.metrics.observeTenantCycle(tenant, "failed", dur, compactionStats{})
+		}
 		return phaseOutcomeError
 	}
-	// compactTenant returns zero stats for every no-op success; a real swap sets
-	// added > 0.
+	// compactTenantIndexes returns zero stats for every no-op success. A real
+	// swap sets added > 0.
 	if stats.added == 0 {
 		c.metrics.observeTenantCycle(tenant, "converged", dur, compactionStats{})
 		return phaseOutcomeNoWork
@@ -700,96 +1068,195 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 	return phaseOutcomeSwapped
 }
 
-// tenantEntries reads the current-window ToC and returns the tenant's entries.
+// tenantEntries reads the tenant's ToC for the window and returns its entries.
 // A missing ToC yields (nil, true) — no work, not an error. Any other read
-// error yields (nil, false).
-func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window time.Time) ([]indexEntry, bool) {
-	indexes, err := loadTenantIndexes(ctx, c.bucket, window)
+// error yields (nil, false). It logs no warning when ctx is done, because the
+// caller treats that case as a shutdown.
+func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window time.Time) ([]indexpointers.IndexPointer, bool) {
+	entries, err := loadTenantIndexes(ctx, c.bucket, window, tenant)
 	if err != nil {
 		if c.bucket.IsObjNotFoundErr(err) {
 			level.Debug(c.logger).Log("msg", "no ToC for window",
 				"tenant", tenant, "window", window, "err", err)
 			return nil, true
 		}
+		if ctx.Err() != nil {
+			return nil, false
+		}
 		level.Warn(c.logger).Log("msg", "phase: load tenant indexes failed",
 			"tenant", tenant, "window", window, "err", err)
 		return nil, false
 	}
-	return indexes[tenant], true
+	return entries, true
 }
 
-// runLogMergePhase schedules one LogMerge task per index file for the [tenant]
-// in the current [window]. Any error retries. Retries are safe because swapping
-// an index that already swapped is a no-op. Context cancellation is not an
-// error.
-func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string, window time.Time) phaseOutcome {
+// runLogMergePhase plans the log compaction of every index run in every window
+// for the tenant, then executes the plans. An error does not lose work, because
+// the next LogMerge phase plans again. Running a plan again is safe, because
+// swapping an index that already swapped is a no-op.
+//
+// All planning finishes before any task runs, so the pending log bytes gauge
+// shows the whole phase. The last plan timestamp moves only when every index
+// planned without an error, so a partial total is visible as stale.
+//
+// The single-object log runs gauge also moves only when every index planned
+// without an error. A partial sum is lower than the true value, so it would
+// look like compaction is keeping up.
+//
+// The phase holds every plan in memory to avoid a second read of each index.
+// Its memory grows with the number of windows and indexes. A held plan stays
+// safe to execute because index objects are written once. A plan fails before
+// its tasks run if the ToC no longer lists every index object of its source
+// index run. If another writer replaces the run while the tasks run, the swap
+// fails and the work is not used.
+//
+// Cancelling ctx starts no new index. The index in progress runs to its swap,
+// the cycle records any swaps, and the phase returns phaseOutcomeInterrupted
+// unless an index failed.
+func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phaseOutcome {
 	start := c.clock()
-	entries, ok := c.tenantEntries(ctx, tenant, window)
-	if !ok {
-		return phaseOutcomeError
-	}
-	if len(entries) == 0 {
-		c.metrics.observeTenantLogCycle(tenant, "converged", c.clock().Sub(start), compactionStats{})
-		return phaseOutcomeNoWork
+	plans, singleObjectRuns, anyError := c.planLogCompactions(ctx, tenant)
+	if ctx.Err() != nil {
+		return phaseOutcomeInterrupted
 	}
 
-	level.Debug(c.logger).Log("msg", "log merge cycle begin", "tenant", tenant, "window", window, "index_entries_to_process", len(entries))
+	planTime := c.clock()
+	pending, pendingBytes := startPendingLogBytes(c.metrics.pendingLogBytes, tenant, newLogAgeBuckets(c.cfg.WindowLookback), planTime, plans)
+	if !anyError {
+		c.metrics.lastPlanTimestampSeconds.WithLabelValues(tenant).Set(float64(planTime.UnixNano()) / 1e9)
+		c.metrics.singleObjectLogRuns.WithLabelValues(tenant).Set(float64(singleObjectRuns))
+	}
+
+	level.Debug(c.logger).Log("msg", "log merge cycle begin", "tenant", tenant, "plans", len(plans), "pending_bytes", pendingBytes)
 	var agg compactionStats
-	anySwapped := false
-	anyError := false
-	for i, entry := range entries {
+	anySwapped, interrupted := false, false
+	for i, plan := range plans {
 		if ctx.Err() != nil {
-			return phaseOutcomeError
+			interrupted = true
+			break
 		}
-		level.Debug(c.logger).Log("msg", "log merge cycle iteration", "tenant", tenant, "window", window, "index", entry.Path, "progress", fmt.Sprintf("%d/%d", i+1, len(entries)))
-		stats, err := c.compactTenantLogs(ctx, tenant, window, entry)
+		level.Debug(c.logger).Log("msg", "log merge cycle iteration", "tenant", tenant, "window", plan.window, "index", plan.sourceIndexRun.String(), "progress", fmt.Sprintf("%d/%d", i+1, len(plans)))
+		stats, err := c.executeLogCompaction(ctx, tenant, plan)
 		if err != nil {
-			// Only shut down when the coordinator context is cancelled. A
-			// DeadlineExceeded from this index's child ToCConsolidateTimeout is
-			// an ordinary per-index failure: record it and move on so a single
-			// slow swap doesn't skip the remaining indexes.
-			if ctx.Err() != nil {
-				return phaseOutcomeError
+			// Stop without a failure only when shutdown cancelled the work.
+			// Any other error is a failure of this index, even during
+			// shutdown, including a swap timeout. The remaining plans still
+			// run unless ctx is done.
+			if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+				interrupted = true
+				break
 			}
 			level.Warn(c.logger).Log("msg", "log-merge phase: index failed",
-				"tenant", tenant, "window", window, "index", entry.Path, "err", err)
+				"tenant", tenant, "window", plan.window, "index", plan.sourceIndexRun.String(), "err", err)
+			reason := failReasonExecute
+			if errors.Is(err, errStalePlan) {
+				reason = failReasonStalePlan
+			}
+			c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant, reason).Inc()
 			anyError = true
 			continue
 		}
+		// A no-op swap also removes the plan's bytes. It happens in dry-run
+		// mode, or when an earlier attempt wrote the swap and lost the
+		// response. In both cases this phase does not rewrite those bytes.
+		pending.complete(plan)
 		if stats.added > 0 {
 			anySwapped = true
-			agg.removed += stats.removed
-			agg.added += stats.added
-			agg.dispatched += stats.dispatched
+			agg = agg.Merge(stats)
 		}
+	}
+
+	if interrupted {
+		level.Info(c.logger).Log("msg", "log-merge phase stopped by shutdown",
+			"tenant", tenant, "indexes_added", agg.added, "indexes_removed", agg.removed)
 	}
 
 	dur := c.clock().Sub(start)
 	switch {
-	case anySwapped && anyError:
+	case anySwapped:
 		c.metrics.observeTenantLogCycle(tenant, "compacted", dur, agg)
-		return phaseOutcomeError
+		switch {
+		case anyError:
+			return phaseOutcomeError
+		case interrupted:
+			return phaseOutcomeInterrupted
+		}
+		return phaseOutcomeSwapped
 	case anyError:
 		c.metrics.observeTenantLogCycle(tenant, "failed", dur, compactionStats{})
 		return phaseOutcomeError
-	case anySwapped:
-		c.metrics.observeTenantLogCycle(tenant, "compacted", dur, agg)
-		return phaseOutcomeSwapped
+	case interrupted:
+		return phaseOutcomeInterrupted
 	default:
 		c.metrics.observeTenantLogCycle(tenant, "converged", dur, compactionStats{})
 		return phaseOutcomeNoWork
 	}
 }
 
-// runTenantLoop runs the IndexMerge<->LogMerge cycle for one tenant until ctx
-// is cancelled. It never returns an error and never sleeps: on error it retries
-// the same phase, otherwise it flips. It re-reads the per-tenant phase
-// enablement each iteration and skips the LogMerge phase when log compaction is
-// disabled, so an index-only tenant runs IndexMerge exclusively. Each phase runs
-// against every window returned by c.windows(); the phase flips only when no
-// window errored so a single failing window retries the whole phase.
+// planLogCompactions plans every index run in every window for the tenant. It
+// returns only the plans with work, newest window first.
+//
+// anyError reports whether a ToC or an index failed to load or plan, or ctx
+// was done. The plans for the other indexes are still returned, so one bad
+// index does not block the rest. A corrupt index does not set anyError,
+// because no retry can fix it. corruptIndexesTotal records it instead.
+//
+// singleObjectRuns is the sum of the single-object log runs of every index
+// that planned, including indexes with no work.
+func (c *coordinator) planLogCompactions(ctx context.Context, tenant string) (plans []logCompactionPlan, singleObjectRuns int, anyError bool) {
+	for _, window := range c.windows() {
+		entries, ok := c.tenantEntries(ctx, tenant, window)
+		if !ok {
+			anyError = true
+			continue
+		}
+		for _, run := range groupIndexRuns(entries) {
+			if ctx.Err() != nil {
+				return plans, singleObjectRuns, true
+			}
+			plan, err := c.planLogCompaction(ctx, tenant, window, run)
+			if errors.Is(err, errCorruptIndex) {
+				skipCorruptIndex(c.logger, c.metrics, tenant, window, run.String(), phaseLabelLogMerge, err)
+				continue
+			}
+			if err != nil {
+				if ctx.Err() != nil {
+					level.Info(c.logger).Log("msg", "log-merge phase: planning stopped by shutdown",
+						"tenant", tenant, "window", window, "index", run.String(), "err", err)
+					return plans, singleObjectRuns, true
+				}
+				level.Warn(c.logger).Log("msg", "log-merge phase: planning index failed",
+					"tenant", tenant, "window", window, "index", run.String(), "err", err)
+				c.metrics.logMergeFailedIndexesTotal.WithLabelValues(tenant, failReasonPlan).Inc()
+				anyError = true
+				continue
+			}
+			singleObjectRuns += plan.singleObjectRuns
+			if plan.hasWork() {
+				plans = append(plans, plan)
+			}
+		}
+	}
+	return plans, singleObjectRuns, anyError
+}
+
+// runTenantLoop alternates IndexMerge and LogMerge for tenant until ctx is
+// cancelled or both phases are disabled. After ctx is cancelled, a dispatch
+// in progress runs its tasks to completion, then swaps the ToC if every task
+// succeeded, before the loop returns.
+//
+// Each phase runs against every window in c.windows(). An IndexMerge phase
+// with an error runs again. A LogMerge phase always flips to IndexMerge.
+//
+// The loop reads the phase limits of the tenant on each iteration. It skips
+// LogMerge when log compaction is disabled, so an index-only tenant runs only
+// IndexMerge.
+//
+// Between phases the loop waits at least MinBackoff. Each phase in a row with
+// no work or an error doubles the wait, up to MaxBackoff.
 func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 	p := phaseIndexMerge
+	backoff := c.cfg.MinBackoff
 	for {
 		if ctx.Err() != nil {
 			return
@@ -808,51 +1275,92 @@ func (c *coordinator) runTenantLoop(ctx context.Context, tenant string) {
 			iterations = indexMergeIterations
 		}
 
-		outcome := c.runMultiplePhasesForAllWindows(ctx, tenant, p, iterations)
+		outcome := c.runMultiplePhases(ctx, tenant, p, iterations)
 		if ctx.Err() != nil {
 			return
 		}
 
-		if outcome != phaseOutcomeError {
+		// A LogMerge error can repeat for a long time. Retrying it at once
+		// would block IndexMerge, so unmerged indexes would pile up.
+		if p == phaseLogMerge || outcome != phaseOutcomeError {
 			p = p.flip()
 		}
+
+		var wait time.Duration
+		wait, backoff = nextBackoff(outcome, backoff, c.cfg.MinBackoff, c.cfg.MaxBackoff)
+		c.metrics.cycleBackoffSeconds.Observe(wait.Seconds())
+		c.sleep(ctx, wait)
 	}
 }
 
-// runMultiplePhasesForAllWindows runs phase p for the tenant against each compacted window, iterations times,
-// recording the worker-loop cycle metric per window, and returns the worst
-// outcome across them. Error dominates (the caller re-arms the same phase);
-// otherwise swapped (progress) outranks no-work. Windows are independent: a
-// window with no ToC no-ops while a populated one does real work.
-func (c *coordinator) runMultiplePhasesForAllWindows(ctx context.Context, tenant string, p phase, iterations int) phaseOutcome {
+// nextBackoff returns the wait after a phase and the backoff carried into the
+// next iteration. Productive phases reset to the floor; no-work and error
+// phases apply the current backoff and double it toward the ceiling.
+func nextBackoff(outcome phaseOutcome, current, minWait, maxWait time.Duration) (wait, next time.Duration) {
+	if outcome == phaseOutcomeSwapped {
+		return minWait, minWait
+	}
+	next = current * 2
+	if next <= 0 || next > maxWait {
+		next = maxWait
+	}
+	return current, next
+}
+
+// runMultiplePhases runs phase p for the tenant iterations times and returns
+// the worst outcome, as ranked by worstOutcome.
+func (c *coordinator) runMultiplePhases(ctx context.Context, tenant string, p phase, iterations int) phaseOutcome {
 	worst := phaseOutcomeNoWork
 	for range iterations {
-		for _, window := range c.windows() {
-			if ctx.Err() != nil {
-				return worst
-			}
-
-			start := c.clock()
-			var outcome phaseOutcome
-			switch p {
-			case phaseIndexMerge:
-				outcome = c.runIndexMergePhase(ctx, tenant, window)
-			case phaseLogMerge:
-				outcome = c.runLogMergePhase(ctx, tenant, window)
-			}
-			c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
-			worst = worstOutcome(worst, outcome)
+		if ctx.Err() != nil {
+			return worst
 		}
+		worst = worstOutcome(worst, c.runPhase(ctx, tenant, p))
 	}
 	return worst
 }
 
-// worstOutcome ranks phase outcomes so the tenant loop retries on any error and
-// otherwise reports progress: error > swapped > no-work.
+// runPhase runs phase p once for the tenant across every compacted window and
+// returns the worst outcome.
+//
+// IndexMerge runs each window separately and records one cycle per window.
+// LogMerge covers all windows in one pass and records one cycle.
+func (c *coordinator) runPhase(ctx context.Context, tenant string, p phase) phaseOutcome {
+	switch p {
+	case phaseLogMerge:
+		start := c.clock()
+		outcome := c.runLogMergePhase(ctx, tenant)
+		if outcome != phaseOutcomeInterrupted {
+			c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
+		}
+		return outcome
+	case phaseIndexMerge:
+		worst := phaseOutcomeNoWork
+		for lookback, window := range c.windows() {
+			if ctx.Err() != nil {
+				return worst
+			}
+			start := c.clock()
+			outcome := c.runIndexMergePhase(ctx, tenant, window, lookback)
+			if outcome != phaseOutcomeInterrupted {
+				c.metrics.observeCycle(cycleOutcome(outcome), c.clock().Sub(start))
+			}
+			worst = worstOutcome(worst, outcome)
+		}
+		return worst
+	default:
+		return phaseOutcomeError
+	}
+}
+
+// worstOutcome returns the more severe of a and b, in the order
+// error > interrupted > swapped > no-work.
 func worstOutcome(a, b phaseOutcome) phaseOutcome {
 	switch {
 	case a == phaseOutcomeError || b == phaseOutcomeError:
 		return phaseOutcomeError
+	case a == phaseOutcomeInterrupted || b == phaseOutcomeInterrupted:
+		return phaseOutcomeInterrupted
 	case a == phaseOutcomeSwapped || b == phaseOutcomeSwapped:
 		return phaseOutcomeSwapped
 	default:
@@ -860,8 +1368,8 @@ func worstOutcome(a, b phaseOutcome) phaseOutcome {
 	}
 }
 
-// cycleOutcome maps a phaseOutcome to a cyclesTotal outcome label. The label set
-// is now compacted|converged|failed (reduced from the old poll-loop set).
+// cycleOutcome maps a phaseOutcome to a cyclesTotal outcome label:
+// compacted, converged, or failed.
 func cycleOutcome(o phaseOutcome) string {
 	switch o {
 	case phaseOutcomeSwapped:

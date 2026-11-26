@@ -22,6 +22,7 @@ import (
 	"io"
 	"net/http"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	ststypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 )
 
 var sigv4HeaderDenylist = []string{
@@ -46,7 +48,21 @@ type sigV4RoundTripper struct {
 	signer      *signer.Signer
 }
 
-var ctx context.Context = context.TODO()
+// Option configures [NewSigV4RoundTripper].
+type Option func(*options)
+
+type options struct {
+	ctx                 context.Context
+	stsEndpointOverride string // for testing: override STS endpoint URL
+}
+
+// WithContext sets the context used during AWS configuration loading
+// and credential retrieval.
+func WithContext(ctx context.Context) Option {
+	return func(o *options) {
+		o.ctx = ctx
+	}
+}
 
 // NewSigV4RoundTripper returns a new http.RoundTripper that will sign requests
 // using Amazon's Signature Verification V4 signing procedure. The request will
@@ -55,7 +71,11 @@ var ctx context.Context = context.TODO()
 //
 // Credentials for signing are retrieved using the the default AWS credential
 // chain. If credentials cannot be found, an error will be returned.
-func NewSigV4RoundTripper(cfg *SigV4Config, next http.RoundTripper) (http.RoundTripper, error) {
+func NewSigV4RoundTripper(cfg *SigV4Config, next http.RoundTripper, opts ...Option) (http.RoundTripper, error) {
+	o := options{ctx: context.Background()}
+	for _, opt := range opts {
+		opt(&o)
+	}
 	if next == nil {
 		next = http.DefaultTransport
 	}
@@ -83,14 +103,14 @@ func NewSigV4RoundTripper(cfg *SigV4Config, next http.RoundTripper) (http.RoundT
 	}
 
 	awscfg, err := config.LoadDefaultConfig(
-		ctx,
+		o.ctx,
 		awsConfig...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("could not create new AWS session: %w", err)
 	}
 
-	if _, err := awscfg.Credentials.Retrieve(ctx); err != nil {
+	if _, err := awscfg.Credentials.Retrieve(o.ctx); err != nil {
 		return nil, fmt.Errorf("could not get SigV4 credentials: %w", err)
 	}
 
@@ -99,12 +119,31 @@ func NewSigV4RoundTripper(cfg *SigV4Config, next http.RoundTripper) (http.RoundT
 	}
 
 	if cfg.RoleARN != "" {
+		stsOpts := []func(*sts.Options){}
+		if o.stsEndpointOverride != "" {
+			overrideURL := o.stsEndpointOverride
+			stsOpts = append(stsOpts, func(so *sts.Options) {
+				so.BaseEndpoint = aws.String(overrideURL)
+			})
+		}
 		awscfg.Credentials = stscreds.NewAssumeRoleProvider(
-			sts.NewFromConfig(awscfg),
+			sts.NewFromConfig(awscfg, stsOpts...),
 			cfg.RoleARN,
-			func(o *stscreds.AssumeRoleOptions) {
+			func(ao *stscreds.AssumeRoleOptions) {
 				if cfg.ExternalID != "" {
-					o.ExternalID = aws.String(cfg.ExternalID)
+					ao.ExternalID = aws.String(cfg.ExternalID)
+				}
+				if cfg.SessionName != "" {
+					ao.RoleSessionName = cfg.SessionName
+				}
+				if len(cfg.Tags) > 0 {
+					ao.Tags = make([]ststypes.Tag, 0, len(cfg.Tags))
+					for k, v := range cfg.Tags {
+						ao.Tags = append(ao.Tags, ststypes.Tag{
+							Key:   aws.String(k),
+							Value: aws.String(v),
+						})
+					}
 				}
 			},
 		)
@@ -117,7 +156,7 @@ func NewSigV4RoundTripper(cfg *SigV4Config, next http.RoundTripper) (http.RoundT
 	}
 
 	rt := &sigV4RoundTripper{
-		region:      cfg.Region,
+		region:      awscfg.Region,
 		next:        next,
 		creds:       aws.NewCredentialsCache(awscfg.Credentials, credentialCacheOptions),
 		signer:      signer.NewSigner(),
@@ -131,51 +170,127 @@ func (rt *sigV4RoundTripper) newBuf() any {
 	return bytes.NewBuffer(make([]byte, 0, 1024))
 }
 
+// pooledBody serves a request body from a pooled buffer. The downstream
+// RoundTripper may read and close the body in a separate goroutine after
+// RoundTrip returns, so the buffer is only reset and returned to the pool once
+// Close is called, never while RoundTrip's defer runs.
+type pooledBody struct {
+	*bytes.Reader
+	buf  *bytes.Buffer
+	pool *sync.Pool
+	once sync.Once
+}
+
+func (b *pooledBody) Close() error {
+	b.once.Do(func() {
+		b.buf.Reset()
+		b.pool.Put(b.buf)
+	})
+	return nil
+}
+
 func (rt *sigV4RoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	buf := rt.pool.Get().(*bytes.Buffer)
 
 	strHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
+	// The buffer is returned to the pool when RoundTrip returns, unless its
+	// ownership is handed to signReq.Body below, in which case the body's Close
+	// recycles it instead. The downstream RoundTripper may read the body
+	// asynchronously after RoundTrip returns, so the buffer must not be reset
+	// here while it is still backing the body.
+	bufOwnedByBody := false
 	defer func() {
+		if bufOwnedByBody {
+			return
+		}
 		buf.Reset()
 		rt.pool.Put(buf)
 	}()
 
+	// RoundTrip must not modify the caller's request, so clone it up front and
+	// apply every change below to signReq only.
+	signReq := req.Clone(req.Context())
+
 	if req.Body != nil {
-		if _, err := io.Copy(buf, req.Body); err != nil {
+		// Read the body into the pooled buffer so it can be hashed and replayed
+		// downstream. RoundTrip is allowed to consume and close the caller's
+		// body, but must not reassign fields on the caller's request. With
+		// GetBody we read a fresh copy and close req.Body to release its
+		// resources (e.g. an open file); otherwise we consume req.Body directly.
+		src := req.Body
+		if req.GetBody != nil {
+			body, err := req.GetBody()
+			if err != nil {
+				if body != nil {
+					_ = body.Close()
+				}
+				// RoundTrip must close the caller's body even on error.
+				_ = req.Body.Close()
+				return nil, err
+			}
+			if body == nil {
+				// A non-nil Body must yield a non-nil copy; guard against a
+				// misbehaving GetBody so io.Copy below can't read from nil.
+				_ = req.Body.Close()
+				return nil, fmt.Errorf("sigv4: request GetBody returned a nil body")
+			}
+			// GetBody returned an independent copy, so req.Body can be released.
+			_ = req.Body.Close()
+			src = body
+		}
+
+		if _, err := io.Copy(buf, src); err != nil {
+			_ = src.Close()
 			return nil, err
 		}
-		// Close the original body since we don't need it anymore.
-		_ = req.Body.Close()
+		_ = src.Close()
 
-		// Ensure our seeker is back at the start of the buffer once we return.
-		// Empty body is a valid situation
-		seeker := bytes.NewReader(buf.Bytes())
-		defer func() {
-			_, _ = seeker.Seek(0, io.SeekStart)
-		}()
-
-		req.Body = io.NopCloser(seeker)
+		// Replay the body downstream from the pooled buffer. Empty body is a
+		// valid situation. Ownership of the buffer moves to the body, which
+		// recycles it on Close, so it stays valid for as long as the downstream
+		// RoundTripper reads it.
+		signReq.Body = &pooledBody{
+			Reader: bytes.NewReader(buf.Bytes()),
+			buf:    buf,
+			pool:   &rt.pool,
+		}
+		bufOwnedByBody = true
 		hash := sha256.Sum256(buf.Bytes())
 		strHash = hex.EncodeToString(hash[:])
 	}
 
-	// Clean path like documented in AWS documentation.
+	// Normalize the path as documented by AWS (path.Clean collapses duplicate
+	// slashes and resolves dot segments), but don't let it turn an empty path
+	// into "." or strip a trailing slash, which would corrupt the outgoing
+	// path. This normalization applies to both the signed request and what is
+	// sent downstream.
 	// https://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
-	req.URL.Path = path.Clean(req.URL.Path)
+	if cleaned := path.Clean(signReq.URL.Path); cleaned != "." {
+		// Re-add the trailing slash path.Clean removed, to preserve the
+		// caller's path.
+		if cleaned != "/" && strings.HasSuffix(signReq.URL.Path, "/") {
+			cleaned += "/"
+		}
+		signReq.URL.Path = cleaned
+	}
 
-	// Clone the request and trim out headers that we don't want to sign.
-	signReq := req.Clone(req.Context())
+	// Trim out headers that we don't want to sign.
 	for _, header := range sigv4HeaderDenylist {
 		signReq.Header.Del(header)
 	}
-	creds, err := rt.creds.Retrieve(ctx)
+	creds, err := rt.creds.Retrieve(req.Context())
 	if err != nil {
+		// signReq.Body owns the pooled buffer at this point but is never handed
+		// to the downstream RoundTripper, so close it here to recycle it.
+		if bufOwnedByBody {
+			_ = signReq.Body.Close()
+		}
 		return nil, fmt.Errorf("error retrieving credentials: %w", err)
 	}
 
 	err = rt.signer.SignHTTP(
-		ctx,
+		req.Context(),
 		creds,
 		signReq,
 		strHash,
@@ -184,10 +299,15 @@ func (rt *sigV4RoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		time.Now().UTC(),
 	)
 	if err != nil {
+		// As above, recycle the pooled buffer that signReq.Body owns since the
+		// downstream RoundTripper will not receive it.
+		if bufOwnedByBody {
+			_ = signReq.Body.Close()
+		}
 		return nil, fmt.Errorf("failed to sign request: %w", err)
 	}
 
-	// Set unsigned headers into the new req
+	// Set unsigned headers into the new req.
 	for _, header := range sigv4HeaderDenylist {
 		headerValue := req.Header.Get(header)
 		if headerValue != "" {

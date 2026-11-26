@@ -381,6 +381,10 @@ func SendRequest(cli bce.Client, req *BosRequest, resp *BosResponse, ctx *BosCon
 	}
 	// sdk do not need to set request id
 	req.SetWithOutRequestId(true)
+	// fill the caller supplied metadata after the final attempt, no matter whether it
+	// succeeded, failed at the http level or failed in a response handler. Registering
+	// the defer here also keeps the metadata untouched when the validations above fail.
+	defer fillResponseCommon(req, ctx, resp)
 	if ctx.ApiVersion == API_VERSION_V2 {
 		err = cli.SendRequestV2(&req.BceRequest, &resp.BceResponse)
 	} else {
@@ -437,6 +441,7 @@ func SendRequestFromBytes(cli bce.Client, req *BosRequest, resp *BosResponse, ct
 	)
 	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
 	req.SetContext(ctx.Ctx)
+	defer fillResponseCommon(req, ctx, resp)
 	if err = cli.SendRequestFromBytes(&req.BceRequest, &resp.BceResponse, content); err != nil {
 		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
 			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
@@ -639,9 +644,12 @@ func getObjectMetaOptions(result *ObjectMeta) []GetOption {
 }
 
 func validateObjectKey(objectKey string) error {
-	// 1. 拒绝路径穿越特征（关键）
-	if strings.Contains(objectKey, "..") {
-		return fmt.Errorf("invalid object key: %s", objectKey)
+	// 1. 拒绝路径穿越特征（关键）：只有 ".." 作为完整路径段时才构成穿越，
+	//    诸如 "agent.log...log"、"file..txt" 的连续点号属于合法 key
+	for _, segment := range strings.Split(objectKey, "/") {
+		if segment == ".." {
+			return fmt.Errorf("invalid object key: %s", objectKey)
+		}
 	}
 	// 2. 路径规范化
 	objectCleaned := path.Clean("/" + strings.Trim(objectKey, "/"))

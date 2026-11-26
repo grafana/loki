@@ -14,8 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logcli/output"
 	"github.com/grafana/loki/v3/pkg/logcli/util"
 	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 )
 
 type QueryResultPrinter struct {
@@ -25,6 +25,8 @@ type QueryResultPrinter struct {
 	FixedLabelsLen      int
 	Forward             bool
 	IncludeCommonLabels bool
+
+	printedWarnings map[string]struct{}
 }
 
 func NewQueryResultPrinter(showLabelsKey []string, ignoreLabelsKey []string, quiet bool, fixedLabelsLen int, forward bool, includeCommonLabels bool) *QueryResultPrinter {
@@ -35,6 +37,7 @@ func NewQueryResultPrinter(showLabelsKey []string, ignoreLabelsKey []string, qui
 		FixedLabelsLen:      fixedLabelsLen,
 		Forward:             forward,
 		IncludeCommonLabels: includeCommonLabels,
+		printedWarnings:     make(map[string]struct{}),
 	}
 }
 
@@ -43,25 +46,35 @@ type streamEntryPair struct {
 	labels loghttp.LabelSet
 }
 
-func (r *QueryResultPrinter) PrintResult(value loghttp.ResultValue, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
+func (r *QueryResultPrinter) PrintResult(value loghttp.ResultValue, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry, error) {
 	length := -1
 	var entry []*loghttp.Entry
 	switch value.Type() {
 	case logqlmodel.ValueTypeStreams:
-		length, entry = r.printStream(value.(loghttp.Streams), out, lastEntry)
+		var err error
+		length, entry, err = r.printStream(value.(loghttp.Streams), out, lastEntry)
+		if err != nil {
+			return 0, nil, err
+		}
 	case loghttp.ResultTypeScalar:
-		printScalar(value.(loghttp.Scalar))
+		if err := printScalar(value.(loghttp.Scalar)); err != nil {
+			return 0, nil, err
+		}
 	case loghttp.ResultTypeMatrix:
-		printMatrix(value.(loghttp.Matrix))
+		if err := printMatrix(value.(loghttp.Matrix)); err != nil {
+			return 0, nil, err
+		}
 	case loghttp.ResultTypeVector:
-		printVector(value.(loghttp.Vector))
+		if err := printVector(value.(loghttp.Vector)); err != nil {
+			return 0, nil, err
+		}
 	default:
-		log.Fatalf("Unable to print unsupported type: %v", value.Type())
+		return 0, nil, fmt.Errorf("unable to print unsupported type: %v", value.Type())
 	}
-	return length, entry
+	return length, entry, nil
 }
 
-func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
+func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry, error) {
 	common := commonLabels(streams)
 
 	// Remove the labels we want to show from common
@@ -123,7 +136,7 @@ func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.Log
 	}
 
 	if len(allEntries) == 0 {
-		return 0, nil
+		return 0, nil, nil
 	}
 
 	if r.Forward {
@@ -149,7 +162,9 @@ func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.Log
 				continue
 			}
 		}
-		out.FormatAndPrintln(e.entry.Timestamp, e.labels, maxLabelsLen, e.entry.Line)
+		if err := out.FormatAndPrintln(e.entry.Timestamp, e.labels, maxLabelsLen, e.entry.Line); err != nil {
+			return 0, nil, err
+		}
 		printed++
 	}
 
@@ -167,37 +182,40 @@ func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.Log
 		}
 	}
 
-	return printed, lel
+	return printed, lel, nil
 }
 
-func printMatrix(matrix loghttp.Matrix) {
+func printMatrix(matrix loghttp.Matrix) error {
 	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
 	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
 	// we might add output options such as render to an image file on disk
 	bytes, err := json.MarshalIndent(matrix, "", "  ")
 	if err != nil {
-		log.Fatalf("Error marshalling matrix: %v", err)
+		return fmt.Errorf("error marshalling matrix: %v", err)
 	}
 
 	fmt.Print(string(bytes))
+	return nil
 }
 
-func printVector(vector loghttp.Vector) {
+func printVector(vector loghttp.Vector) error {
 	bytes, err := json.MarshalIndent(vector, "", "  ")
 	if err != nil {
-		log.Fatalf("Error marshalling vector: %v", err)
+		return fmt.Errorf("error marshalling vector: %v", err)
 	}
 
 	fmt.Print(string(bytes))
+	return nil
 }
 
-func printScalar(scalar loghttp.Scalar) {
+func printScalar(scalar loghttp.Scalar) error {
 	bytes, err := json.MarshalIndent(scalar, "", "  ")
 	if err != nil {
-		log.Fatalf("Error marshalling scalar: %v", err)
+		return fmt.Errorf("error marshalling scalar: %v", err)
 	}
 
 	fmt.Print(string(bytes))
+	return nil
 }
 
 type kvLogger struct {
@@ -215,6 +233,17 @@ func (k kvLogger) Log(keyvals ...interface{}) error {
 func (r *QueryResultPrinter) PrintStats(stats stats.Result) {
 	writer := tabwriter.NewWriter(os.Stderr, 0, 8, 0, '\t', 0)
 	stats.Log(kvLogger{Writer: writer})
+}
+
+// PrintWarnings logs each distinct warning of a query once, because every batch of the query can return it again.
+func (r *QueryResultPrinter) PrintWarnings(warnings []string) {
+	for _, w := range warnings {
+		if _, ok := r.printedWarnings[w]; ok {
+			continue
+		}
+		r.printedWarnings[w] = struct{}{}
+		log.Println("Warning:", w)
+	}
 }
 
 func matchLabels(on bool, l loghttp.LabelSet, names []string) loghttp.LabelSet {

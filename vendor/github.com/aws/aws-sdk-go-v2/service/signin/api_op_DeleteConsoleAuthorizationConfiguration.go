@@ -4,9 +4,10 @@ package signin
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/signin/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Delete console authorization configuration with automatic scope detection
@@ -34,6 +35,17 @@ type DeleteConsoleAuthorizationConfigurationInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DeleteConsoleAuthorizationConfigurationInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeleteConsoleAuthorizationConfigurationInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeleteConsoleAuthorizationConfigurationInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TargetId != nil {
+		s.WriteString(schemas.DeleteConsoleAuthorizationConfigurationInput_targetId, *v.TargetId)
+	}
+}
 func (in *DeleteConsoleAuthorizationConfigurationInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.IsControlPlane = ptr.Bool(true)
@@ -63,22 +75,47 @@ type DeleteConsoleAuthorizationConfigurationOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DeleteConsoleAuthorizationConfigurationOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeleteConsoleAuthorizationConfigurationOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeleteConsoleAuthorizationConfigurationOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ConsoleAuthorizationEnabled != nil {
+		s.WriteBool(schemas.DeleteConsoleAuthorizationConfigurationOutput_consoleAuthorizationEnabled, *v.ConsoleAuthorizationEnabled)
+	}
+	if v.Scope != nil {
+		s.WriteString(schemas.DeleteConsoleAuthorizationConfigurationOutput_scope, *v.Scope)
+	}
+	if v.TargetId != nil {
+		s.WriteString(schemas.DeleteConsoleAuthorizationConfigurationOutput_targetId, *v.TargetId)
+	}
+}
+func (v *DeleteConsoleAuthorizationConfigurationOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DeleteConsoleAuthorizationConfigurationOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DeleteConsoleAuthorizationConfigurationOutput_consoleAuthorizationEnabled:
+			v.ConsoleAuthorizationEnabled = new(bool)
+			return d.ReadBool(schemas.DeleteConsoleAuthorizationConfigurationOutput_consoleAuthorizationEnabled, v.ConsoleAuthorizationEnabled)
+		case schemas.DeleteConsoleAuthorizationConfigurationOutput_scope:
+			v.Scope = new(string)
+			return d.ReadString(schemas.DeleteConsoleAuthorizationConfigurationOutput_scope, v.Scope)
+		case schemas.DeleteConsoleAuthorizationConfigurationOutput_targetId:
+			v.TargetId = new(string)
+			return d.ReadString(schemas.DeleteConsoleAuthorizationConfigurationOutput_targetId, v.TargetId)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDeleteConsoleAuthorizationConfigurationMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsRestjson1_serializeOpDeleteConsoleAuthorizationConfiguration{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeleteConsoleAuthorizationConfiguration, schemas.DeleteConsoleAuthorizationConfigurationInput, schemas.DeleteConsoleAuthorizationConfigurationOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsRestjson1_deserializeOpDeleteConsoleAuthorizationConfiguration{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeleteConsoleAuthorizationConfiguration, schemas.DeleteConsoleAuthorizationConfigurationInput, schemas.DeleteConsoleAuthorizationConfigurationOutput), output: &DeleteConsoleAuthorizationConfigurationOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -88,16 +125,7 @@ func (c *Client) addOperationDeleteConsoleAuthorizationConfigurationMiddlewares(
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addCredentialSource(stack, options); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DeleteConsoleAuthorizationConfiguration"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

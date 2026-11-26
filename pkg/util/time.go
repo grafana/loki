@@ -45,6 +45,9 @@ func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration
 	}
 
 	variance := int64(float64(input) * variancePerc)
+	if variance <= 0 {
+		return input
+	}
 	jitter := rand.Int63n(variance*2) - variance //#nosec G404 -- Jitter does not require CSPRNG -- nosemgrep: math-random-used
 
 	return input + time.Duration(jitter)

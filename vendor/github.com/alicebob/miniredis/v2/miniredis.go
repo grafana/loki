@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"math/rand"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,6 +58,8 @@ type RedisDB struct {
 type Miniredis struct {
 	sync.Mutex
 	srv         *server.Server
+	nextPreHook server.Hook
+	ip          string
 	port        int
 	passwords   map[string]string // username password
 	dbs         map[int]*RedisDB
@@ -64,6 +67,8 @@ type Miniredis struct {
 	scripts     map[string]string // sha1 -> lua src
 	signal      *sync.Cond
 	now         time.Time // time.Now() if not set.
+	clockTTL    bool      // decrease TTLs as the clock advances
+	lastTick    time.Time // last time TTLs were advanced, if clockTTL is set
 	subscribers map[*Subscriber]struct{}
 	rand        *rand.Rand
 	Ctx         context.Context
@@ -209,8 +214,17 @@ func (m *Miniredis) StartAddrTLS(addr string, cfg *tls.Config) error {
 func (m *Miniredis) start(s *server.Server) error {
 	m.Lock()
 	defer m.Unlock()
+	return m.startLocked(s)
+}
+
+func (m *Miniredis) startLocked(s *server.Server) error {
 	m.srv = s
-	m.port = s.Addr().Port
+	s.SetPreHook(m.nextPreHook)
+	m.nextPreHook = nil
+	if a := s.Addr(); a != nil {
+		m.ip = a.IP.String()
+		m.port = a.Port
+	}
 
 	commandsConnection(m)
 	commandsGeneric(m)
@@ -231,6 +245,36 @@ func (m *Miniredis) start(s *server.Server) error {
 	commandsObject(m)
 
 	return nil
+}
+
+// Dial returns an in-memory client connection to the server, served on a
+// net.Pipe: no listener or port is involved. A non-started Miniredis is
+// started without a listener, so NewMiniRedis() + Dial() gives a working
+// server which never touches the network. Note that Addr() has no address to
+// return in that case.
+//
+// Dial fits the Dialer option of most redis clients, and makes miniredis
+// usable inside a testing/synctest bubble, where real sockets can't be used:
+//
+//	client := redis.NewClient(&redis.Options{
+//		Dialer: func(ctx context.Context, _, _ string) (net.Conn, error) {
+//			return m.Dial()
+//		},
+//	})
+func (m *Miniredis) Dial() (net.Conn, error) {
+	m.Lock()
+	if m.srv == nil {
+		if err := m.startLocked(server.NewServerConn()); err != nil {
+			m.Unlock()
+			return nil, err
+		}
+	}
+	srv := m.srv
+	m.Unlock()
+
+	c, s := net.Pipe()
+	srv.ServeConn(s)
+	return c, nil
 }
 
 // Restart restarts a Close()d server on the same port. Values will be
@@ -254,7 +298,6 @@ func (m *Miniredis) Close() {
 
 	// the OnDisconnect callbacks can lock m, so run Close() outside the lock.
 	srv.Close()
-
 }
 
 // RequireAuth makes every connection need to AUTH first. This is the old 'AUTH [password] command.
@@ -288,6 +331,7 @@ func (m *Miniredis) DB(i int) *RedisDB {
 
 // get DB. No locks!
 func (m *Miniredis) db(i int) *RedisDB {
+	m.tickLocked()
 	if db, ok := m.dbs[i]; ok {
 		return db
 	}
@@ -322,7 +366,11 @@ func (m *Miniredis) swapDB(i, j int) bool {
 func (m *Miniredis) Addr() string {
 	m.Lock()
 	defer m.Unlock()
-	return m.srv.Addr().String()
+	a := m.srv.Addr()
+	if a == nil {
+		return ""
+	}
+	return a.String()
 }
 
 // Host returns the host part of Addr().
@@ -457,6 +505,50 @@ func (m *Miniredis) SetTime(t time.Time) {
 	m.Lock()
 	defer m.Unlock()
 	m.now = t
+	// keep the ClockTTL baseline sane when the clock jumps backwards; a
+	// forward jump stays pending until the next tick.
+	if m.clockTTL && t.Before(m.lastTick) {
+		m.lastTick = t
+	}
+}
+
+// ClockTTL makes TTLs (both key and hash field TTLs) decrease as the clock
+// advances, instead of only via FastForward(). The clock is time.Now(), or
+// the value set with SetTime(). Expired keys are removed lazily, whenever a
+// command or a Miniredis-level accessor touches a database; a *RedisDB held
+// directly does not trigger expiry.
+//
+// With SetTime() this gives deterministic clock-driven expiry: moving the
+// clock forward expires keys, and unlike FastForward() the expiry stays
+// coherent with TIME and (P)EXPIREAT, which follow SetTime() as well.
+//
+// It also makes miniredis work inside a testing/synctest bubble, where
+// time.Now() is the bubble's deterministic fake clock: a plain time.Sleep()
+// there expires keys. Without SetTime() and outside a bubble, TTLs run
+// against the wall clock, which makes expiry depend on test execution
+// speed — usually not what you want in a unittest.
+func (m *Miniredis) ClockTTL(enabled bool) {
+	m.Lock()
+	defer m.Unlock()
+	m.clockTTL = enabled
+	m.lastTick = m.effectiveNow()
+}
+
+// advance TTLs by the clock time elapsed since the last tick. Called with the
+// lock held on every database access, when ClockTTL is enabled.
+func (m *Miniredis) tickLocked() {
+	if !m.clockTTL {
+		return
+	}
+	now := m.effectiveNow()
+	elapsed := now.Sub(m.lastTick)
+	if elapsed <= 0 {
+		return
+	}
+	m.lastTick = now
+	for _, db := range m.dbs {
+		db.fastForward(elapsed)
+	}
 }
 
 // make every command return this message. For example:
@@ -472,6 +564,13 @@ func (m *Miniredis) SetError(msg string) {
 			c.WriteError(msg)
 			return true
 		}
+	}
+
+	m.Lock()
+	defer m.Unlock()
+	if m.srv == nil {
+		m.nextPreHook = cb
+		return
 	}
 	m.srv.SetPreHook(cb)
 }

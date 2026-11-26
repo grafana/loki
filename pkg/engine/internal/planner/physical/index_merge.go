@@ -1,17 +1,15 @@
 package physical
 
 import (
-	"context"
-	"slices"
-
 	"github.com/oklog/ulid/v2"
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 )
 
 // IndexMerge represents one K-way sort-merge task over INDEX sections
-// (postings + stats) for a single tenant within one ToC window. The node
-// is a mutation node: it has no Arrow output and is not cacheable.
+// (postings + stats) for a single tenant within one ToC window. The task
+// uploads the merged index object and emits one record that reports it.
 type IndexMerge struct {
 	NodeID ulid.ULID
 
@@ -28,6 +26,17 @@ type IndexMerge struct {
 	// The executor sources source-index paths from Runs[*].Sections[*].ObjectPath;
 	// there is no separate SourceIndexPaths field on IndexMerge.
 	Runs []*compactionv2pb.RunRef
+
+	// KeySpan limits the merge to the postings rows whose posting key is in
+	// the span. The zero value holds every key.
+	KeySpan postings.KeySpan
+
+	// StatsSources are the source index objects whose stats rows a merge with
+	// a bounded KeySpan merges. Each source of a split merge is a stats source
+	// of one task, so the run of the merge holds each stats row once. A merge
+	// over every key merges the stats rows of every source and ignores
+	// StatsSources.
+	StatsSources []string
 }
 
 // ID implements the Node interface.
@@ -35,46 +44,3 @@ func (n *IndexMerge) ID() ulid.ULID { return n.NodeID }
 
 // Type implements the Node interface.
 func (*IndexMerge) Type() NodeType { return NodeTypeIndexMerge }
-
-// Clone implements the Node interface.
-func (n *IndexMerge) Clone() Node {
-	return &IndexMerge{
-		NodeID:         ulid.Make(),
-		Tenant:         n.Tenant,
-		ToCWindowStart: n.ToCWindowStart,
-		Runs:           cloneRuns(n.Runs),
-	}
-}
-
-// CacheKey implements the Node interface. IndexMerge is a mutation node;
-// its result is an object-storage upload, not an Arrow batch. Returning
-// "" disables Cache wrapping.
-func (*IndexMerge) CacheKey(_ context.Context) string { return "" }
-
-// cloneRuns deep-copies a RunRef slice including the nested SectionRef
-// slices (whose MinKey / MaxKey are themselves slices). Used by both
-// IndexMerge.Clone and LogMerge.Clone. Nil RunRef and nil SectionRef
-// entries are tolerated and pass through as nil.
-func cloneRuns(runs []*compactionv2pb.RunRef) []*compactionv2pb.RunRef {
-	if runs == nil {
-		return nil
-	}
-	out := make([]*compactionv2pb.RunRef, len(runs))
-	for i, r := range runs {
-		if r == nil {
-			continue
-		}
-		sections := make([]*compactionv2pb.SectionRef, len(r.Sections))
-		for j, s := range r.Sections {
-			if s == nil {
-				continue
-			}
-			cp := *s
-			cp.MinKey = slices.Clone(s.MinKey)
-			cp.MaxKey = slices.Clone(s.MaxKey)
-			sections[j] = &cp
-		}
-		out[i] = &compactionv2pb.RunRef{Sections: sections}
-	}
-	return out
-}

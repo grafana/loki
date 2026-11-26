@@ -33,6 +33,14 @@ const (
 	// query sharding dynamically and ignores it.
 	DefaultRowShards = 16
 
+	// LatestSchemaVersion is the newest schema version Loki supports. validate
+	// rejects any period config with a newer version, so this is the only edit
+	// needed to allow one.
+	LatestSchemaVersion = 14
+
+	// minSchemaVersion is the oldest schema version Loki still supports.
+	minSchemaVersion = 9
+
 	pathPrefixDelimiter = "/"
 )
 
@@ -84,6 +92,38 @@ func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	}
 
 	return nil
+}
+
+// IndexTable is one ObjectStorageIndexRequiredPeriod index table. Start and
+// End are the first and last millisecond it covers.
+type IndexTable struct {
+	Name       string
+	Start, End model.Time
+	Config     *PeriodConfig
+}
+
+// IndexTablesFor returns, in order, the index tables that hold the index of
+// [from, through], both ends inclusive: every table of t whose period overlaps
+// the range.
+func (t TableRanges) IndexTablesFor(from, through model.Time) []IndexTable {
+	period := int64(ObjectStorageIndexRequiredPeriod)
+	start := from.Time().UnixNano() / period
+	end := through.Time().UnixNano() / period
+
+	var tables []IndexTable
+	for n := start; n <= end; n++ {
+		cfg := t.ConfigForTableNumber(n)
+		if cfg == nil {
+			continue
+		}
+		tables = append(tables, IndexTable{
+			Name:   cfg.IndexTables.Prefix + strconv.FormatInt(n, 10),
+			Start:  model.TimeFromUnixNano(n * period),
+			End:    model.TimeFromUnixNano((n+1)*period) - 1,
+			Config: cfg,
+		})
+	}
+	return tables
 }
 
 // TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
@@ -301,6 +341,18 @@ func (cfg *SchemaConfig) Validate() error {
 			}
 		}
 	}
+
+	// The sharded index copy must not overwrite the index of any period.
+	for _, sharded := range cfg.Configs {
+		if sharded.IndexTables.ShardedPathPrefix == "" {
+			continue
+		}
+		for _, p := range cfg.Configs {
+			if p.IndexTables.PathPrefix == sharded.IndexTables.ShardedPathPrefix {
+				return fmt.Errorf("validating period_config: sharded_path_prefix %s of the period starting at %s is the path_prefix of the period starting at %s", sharded.IndexTables.ShardedPathPrefix, sharded.From.String(), p.From.String())
+			}
+		}
+	}
 	return nil
 }
 
@@ -421,12 +473,10 @@ func (cfg PeriodConfig) validate() error {
 		return err
 	}
 
-	switch v {
-	case 9, 10, 11, 12, 13, 14:
-		return nil
-	default:
+	if v < minSchemaVersion || v > LatestSchemaVersion {
 		return errInvalidSchemaVersion
 	}
+	return nil
 }
 
 // Load the yaml file, or build the config from legacy command-line flags
@@ -461,6 +511,7 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 
 type IndexPeriodicTableConfig struct {
 	PathPrefix          string `yaml:"path_prefix" doc:"default=index/|description=Path prefix for index tables. Prefix always needs to end with a path delimiter '/', except when the prefix is empty."`
+	ShardedPathPrefix   string `yaml:"sharded_path_prefix" category:"experimental" doc:"hidden"`
 	PeriodicTableConfig `yaml:",inline"`
 }
 
@@ -469,15 +520,26 @@ func (cfg *IndexPeriodicTableConfig) Validate() error {
 		return err
 	}
 
-	return ValidatePathPrefix(cfg.PathPrefix)
+	if err := ValidatePathPrefix(cfg.PathPrefix); err != nil {
+		return err
+	}
+
+	if cfg.ShardedPathPrefix == "" {
+		return nil
+	}
+	if err := ValidatePathPrefix(cfg.ShardedPathPrefix); err != nil {
+		return fmt.Errorf("sharded_path_prefix: %w", err)
+	}
+	return nil
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 	g := struct {
-		PathPrefix string         `yaml:"path_prefix"`
-		Prefix     string         `yaml:"prefix"`
-		Period     model.Duration `yaml:"period"`
+		PathPrefix        string         `yaml:"path_prefix"`
+		ShardedPathPrefix string         `yaml:"sharded_path_prefix"`
+		Prefix            string         `yaml:"prefix"`
+		Period            model.Duration `yaml:"period"`
 	}{}
 	// We always want strict config parsing so leftover keys (e.g. the removed
 	// tags setting) are rejected instead of silently ignored.
@@ -486,6 +548,7 @@ func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	cfg.PathPrefix = g.PathPrefix
+	cfg.ShardedPathPrefix = g.ShardedPathPrefix
 	cfg.Prefix = g.Prefix
 	cfg.Period = time.Duration(g.Period)
 
@@ -495,13 +558,15 @@ func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(value *yaml.Node) error {
 // MarshalYAML implements the yaml.Marshaler interface.
 func (cfg IndexPeriodicTableConfig) MarshalYAML() (interface{}, error) {
 	g := &struct {
-		PathPrefix string         `yaml:"path_prefix"`
-		Prefix     string         `yaml:"prefix"`
-		Period     model.Duration `yaml:"period"`
+		PathPrefix        string         `yaml:"path_prefix"`
+		ShardedPathPrefix string         `yaml:"sharded_path_prefix,omitempty"`
+		Prefix            string         `yaml:"prefix"`
+		Period            model.Duration `yaml:"period"`
 	}{
-		PathPrefix: cfg.PathPrefix,
-		Prefix:     cfg.Prefix,
-		Period:     model.Duration(cfg.Period),
+		PathPrefix:        cfg.PathPrefix,
+		ShardedPathPrefix: cfg.ShardedPathPrefix,
+		Prefix:            cfg.Prefix,
+		Period:            model.Duration(cfg.Period),
 	}
 
 	return g, nil

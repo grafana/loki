@@ -283,7 +283,7 @@ type Config struct {
 	MaxChunkBatchSize int `yaml:"max_chunk_batch_size"`
 
 	TSDBShipperConfig  indexshipper.Config       `yaml:"tsdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required fields only required when TSDB is defined in config."`
-	BloomShipperConfig bloomshipperconfig.Config `yaml:"bloom_shipper" category:"experimental" doc:"description=Experimental: Configures the bloom shipper component, which contains the store abstraction to fetch bloom filters from and put them to object storage."`
+	BloomShipperConfig bloomshipperconfig.Config `yaml:"bloom_shipper" doc:"deprecated|description=Configures the bloom shipper component, which contains the store abstraction to fetch bloom filters from and put them to object storage."`
 
 	// Config for using AsyncStore when using async index stores like `tsdb`.
 	// It is required for getting chunk ids of recently flushed chunks from the ingesters.
@@ -379,7 +379,7 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 		cc := congestion.NewController(
 			ccCfg,
 			logger,
-			congestion.NewMetrics(fmt.Sprintf("%s-%s", name, p.From.String()), ccCfg),
+			congestion.NewMetrics(fmt.Sprintf("%s-%s", name, p.From.String()), ccCfg, registerer),
 		)
 		c = cc.Wrap(c)
 	}

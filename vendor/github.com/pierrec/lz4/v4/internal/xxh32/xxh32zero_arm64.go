@@ -1,5 +1,4 @@
-//go:build !noasm && gc
-// +build !noasm,gc
+//go:build !noasm && !purego && gc
 
 package xxh32
 

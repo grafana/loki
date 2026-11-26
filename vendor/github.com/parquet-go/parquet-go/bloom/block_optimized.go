@@ -1,4 +1,4 @@
-//go:build (!amd64 || purego) && !parquet.bloom.no_unroll
+//go:build (!amd64 || (purego && !goexperiment.simd)) && !parquet.bloom.no_unroll
 
 package bloom
 

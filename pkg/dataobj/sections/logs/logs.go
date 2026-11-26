@@ -4,39 +4,42 @@ package logs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	datasetmd_v2 "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
-// schemaSortVersion is the section type version for logs sections written in
-// schema sort order. Must not equal columnar.FormatVersion (currently 2).
-// The bumped version lets callers detect the sort contract from the object
-// header alone, without opening the section.
-const schemaSortVersion uint32 = 3
+// RegionRead is the xcap region name that holds the statistics of reading
+// rows from a logs section.
+var RegionRead = "logs.Reader.Read"
+
+// legacySchemaSortVersion is the section version that older writers gave to
+// logs sections in schema sort order. Those sections have format version 2.
+// Writers no longer write it, and readers still accept it.
+const legacySchemaSortVersion uint32 = 3
 
 var sectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "logs",
-	Version:   columnar.FormatVersion,
+	Namespace: format.SectionNamespace,
+	Kind:      format.LogsSectionKind,
+	Version:   columnar.DefaultFormatVersion,
 }
 
-var schemaSortSectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "logs",
-	Version:   schemaSortVersion,
+// formatVersionOf returns the format version of a logs section with the given
+// section version.
+func formatVersionOf(sectionVersion uint32) uint32 {
+	if sectionVersion == legacySchemaSortVersion {
+		return columnar.FormatVersionDescriptorChecksum
+	}
+	return sectionVersion
 }
 
 // CheckSection returns true if section is a logs section.
 func CheckSection(section *dataobj.Section) bool { return sectionType.Equals(section.Type) }
-
-// IsSchemaSorted returns true if the section was written in schema sort order.
-// This check reads only the object-header metadata — no section I/O required.
-func IsSchemaSorted(section *dataobj.Section) bool {
-	return section.Type == schemaSortSectionType
-}
 
 // Section represents an opened logs section.
 type Section struct {
@@ -51,11 +54,13 @@ func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
 	}
-	if section.Type.Version != columnar.FormatVersion && section.Type.Version != schemaSortVersion {
+
+	formatVersion := formatVersionOf(section.Type.Version)
+	if !columnar.IsSupportedVersion(formatVersion) {
 		return nil, fmt.Errorf("unsupported section version: got=%d", section.Type.Version)
 	}
 
-	dec, err := columnar.NewDecoder(section.Reader, columnar.FormatVersion)
+	dec, err := columnar.NewDecoder(section.Reader, formatVersion)
 	if err != nil {
 		return nil, fmt.Errorf("creating decoder: %w", err)
 	}
@@ -100,6 +105,14 @@ func (s *Section) init() error {
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
+// NumRows returns the number of rows in the section.
+func (s *Section) NumRows() int {
+	if len(s.columns) == 0 {
+		return 0
+	}
+	return int(s.columns[0].inner.Metadata().RowsCount)
+}
+
 // PrimarySortOrder returns the primary sort order information of the section
 // as a tuple of [ColumnType] and [SortDirection].
 func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
@@ -120,21 +133,60 @@ func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
 	return colType, dir, nil
 }
 
-// SchemaLabels returns the ordered list of label names used to define the
-// schema sort key for this section. It returns nil, nil if the section was
-// not sorted by schema (i.e., SortInfo is absent or has no SchemaLabels).
-func (s *Section) SchemaLabels() ([]string, error) {
+// LegacyLayout returns the stream layout that the section recorded in its own
+// sort info. Writers recorded it there before the streams section did. ok is
+// false if the section records no such layout, or one that is not stable hash
+// ordered with the default shard layout, because no writer produced another.
+//
+// Readers use LegacyLayout only for objects whose streams section records no
+// layout.
+func (s *Section) LegacyLayout() (layout streams.Layout, ok bool) {
 	si := s.inner.SortInfo()
-	if si == nil || len(si.SchemaLabels) == 0 {
-		return nil, nil
+	if si == nil || si.StreamOrder != datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1 {
+		return streams.Layout{}, false
 	}
-	return si.SchemaLabels, nil
+	if si.ShardCount != streams.DefaultShardLayout().Buckets() {
+		return streams.Layout{}, false
+	}
+	return streams.NewLayout(streams.DefaultShardLayout(), si.SchemaLabels), true
+}
+
+// LegacyLayoutOf returns the layout that every non-nil section of sections
+// records with [Section.LegacyLayout]. Readers use it for objects whose
+// streams section records no layout. It returns an error if a section records
+// no legacy layout, if the sections disagree, or if no section is non-nil.
+func LegacyLayoutOf(ctx context.Context, sections []*dataobj.Section) (streams.Layout, error) {
+	var (
+		layout streams.Layout
+		found  bool
+	)
+	for _, section := range sections {
+		if section == nil {
+			continue
+		}
+		opened, err := Open(ctx, section)
+		if err != nil {
+			return streams.Layout{}, fmt.Errorf("opening logs section: %w", err)
+		}
+		got, ok := opened.LegacyLayout()
+		if !ok {
+			return streams.Layout{}, errors.New("streams section records no layout, and a logs section records no legacy layout")
+		}
+		if found && !got.Equal(layout) {
+			return streams.Layout{}, errors.New("logs sections record different legacy layouts")
+		}
+		layout, found = got, true
+	}
+	if !found {
+		return streams.Layout{}, errors.New("streams section records no layout")
+	}
+	return layout, nil
 }
 
 // A Column represents one of the columns in the logs section. Valid columns
 // can only be retrieved by calling [Section.Columns].
 //
-// Data in columns can be read by using a [Reader].
+// Data in columns can be read by using a [RowReader].
 type Column struct {
 	Section *Section   // Section that contains the column.
 	Name    string     // Optional name of the column.
@@ -162,10 +214,10 @@ const (
 
 var columnTypeNames = map[ColumnType]string{
 	ColumnTypeInvalid:   "invalid",
-	ColumnTypeStreamID:  "stream_id",
-	ColumnTypeTimestamp: "timestamp",
-	ColumnTypeMetadata:  "metadata",
-	ColumnTypeMessage:   "message",
+	ColumnTypeStreamID:  format.LogsColumnStreamID,
+	ColumnTypeTimestamp: format.LogsColumnTimestamp,
+	ColumnTypeMetadata:  format.LogsColumnMetadata,
+	ColumnTypeMessage:   format.LogsColumnMessage,
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -174,13 +226,13 @@ func ParseColumnType(text string) (ColumnType, error) {
 	switch text {
 	case "invalid":
 		return ColumnTypeInvalid, nil
-	case "stream_id":
+	case format.LogsColumnStreamID:
 		return ColumnTypeStreamID, nil
-	case "timestamp":
+	case format.LogsColumnTimestamp:
 		return ColumnTypeTimestamp, nil
-	case "metadata":
+	case format.LogsColumnMetadata:
 		return ColumnTypeMetadata, nil
-	case "message":
+	case format.LogsColumnMessage:
 		return ColumnTypeMessage, nil
 	}
 

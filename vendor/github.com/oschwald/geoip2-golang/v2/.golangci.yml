@@ -1,6 +1,6 @@
 version: "2"
 run:
-  go: "1.25"
+  go: "1.26"
   tests: true
   allow-parallel-runners: true
 linters:
@@ -175,4 +175,5 @@ formatters:
         - default
         - prefix(github.com/oschwald/maxminddb-golang)
     gofumpt:
-      extra-rules: true
+      extra:
+        group-params: true

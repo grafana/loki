@@ -44,13 +44,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
                         .addTag()
                         .addRowIf(
                           $._config.internal_components,
-                          $.row('Frontend (cortex_gw)')
+                          $.row('Gateway')
                           .addPanel(
-                            $.newQueryPanel('QPS') +
+                            $.newQueryPanel('Requests / sec') +
                             $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"api_prom_push|loki_api_v1_push|otlp_v1_logs"}' % dashboards['loki-writes.json'].cortexGwSelector)
                           )
                           .addPanel(
-                            $.newQueryPanel('Latency', 'ms') +
+                            $.newQueryPanel('Request latency', 'ms') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
                               dashboards['loki-writes.json'].clusterMatchers +
@@ -66,17 +66,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                 dashboards['loki-writes.json'].matchers.cortexgateway +
                                 [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs')],
                               ),
-                            )
+                            ) + { title: 'Per pod p99 request latency' }
                           )
                         )
                         .addRow(
                           $.row('Distributor')
                           .addPanel(
-                            $.newQueryPanel('QPS') +
+                            $.newQueryPanel('Requests / sec') +
                             $.newQpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
                           )
                           .addPanel(
-                            $.newQueryPanel('Latency', 'ms') +
+                            $.newQueryPanel('Request latency', 'ms') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
                               dashboards['loki-writes.json'].clusterMatchers +
@@ -92,18 +92,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                 dashboards['loki-writes.json'].matchers.distributor +
                                 [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle')],
                               ),
-                            )
+                            ) + { title: 'Per pod p99 request latency' }
                           )
                         )
-                        .addRowIf(
-                          $._config.tsdb,
-                          $.row('Distributor - Structured Metadata')
+                        .addRow(
+                          $.row('Distributor – structured metadata')
                           .addPanel(
-                            $.newQueryPanel('Per Total Received Bytes') +
+                            $.newQueryPanel('Share of received bytes') +
                             $.queryPanel('sum (rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{%s}[$__rate_interval]))' % [dashboards['loki-writes.json'].distributorSelector, dashboards['loki-writes.json'].distributorSelector], 'bytes')
                           )
                           .addPanel(
-                            $.newQueryPanel('Per Tenant') +
+                            $.newQueryPanel('Per tenant share of structured metadata bytes') +
                             $.queryPanel('sum by (tenant) (rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval])) / ignoring(tenant) group_left sum(rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval]))' % [dashboards['loki-writes.json'].distributorSelector, dashboards['loki-writes.json'].distributorSelector], '{{tenant}}') + {
                               stack: true,
                               yaxes: [
@@ -114,13 +113,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           )
                         )
                         .addRow(
-                          $.row('Ingester - Zone Aware')
+                          $.row('Ingester (zone aware)')
                           .addPanel(
-                            $.newQueryPanel('QPS') +
+                            $.newQueryPanel('Requests / sec') +
                             $.newQpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterZoneSelector)
                           )
                           .addPanel(
-                            $.newQueryPanel('Latency', 'ms') +
+                            $.newQueryPanel('Request latency', 'ms') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
                               dashboards['loki-writes.json'].clusterMatchers +
@@ -136,17 +135,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                 dashboards['loki-writes.json'].matchers.ingester_zone +
                                 [utils.selector.eq('route', '/logproto.Pusher/Push')],
                               ),
-                            )
+                            ) + { title: 'Per pod p99 request latency' }
                           )
                         )
                         .addRow(
                           $.row('Ingester')
                           .addPanel(
-                            $.newQueryPanel('QPS') +
+                            $.newQueryPanel('Requests / sec') +
                             $.newQpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
-                            $.newQueryPanel('Latency', 'ms') +
+                            $.newQueryPanel('Request latency', 'ms') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
                               dashboards['loki-writes.json'].clusterMatchers +
@@ -162,24 +161,24 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                 dashboards['loki-writes.json'].matchers.ingester +
                                 [utils.selector.eq('route', '/logproto.Pusher/Push')]
                               ),
-                            )
+                            ) + { title: 'Per pod p99 request latency' }
                           )
                         )
                         .addRow(
                           $.row('Index')
                           .addPanel(
-                            $.newQueryPanel('QPS') +
+                            $.newQueryPanel('Index write rate') +
                             $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
-                            $.newQueryPanel('Latency', 'ms') +
+                            $.newQueryPanel('Index write latency', 'ms') +
                             $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
                             $.p99LatencyByPod(
                               'loki_index_request_duration_seconds',
                               '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector,
-                            )
+                            ) + { title: 'Per pod p99 index write latency' }
                           )
                         ),
   },

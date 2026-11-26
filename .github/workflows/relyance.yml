@@ -17,18 +17,20 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout Code
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           'persist-credentials': false
 
       - name: retrieve secrets
         id: get-secrets
-        uses: grafana/shared-workflows/actions/get-vault-secrets@7d18a46aafb8b875ed76a0bc98852d74b91e7f91 # v1.0.0
+        uses: grafana/shared-workflows/actions/get-vault-secrets@2f1ddaf3ce1aa677356243d0dd584be33cfa35e3 # get-vault-secrets/v2.1.0
         with:
           repo_secrets: |
             RELYANCE_API_KEY=relyance:API_KEY
 
       - name: Run Relyance Compliance Inspector
+        env:
+          API_KEY: ${{ fromJSON(steps.get-secrets.outputs.secrets).RELYANCE_API_KEY }}
         run: |
           docker pull gcr.io/relyance-ext/compliance_inspector:release && \
-          docker run --rm -v `pwd`:/repo --env "API_KEY=${{ env.RELYANCE_API_KEY }}" gcr.io/relyance-ext/compliance_inspector:release 
+          docker run --rm -v `pwd`:/repo --env API_KEY gcr.io/relyance-ext/compliance_inspector:release

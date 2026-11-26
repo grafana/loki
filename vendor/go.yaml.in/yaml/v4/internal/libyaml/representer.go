@@ -33,6 +33,7 @@ type Representer struct {
 	explicitEnd           bool
 	flowSimpleCollections bool
 	quotePreference       QuoteStyle
+	formatDumpError       func(*DumpError) string
 }
 
 // NewRepresenter creates a new YAML representer with the given options.
@@ -44,6 +45,7 @@ func NewRepresenter(opts *Options) *Representer {
 		explicitEnd:           opts.ExplicitEnd,
 		flowSimpleCollections: opts.FlowSimpleCollections,
 		quotePreference:       opts.QuotePreference,
+		formatDumpError:       opts.FormatDumpError,
 	}
 }
 
@@ -98,7 +100,7 @@ func (r *Representer) represent(tag string, in reflect.Value) *Node {
 	case Marshaler:
 		v, err := value.MarshalYAML()
 		if err != nil {
-			failDump(RepresenterStage, err)
+			failDump(RepresenterStage, err, r.formatDumpError)
 		}
 		if v == nil {
 			return r.nilv()
@@ -107,7 +109,7 @@ func (r *Representer) represent(tag string, in reflect.Value) *Node {
 	case encoding.TextMarshaler:
 		text, err := value.MarshalText()
 		if err != nil {
-			failDump(RepresenterStage, err)
+			failDump(RepresenterStage, err, r.formatDumpError)
 		}
 		in = reflect.ValueOf(string(text))
 	case nil:
@@ -135,7 +137,12 @@ func (r *Representer) represent(tag string, in reflect.Value) *Node {
 	case reflect.Bool:
 		return r.boolv(tag, in)
 	default:
-		failDumpf(RepresenterStage, "cannot represent type: %s", in.Type().String())
+		failDumpf(
+			RepresenterStage,
+			r.formatDumpError,
+			"cannot represent type: %s",
+			in.Type().String(),
+		)
 		return nil // unreachable; failDumpf always panics
 	}
 }
@@ -172,7 +179,7 @@ func (r *Representer) mapv(tag string, in reflect.Value) *Node {
 func (r *Representer) structv(tag string, in reflect.Value) *Node {
 	sinfo, err := getStructInfo(in.Type())
 	if err != nil {
-		failDump(RepresenterStage, err)
+		failDump(RepresenterStage, err, r.formatDumpError)
 	}
 
 	if tag == "" {
@@ -210,7 +217,12 @@ func (r *Representer) structv(tag string, in reflect.Value) *Node {
 			sort.Sort(keys)
 			for _, k := range keys {
 				if _, found := sinfo.FieldsMap[k.String()]; found {
-					failDumpf(RepresenterStage, "cannot have key %q in inlined map: conflicts with struct field", k.String())
+					failDumpf(
+						RepresenterStage,
+						r.formatDumpError,
+						"cannot have key %q in inlined map: conflicts with struct field",
+						k.String(),
+					)
 				}
 				content = append(content, r.represent("", k))
 				r.flow = false
@@ -262,10 +274,19 @@ func (r *Representer) stringv(tag string, in reflect.Value) *Node {
 	switch {
 	case !utf8.ValidString(s):
 		if tag == binaryTag {
-			failDumpf(RepresenterStage, "explicitly tagged !!binary data must be base64-encoded")
+			failDumpf(
+				RepresenterStage,
+				r.formatDumpError,
+				"explicitly tagged !!binary data must be base64-encoded",
+			)
 		}
 		if tag != "" {
-			failDumpf(RepresenterStage, "cannot represent invalid UTF-8 data as %s", shortTag(tag))
+			failDumpf(
+				RepresenterStage,
+				r.formatDumpError,
+				"cannot represent invalid UTF-8 data as %s",
+				shortTag(tag),
+			)
 		}
 		// It can't be represented directly as YAML so use a binary tag
 		// and represent it as base64.
@@ -289,6 +310,10 @@ func (r *Representer) stringv(tag string, in reflect.Value) *Node {
 	case needsQuoting:
 		// Force quoting for YAML 1.1 compatibility values
 		style = SingleQuotedStyle
+		// and honor the configured quote preference.
+		if r.quotePreference.ScalarStyle() == DOUBLE_QUOTED_SCALAR_STYLE {
+			style = DoubleQuotedStyle
+		}
 	default:
 		// Plain style by default - Desolver will add quotes if type mismatch
 		style = 0

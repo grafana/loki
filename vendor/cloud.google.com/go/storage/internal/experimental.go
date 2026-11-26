@@ -34,19 +34,14 @@ var (
 	// It takes ReadStallTimeoutConfig as inputs and returns a option.ClientOption.
 	WithReadStallTimeout any // func (*ReadStallTimeoutConfig) option.ClientOption
 
-	// WithGRPCBidiReads is a function which is implemented by the storage package.
-	// It sets the gRPC client to use the BidiReadObject API for downloads.
-	WithGRPCBidiReads any // func() option.ClientOption
-
-	// WithZonalBucketAPIs is a function which is implemented by the storage package.
-	// It sets the gRPC client to use the BidiReadObject API for downloads and
-	// appendable object semantics by default for uploads.
-	WithZonalBucketAPIs any // func() option.ClientOption
-
 	// WithDirectConnectivityEnforced is a function which is implemented by the storage package.
 	// It sets the gRPC client to use direct path connectivity for all requests and may fail
 	// if direct path connectivity cannot be established for a request.
 	WithDirectConnectivityEnforced any // func() option.ClientOption
+
+	// WithDirectPathXdsOverInterconnect is a function which is implemented by the storage package.
+	// It instructs the gRPC client to attempt DirectPath over Google Cloud Interconnect.
+	WithDirectPathXdsOverInterconnect any // func() option.ClientOption
 
 	// WithOtelMetrics is a function which is implemented by the storage package.
 	// It enables client-side OpenTelemetry metrics.
@@ -55,4 +50,13 @@ var (
 	// WithOtelDebugMetrics is a function which is implemented by the storage package.
 	// It enables debug client-side OpenTelemetry metrics.
 	WithOtelDebugMetrics any // func() option.ClientOption
+	// WithBufferPool is a function which is implemented by the storage package.
+	// It sets the buffer pool used to allocate memory for parallel uploads.
+	//
+	// This option is not supported at the moment.
+	WithBufferPool any // func(BufferPool) option.ClientOption
+
+	// WithGRPCKeepalive is a function which is implemented by the storage package.
+	// It enables HTTP/2 keepalive pings on the client's gRPC connections.
+	WithGRPCKeepalive any // func(GRPCKeepaliveConfig) option.ClientOption
 )

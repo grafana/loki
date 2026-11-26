@@ -19,11 +19,10 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/stats"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/test"
@@ -130,9 +129,7 @@ func TestFrontendBasicWorkflowProto(t *testing.T) {
 
 	req := &queryrange.LokiRequest{
 		Query: `{foo="bar"} | json`,
-		Plan: &plan.QueryPlan{
-			AST: syntax.MustParseExpr(`{foo="bar"} | json`),
-		},
+		Plan:  testutil.MustPlan(`{foo="bar"} | json`),
 	}
 
 	resp, err := queryrange.NewEmptyResponse(req)

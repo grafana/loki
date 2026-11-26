@@ -1,3 +1,125 @@
+# v1.21.3 (2026-11-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.21.2 (2026-11-18)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.21.1 (2026-11-16)
+
+* **Bug Fix**: Refresh login credentials in the region stored in the cached token's `signInRegion` field.
+
+# v1.21.0 (2026-11-10)
+
+* **Feature**: Make Retry Behavior 2.1 the default for standard and adaptive retry modes and remove the AWS_NEW_RETRIES_2026 flag. A retry costs 14 tokens, or 5 for a throttling error. Backoff uses a 50ms base, or 1s for throttling errors, and honors the x-amz-retry-after header. DynamoDB and DynamoDB Streams default to 4 attempts and a 25ms base. Long-polling operations (SQS ReceiveMessage, SFN GetActivityTask, SWF PollForActivityTask and PollForDecisionTask) back off when the retry quota is exhausted. HTTP 429 responses that don't deserialize to a modeled error type, including those from IMDS, are retried as throttling errors, as are HTTP 429 responses from the endpoint credentials provider. StandardOptions.RetryTimeoutCost and StandardOptions.Timeouts are deprecated and no longer used.
+* **Dependency Update**: Update to smithy-go v1.28.9.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.17 (2026-11-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.16 (2026-11-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.15 (2026-11-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.14 (2026-11-04)
+
+* **Dependency Update**: Update to smithy-go v1.28.8.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.13 (2026-10-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.12 (2026-10-27)
+
+* **Bug Fix**: Fixed the login credential panic when a retrieved token missed required fields
+* **Bug Fix**: Return an error instead of panicking when an STS AssumeRole or AssumeRoleWithWebIdentity response is missing credentials.
+* **Dependency Update**: Update to smithy-go v1.28.7.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.11 (2026-10-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.10 (2026-10-22)
+
+* **Bug Fix**: Update smithy-go to v1.28.6
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.9 (2026-10-09.2)
+
+* **Dependency Update**: Update to smithy-go v1.28.5.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.8 (2026-10-08)
+
+* **Dependency Update**: Update to smithy-go v1.28.4.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.7 (2026-10-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.6 (2026-09-24)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.5 (2026-09-14)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.4 (2026-09-09)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.3 (2026-09-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.2 (2026-08-31.2)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.1 (2026-08-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.20.0 (2026-08-27)
+
+* **Feature**: Support connection read timeouts in the SDK. This is currently available on an opt-in basis by setting env `AWS_ENABLE_DEFAULT_SOCKET_TIMEOUT_2026=true`.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.39 (2026-08-26)
+
+* **Dependency Update**: Update to smithy-go v1.28.0.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.38 (2026-08-25)
+
+* **Dependency Update**: Update to smithy-go v1.27.10.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.37 (2026-08-20)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.36 (2026-08-14)
+
+* **Dependency Update**: Update to smithy-go v1.27.8.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.35 (2026-08-10)
+
+* **Dependency Update**: Update to smithy-go v1.27.7.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.19.34 (2026-08-05)
 
 * **Dependency Update**: Updated to the latest SDK module versions

@@ -26,6 +26,9 @@ import (
 type WarningCategory string
 
 const (
+	// WarningCategoryEmptyDataPoints is set when an OTLP metric has no data
+	// points and is dropped.
+	WarningCategoryEmptyDataPoints WarningCategory = "empty_data_points"
 	// WarningCategoryLabelNameCollision is set when two or more OTLP attribute
 	// names map to the same label name after sanitization and their values are
 	// concatenated.
@@ -34,6 +37,10 @@ const (
 	// point has a zero count but a non-zero sum, for both exponential and
 	// classic (NHCB) histograms.
 	WarningCategoryHistogramZeroCountNonZeroSum WarningCategory = "histogram_zero_count_non_zero_sum"
+	// WarningCategoryHistogramPlusInfBound is set when a classic histogram data
+	// point defines +Inf as an explicit bound; its le="+Inf" series is taken
+	// from count instead.
+	WarningCategoryHistogramPlusInfBound WarningCategory = "histogram_plus_inf_bound"
 	// WarningCategoryOther is the fallback for any warning that has not been
 	// assigned a category. It keeps the label space bounded.
 	WarningCategoryOther WarningCategory = "other"
@@ -59,8 +66,7 @@ func newCategorizedWarningf(category WarningCategory, format string, args ...any
 // WarningCategoryOf returns the category of an annotation error, or
 // WarningCategoryOther if it carries none.
 func WarningCategoryOf(err error) WarningCategory {
-	var cw *categorizedWarning
-	if errors.As(err, &cw) {
+	if cw, ok := errors.AsType[*categorizedWarning](err); ok {
 		return cw.category
 	}
 	return WarningCategoryOther

@@ -1,14 +1,13 @@
 package distributor
 
 import (
+	"cmp"
 	"context"
 	"flag"
 	"fmt"
 	"math"
 	"net/http"
-	"runtime/pprof"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,20 +33,19 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
-	"github.com/grafana/loki/v3/pkg/distributor/rendezvous"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	kafka_client "github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -66,15 +64,11 @@ const (
 	ringKey = "distributor"
 
 	ringAutoForgetUnhealthyPeriods = 2
-
-	timeShardLabel = "__time_shard__"
 )
 
 var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
-
-	errServiceUnavailableMaxLoad = httpgrpc.Error(503, "The server cannot accept more requests at this time.")
 
 	// the rune error replacement is rejected by Prometheus hence replacing them with space.
 	removeInvalidUtf = func(r rune) rune {
@@ -92,7 +86,6 @@ type Config struct {
 	PushWorkerCount int        `yaml:"push_worker_count"`
 
 	// Request parser
-	MaxPushSizeBytes int `yaml:"max_push_size_bytes"`
 	MaxInflightBytes int `yaml:"max_inflight_bytes"`
 
 	// For testing.
@@ -120,20 +113,17 @@ type Config struct {
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
-	DataObjTeeConfig DataObjTeeConfig     `yaml:"dataobj_tee"`
-	CircuitBreaker   CircuitBreakerConfig `yaml:"circuit_breaker"`
+	CircuitBreaker CircuitBreakerConfig `yaml:"circuit_breaker"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
-	cfg.DataObjTeeConfig.RegisterFlags(fs)
 	cfg.CircuitBreaker.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.OTLPAttributeLogging.RegisterFlagsWithPrefix("distributor.otlp-attribute-logging", fs)
-	fs.IntVar(&cfg.MaxPushSizeBytes, "distributor.max-push-size-bytes", math.MaxInt32, "The maximum size of a Push request.")
 	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
@@ -144,16 +134,10 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
-		return errors.New("at least one of kafka and ingestor writes must be enabled")
-	}
-	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
-		return err
+		return errors.New("at least one of kafka and ingester writes must be enabled")
 	}
 	if err := cfg.CircuitBreaker.Validate(); err != nil {
 		return err
-	}
-	if cfg.MaxPushSizeBytes < 0 {
-		return errors.New("max push size cannot be less than zero")
 	}
 	if cfg.MaxInflightBytes < 0 {
 		return errors.New("max inflight bytes cannot be less than zero")
@@ -199,89 +183,6 @@ type RateStore interface {
 type KafkaProducer interface {
 	ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults
 	Close()
-}
-
-type metrics struct {
-	// distributor metrics
-	ingesterAppends                       *prometheus.CounterVec
-	ingesterAppendTimeouts                *prometheus.CounterVec
-	replicationFactor                     prometheus.Gauge
-	streamShardCount                      prometheus.Counter
-	zeroStreamCount                       *prometheus.CounterVec
-	pushStatsCount                        *prometheus.CounterVec
-	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
-
-	// kafka metrics
-	kafkaAppends           *prometheus.CounterVec
-	kafkaWriteBytesTotal   prometheus.Counter
-	kafkaWriteLatency      prometheus.Histogram
-	kafkaRecordsPerRequest prometheus.Histogram
-}
-
-func newMetrics(registerer prometheus.Registerer) *metrics {
-	return &metrics{
-		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_ingester_appends_total",
-			Help:      "The total number of batch appends sent to ingesters.",
-		}, []string{"ingester"}),
-		ingesterAppendTimeouts: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_ingester_append_timeouts_total",
-			Help:      "The total number of failed batch appends sent to ingesters due to timeouts.",
-		}, []string{"ingester"}),
-		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_replication_factor",
-			Help:      "The configured replication factor.",
-		}),
-		streamShardCount: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "stream_sharding_count",
-			Help:      "Total number of times the distributor has sharded streams",
-		}),
-		zeroStreamCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_push_zero_streams_count",
-			Help:      "Total number of push requests with 0 streams",
-		}, []string{"tenant", "stage"}),
-		pushStatsCount: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_push_stats_count",
-			Help:      "Total number of successfully parsed push requests aggregated by tenant, content-type, encoding, version, format",
-		}, []string{"tenant", "content_type", "content_encoding", "content_version", "format"}),
-		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_push_structured_metadata_sanitized_total",
-			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
-		}, []string{"tenant", "format"}),
-
-		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_kafka_appends_total",
-			Help:      "The total number of appends sent to kafka ingest path.",
-		}, []string{"partition", "status"}),
-		kafkaWriteLatency: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace:                       constants.Loki,
-			Name:                            "distributor_kafka_latency_seconds",
-			Help:                            "Latency to write an incoming request to the ingest storage.",
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMinResetDuration: 1 * time.Hour,
-			NativeHistogramMaxBucketNumber:  100,
-			Buckets:                         prometheus.DefBuckets,
-		}),
-		kafkaWriteBytesTotal: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_kafka_sent_bytes_total",
-			Help:      "Total number of bytes sent to the ingest storage.",
-		}),
-		kafkaRecordsPerRequest: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Namespace: constants.Loki,
-			Name:      "distributor_kafka_records_per_write_request",
-			Help:      "The number of records a single per-partition write request has been split into.",
-			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
-		}),
-	}
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -340,10 +241,8 @@ type Distributor struct {
 	// are consumed.
 	numMetadataPartitions int
 
-	// Track the max inflight bytes in the last 1 minute.
-	inflightBytesHighWatermark prometheus.Summary
-	inflightBytes              atomic.Int64
-	circuitBreaker             circuitBreaker
+	inflightBytes  atomic.Int64
+	circuitBreaker circuitBreaker
 }
 
 // New a distributor creates.
@@ -362,9 +261,6 @@ func New(
 	limitsFrontendCfg limits_frontend_client.Config,
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
-	dataObjConsumerPartitionRing ring.PartitionRingReader,
-	dataObjConsumerPartitionKVClient kv.Client,
-	dataObjConsumerPartitionRingKey string,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -421,7 +317,7 @@ func New(
 
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
-		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 20, logger, registerer)
+		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, logger, registerer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
@@ -429,43 +325,6 @@ func New(
 			prometheus.WrapRegistererWithPrefix("loki_", registerer),
 			kafka_client.WithRecordsInterceptor(validation.IngestionPoliciesKafkaProducerInterceptor),
 		)
-
-		if cfg.DataObjTeeConfig.Enabled {
-			var rendezvousPartitionWatcher *rendezvous.PartitionRingWatcher
-			if cfg.DataObjTeeConfig.UseRendezvousHashing {
-				rendezvousPartitionWatcher = rendezvous.New(
-					rendezvous.Config{Key: dataObjConsumerPartitionRingKey},
-					dataObjConsumerPartitionKVClient,
-					logger,
-				)
-				servs = append(servs, rendezvousPartitionWatcher)
-			}
-			resolver := newSegmentationPartitionResolver(
-				uint64(cfg.DataObjTeeConfig.PerPartitionRateBytes),
-				cfg.DataObjTeeConfig.UseRendezvousHashing,
-				dataObjConsumerPartitionRing,
-				rendezvousPartitionWatcher,
-				registerer,
-				logger,
-			)
-			dataObjTee, err := NewDataObjTee(
-				&cfg.DataObjTeeConfig,
-				resolver,
-				ingestLimits,
-				overrides,
-				kafkaWriter,
-				logger,
-				registerer,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create data object tee: %w", err)
-			}
-			tee = WrapTee(tee, dataObjTee)
-
-			if rateBatcher := dataObjTee.RateBatcher(); rateBatcher != nil {
-				servs = append(servs, rateBatcher)
-			}
-		}
 	}
 
 	d := &Distributor{
@@ -492,12 +351,6 @@ func New(
 		partitionRing:         partitionRing,
 		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
-		inflightBytesHighWatermark: promauto.With(registerer).NewSummary(prometheus.SummaryOpts{
-			Name:       "loki_distributor_inflight_bytes_high_watermark",
-			Help:       "The max inflight bytes in the last 1 minute.",
-			Objectives: map[float64]float64{1.0: 0.1},
-			MaxAge:     time.Minute,
-		}),
 	}
 
 	if cfg.CircuitBreaker.Enabled {
@@ -534,6 +387,8 @@ func New(
 
 	d.m.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
+
+	d.m.maxInflightBytes.Set(float64(d.cfg.MaxInflightBytes))
 
 	rs := NewRateStore(
 		d.cfg.RateStore,
@@ -598,7 +453,7 @@ func (d *Distributor) stopping(_ error) error {
 type KeyedStream struct {
 	HashKey        uint32
 	HashKeyNoShard uint64
-	Stream         logproto.Stream
+	Stream         logproto.InternalStreamAdapter
 	Policy         string
 }
 
@@ -656,23 +511,27 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	if err != nil {
 		return nil, err
 	}
-	return d.pushWithResolver(ctx, req, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
+	internal := logproto.FromPushRequest(req)
+	return d.pushWithResolver(ctx, internal, newRequestScopedStreamResolver(tenantID, d.validator.Limits, d.logger), constants.Loki)
 }
 
-// Push a set of streams.
-// Can modify the input req parameter.
-// The returned error is the last one seen.
-func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
-	requestSize := int64(req.Size())
-	newInflightBytes := d.inflightBytes.Add(requestSize)
-	d.inflightBytesHighWatermark.Observe(float64(newInflightBytes))
-	defer d.inflightBytes.Add(-requestSize)
-
-	maxInflightBytes := int64(d.cfg.MaxInflightBytes)
-	if maxInflightBytes > 0 && newInflightBytes > maxInflightBytes {
-		return nil, errServiceUnavailableMaxLoad
-	}
-
+// pushWithResolver validates req, applies the ingestion limits, and writes the streams that are
+// left. Validation edits the entries of req in place, and time sharding sorts them.
+//
+// Rejections, in order of precedence for the returned error:
+//   - A structured metadata name that cannot be normalized aborts the whole push.
+//   - The ingestion rate limit rejects the whole push with a 429, dropping any validation error.
+//   - Streams over the stream limit are dropped with a 429.
+//   - Streams that fail validation are dropped with a 400.
+//   - Streams of a blocked tenant or policy are dropped with the block status code, or with no
+//     error for 200.
+//
+// After the last three, the remaining streams are still written and the error is returned with the
+// response. The push is rejected instead when there is an error and nothing is left to write, or
+// when the error is a 429 and a stream of the push resolves to a policy with reject_partial_writes.
+// A rejected push returns a nil response, and so does a failed write, which may have been partly
+// written by then.
+func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.InternalPushRequest, streamResolver *requestScopedStreamResolver, format string) (*logproto.PushResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -681,289 +540,71 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 	start := time.Now()
 	defer d.waitSimulatedLatency(ctx, tenantID, start)
 
-	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "pre-validation").Inc()
-		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
+		return nil, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
-
-	// First we flatten out the request into a list of samples.
-	// We use the heuristic of 1 sample per TS to size the array.
-	// We also work out the hash value at the same time.
-	streams := make([]KeyedStream, 0, len(req.Streams))
-
-	var validationErrors util.GroupedErrors
 
 	now := time.Now()
-	validationContext := d.validator.getValidationContextForTime(now, tenantID)
-	fieldDetector := newFieldDetector(validationContext)
-	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
-	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
+	vCtx := d.validator.getValidationContextForTime(now, tenantID)
 
-	// The shard-streams config is resolved per stream from its policy (see PolicyShardStreams)
-	// and threaded into these closures, so a policy can override the tenant sharding behavior
-	// (e.g. toggle time sharding or use a different desired_rate).
-	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
-		if shardStreamsCfg.Enabled {
-			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy, shardStreamsCfg)...)
-			return
-		}
-		streams = append(streams, KeyedStream{
-			HashKey:        lokiring.TokenFor(tenantID, stream.Labels),
-			HashKeyNoShard: stream.Hash,
-			Stream:         stream,
-			Policy:         policy,
-		})
-	}
-
-	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string, shardStreamsCfg shardstreams.Config) {
-		// Backfill streams implement time sharding on the client side (via the
-		// constants.BackfillShardLabel), so Loki's own time sharding is disabled for them to avoid
-		// exploding stream cardinality. Rate-based sharding still applies.
-		if !shardStreamsCfg.TimeShardingEnabled || labels.Has(constants.BackfillLabel) {
-			maybeShardByRate(stream, pushSize, policy, shardStreamsCfg)
-			return
-		}
-
-		ignoreRecentFrom := now.Add(-shardStreamsCfg.TimeShardingIgnoreRecent)
-		streamsByTime, ok := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2, ignoreRecentFrom)
-		if !ok {
-			maybeShardByRate(stream, pushSize, policy, shardStreamsCfg)
-			return
-		}
-
-		for _, ts := range streamsByTime {
-			maybeShardByRate(ts.Stream, ts.linesTotalLen, policy, shardStreamsCfg)
-		}
-	}
-
-	var ingestionBlockedError error
-
-	// Ingestion rate limiting is bucketed by the effective rate-limit target: streams whose
-	// resolved policy has a per-policy ingestion rate override are metered against their own
-	// per-(tenant,policy) bucket, replacing the tenant-wide limit; all other streams share the
-	// tenant-wide bucket (keyed by "").
-	rlBuckets := map[string]*rateLimitBucket{}
-
-	err = func() error {
-		sp := trace.SpanFromContext(ctx)
-		sp.AddEvent("start to validate request")
-		defer sp.AddEvent("finished to validate request")
-
-		for _, stream := range req.Streams {
-			// Return early if stream does not contain any entries
-			if len(stream.Entries) == 0 {
-				continue
-			}
-
-			// Truncate first so subsequent steps have consistent line lengths
-			d.truncateLines(validationContext, &stream)
-
-			var lbs labels.Labels
-			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
-			if err != nil {
-				d.writeFailuresManager.Log(tenantID, err)
-				validationErrors.Add(err)
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedDataWithTracker(ctx, validation.InvalidLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
-				continue
-			}
-
-			if !d.validator.IsInternalStream(lbs) {
-				if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
-					err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, policy)
-					d.writeFailuresManager.Log(tenantID, err)
-					validationErrors.Add(err)
-					discardedBytes := util.EntriesTotalSize(stream.Entries)
-					d.validator.reportDiscardedDataWithTracker(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
-					continue
-				}
-			}
-
-			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
-				d.writeFailuresManager.Log(tenantID, err)
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedDataWithTracker(ctx, reason, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries), format)
-
-				// If the status code is 200, return no error.
-				// Note that we still log the error and increment the metrics.
-				if statusCode == http.StatusOK {
-					continue
-				}
-
-				// return an error but do not add it to validationErrors
-				// otherwise client will get a 400 and will log it.
-				ingestionBlockedError = httpgrpc.Errorf(statusCode, "%s", err.Error())
-				continue
-			}
-
-			n := 0
-			prevTs := stream.Entries[0].Timestamp
-			streamEntriesSize := 0
-
-			// Backfilled data is expected to be older than reject_old_samples_max_age. The backfill
-			// label is reserved: the push parsers reject streams that already carry it, so it can
-			// only originate from the X-Loki-Backfill-Shard header and cannot be spoofed to bypass
-			// validation. Entries too far in the future are still rejected.
-			entryValidationContext := validationContext
-			if lbs.Has(constants.BackfillLabel) {
-				entryValidationContext.rejectOldSample = false
-			}
-
-			labelNamer := otlptranslator.LabelNamer{}
-			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, entryValidationContext, lbs, entry, retentionHours, policy, format); err != nil {
-					d.writeFailuresManager.Log(tenantID, err)
-					validationErrors.Add(err)
-					continue
-				}
-
-				var normalized string
-				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-
-				normalizedBuilder := labels.NewBuilder(structuredMetadata)
-
-				for _, lbl := range entry.StructuredMetadata {
-					normalized, err = labelNamer.Build(lbl.Name)
-					if err != nil {
-						return err
-					}
-					if normalized != lbl.Name {
-						// Swap the name with the normalized one.
-						normalizedBuilder.Del(lbl.Name)
-						normalizedBuilder.Set(normalized, lbl.Value)
-
-						d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
-					}
-					if strings.ContainsRune(lbl.Value, utf8.RuneError) {
-						normalizedBuilder.Set(normalized, strings.Map(removeInvalidUtf, lbl.Value))
-						d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
-					}
-				}
-
-				// Update structured metadata with normalized labels. We also need to
-				// update the original stream to reflect the changes.
-				structuredMetadata = normalizedBuilder.Labels()
-				entry.StructuredMetadata = logproto.CopyToLabelAdapters(entry.StructuredMetadata, structuredMetadata)
-
-				if shouldDiscoverLevels {
-					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
-						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
-						if ok {
-							entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
-						}
-					})
-				}
-				if shouldDiscoverGenericFields {
-					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
-						for field, hints := range fieldDetector.validationContext.discoverGenericFields {
-							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
-							if ok {
-								entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
-							}
-						}
-					})
-				}
-				stream.Entries[n] = entry
-
-				// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
-				// since Loki will accept out of order writes it doesn't account for separate
-				// pushes with overlapping time ranges having entries with duplicate timestamps
-
-				if validationContext.incrementDuplicateTimestamps && n != 0 {
-					// Traditional logic for Loki is that 2 lines with the same timestamp and
-					// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
-					// To maintain this behavior, only increment the timestamp if the log content is different
-					if stream.Entries[n-1].Line != entry.Line && (entry.Timestamp.Equal(prevTs) || entry.Timestamp.Equal(stream.Entries[n-1].Timestamp)) {
-						stream.Entries[n].Timestamp = stream.Entries[n-1].Timestamp.Add(1 * time.Nanosecond)
-					} else {
-						prevTs = entry.Timestamp
-					}
-				}
-
-				n++
-				entrySize := util.EntryTotalSize(&entry)
-				streamEntriesSize += entrySize
-			}
-			stream.Entries = stream.Entries[:n]
-			if len(stream.Entries) == 0 {
-				// Empty stream after validating all the entries
-				continue
-			}
-
-			// Attribute this stream's bytes/lines to its rate-limit bucket.
-			_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, policy)
-			bucketKey := ""
-			if hasRateOverride {
-				bucketKey = policy
-			}
-			b := rlBuckets[bucketKey]
-			if b == nil {
-				b = &rateLimitBucket{policy: policy, hasOverride: hasRateOverride}
-				rlBuckets[bucketKey] = b
-			}
-			b.bytes += streamEntriesSize
-			b.lines += n
-
-			shardCfg, _ := d.validator.PolicyShardStreams(tenantID, policy)
-			maybeShardStreams(stream, lbs, streamEntriesSize, policy, shardCfg)
-		}
-		return nil
-	}()
+	validated, err := d.validateStreams(ctx, req, vCtx, now, streamResolver, format)
 	if err != nil {
 		return nil, err
 	}
-
-	var validationErr error
-	if validationErrors.Err() != nil {
-		validationErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
-	} else if ingestionBlockedError != nil {
-		// Any validation error takes precedence over the status code and error message for blocked ingestion.
-		validationErr = ingestionBlockedError
-	}
-
-	// Return early if none of the streams contained entries
-	if len(streams) == 0 {
+	if len(validated.streams) == 0 {
 		d.m.zeroStreamCount.WithLabelValues(tenantID, "post-validation").Inc()
-		return &logproto.PushResponse{}, validationErr
+		// Without an error, every stream was empty or blocked with status
+		// code 200: a success with nothing to write.
+		if validated.err != nil {
+			return nil, validated.err
+		}
+		return &logproto.PushResponse{}, nil
 	}
 
-	if err := d.enforceIngestionRateLimits(ctx, now, tenantID, rlBuckets, req.Streams, validationContext, streamResolver, format); err != nil {
+	// Sharding runs before the rate limit, so a push the rate limit rejects
+	// may still have advanced shard rotations and been counted as sharded.
+	sharded := d.shardStreams(tenantID, now, validated.streams)
+
+	// An admitted push keeps its tokens even if a later stage rejects it.
+	if err := d.enforceIngestionRateLimits(ctx, now, vCtx, validated.streams, format); err != nil {
 		return nil, err
 	}
 
 	// These limits are checked after the ingestion rate limit as this
 	// is how it works in ingesters.
-	if d.cfg.IngestLimitsEnabled {
-		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
-		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
-			if len(rejected) > 0 {
-				discardedStreams := make([]logproto.Stream, 0, len(rejected))
-				for _, stream := range rejected {
-					discardedStreams = append(discardedStreams, stream.Stream)
-				}
-				d.trackDiscardedData(ctx, discardedStreams, validationContext, tenantID, validation.StreamLimit, streamResolver, format, nil)
+	streams, limitsErr := d.enforceStreamLimits(ctx, tenantID, sharded, vCtx, streamResolver, format)
+	if limitsErr != nil {
+		limitsErr = httpgrpc.Error(http.StatusTooManyRequests, limitsErr.Error())
+	}
 
-				// While many streams may have failed we only log the error for one stream in the insight logs and in the error message.
-				// It's generally not useful to know the stream labels for a stream that is hitting the stream limit as it could be any
-				// stream and isn't necessarily a stream with high cardinality. However, it might also be a high cardinality stream so returning
-				// something here still may be useful. We used to return nothing with this limit and people requested that something is better than nothing.
-				err = fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Stream.Labels, tenantID)
-				d.writeFailuresManager.Log(tenantID, err)
-				// Set the validation error to the stream limit error so it is returned to the client.
-				validationErr = httpgrpc.Error(http.StatusTooManyRequests, err.Error())
-				// If none of the streams were accepted, return early.
-				if len(accepted) == 0 {
-					return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
-				}
-			}
-			streams = accepted
+	// The argument order is the precedence: a stream-limit 429 wins.
+	finalErr := cmp.Or(limitsErr, validated.err)
+	if finalErr != nil {
+		// Only the stream limit can leave nothing to write here.
+		if len(streams) == 0 {
+			return nil, finalErr
+		}
+
+		// The limits service has still counted the streams it accepted.
+		if validated.rejectPartialWrites && (limitsErr != nil || isTooManyRequests(validated.err)) {
+			d.m.rejectedPartialWrites.WithLabelValues(tenantID, validated.rejectPartialWritesPolicy).Inc()
+			return nil, finalErr
 		}
 	}
 
+	if err := d.writeStreams(ctx, tenantID, streams); err != nil {
+		return nil, err
+	}
+	return &logproto.PushResponse{}, finalErr
+}
+
+// writeStreams writes streams to the tee, Kafka and the ingesters, as configured. It returns once
+// the tee's registered writes, Kafka and a quorum of each stream's ingesters have succeeded, on the
+// first failure, or when ctx is done. The ingester writes carry on after it returns.
+func (d *Distributor) writeStreams(ctx context.Context, tenantID string, streams []KeyedStream) error {
 	tracker := PushTracker{
-		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
+		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - doneWithResult only sends once on each
 		err:  make(chan error, 1),
 	}
 
@@ -982,7 +623,6 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
 	if d.tee != nil {
-		// Call register for the tee to allow them to register their pending streams.
 		d.tee.Register(ctx, tenantID, streams, &tracker)
 	}
 	tracker.streamsPending.Add(int32(streamsToWrite))
@@ -1000,12 +640,14 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 		// creates a shuffle shard which contains the complete set of partitions,
 		// which is the same as not shuffle sharding at all.
 		if shardSize > 0 {
+			var err error
 			subring, err = subring.ShuffleShard(tenantID, shardSize)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
-		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
+		// Unlike the ingester writes, this write uses ctx, so it stops when ctx is canceled,
+		// including after the push returned early on another write's failure.
 		go d.sendStreamsToKafka(ctx, tenantID, streams, &tracker, subring)
 	}
 
@@ -1037,7 +679,7 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 			}
 			return nil
 		}(); err != nil {
-			return nil, err
+			return err
 		}
 
 		for ingester, streams := range streamsByIngester {
@@ -1067,12 +709,419 @@ func (d *Distributor) pushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	select {
 	case err := <-tracker.err:
-		return nil, err
+		return err
 	case <-tracker.done:
-		return &logproto.PushResponse{}, validationErr
+		return nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return ctx.Err()
 	}
+}
+
+// acceptedStream is a stream that passed validation, with the labels, retention and policy
+// validation resolved for it, so later stages reuse them instead of resolving them again.
+type acceptedStream struct {
+	// stream holds only the entries that passed validation, and its labels in canonical form.
+	stream         logproto.InternalStreamAdapter
+	lbs            labels.Labels
+	retentionHours string
+	policy         string
+	stats          streamStats
+}
+
+// validatedPush is the result of validateStreams.
+type validatedPush struct {
+	// streams are the streams that passed validation, in push order.
+	streams []acceptedStream
+
+	// err is the client error from validation: a 400 for the streams and entries that failed it
+	// or, if none did, the status code of a blocked stream. It is nil if every blocked stream had
+	// status code 200.
+	err error
+
+	// rejectPartialWrites is whether any stream with entries resolved to a policy with
+	// reject_partial_writes, even one that was then rejected. rejectPartialWritesPolicy is the
+	// first such policy.
+	rejectPartialWrites       bool
+	rejectPartialWritesPolicy string
+}
+
+// validateStreams validates the streams of req and returns the ones that pass. Side effects: it
+// edits the entries of req in place, reports every stream and entry it drops as discarded and to
+// the insight logs, and adds labels that pass validation to the label cache.
+//
+// The returned error aborts the push. Validation failures are in validatedPush.err instead.
+func (d *Distributor) validateStreams(
+	ctx context.Context,
+	req *logproto.InternalPushRequest,
+	vCtx validationContext,
+	now time.Time,
+	streamResolver push.StreamResolver,
+	format string,
+) (validatedPush, error) {
+	sp := trace.SpanFromContext(ctx)
+	sp.AddEvent("start to validate request")
+	defer sp.AddEvent("finished to validate request")
+
+	tenantID := vCtx.userID
+	fieldDetector := newFieldDetector(vCtx)
+	result := validatedPush{streams: make([]acceptedStream, 0, len(req.Streams))}
+	var (
+		validationErrors      util.GroupedErrors
+		ingestionBlockedError error
+	)
+
+	for _, stream := range req.Streams {
+		if stream.EntryCount() == 0 {
+			continue
+		}
+
+		// Truncate first so subsequent steps have consistent line lengths
+		d.truncateLines(vCtx, stream)
+
+		parsed, labelsReason, err := d.parseAndValidateStreamLabels(ctx, vCtx, stream.Labels, stream, streamResolver)
+		stream.Labels, stream.Hash = parsed.labelsString, parsed.hash
+		if !result.rejectPartialWrites && d.validator.PolicyRejectPartialWrites(tenantID, parsed.policy) {
+			result.rejectPartialWrites = true
+			result.rejectPartialWritesPolicy = parsed.policy
+		}
+
+		discard := func(reason string, err error) {
+			d.writeFailuresManager.Log(tenantID, err)
+			d.validator.reportDiscardedData(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
+		}
+
+		if err != nil {
+			validationErrors.Add(err)
+			discard(labelsReason, err)
+			continue
+		}
+
+		if !constants.IsInternalStream(parsed.lbs.Has) {
+			if missing, lbsMissing := d.missingEnforcedLabels(parsed.lbs, tenantID, parsed.policy); missing {
+				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID, stream.Labels, parsed.policy)
+				validationErrors.Add(err)
+				discard(validation.MissingEnforcedLabels, err)
+				continue
+			}
+		}
+
+		if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(vCtx, now, parsed.policy); block {
+			discard(reason, err)
+			if statusCode == http.StatusOK {
+				continue
+			}
+			// Kept out of validationErrors, so the client gets the block's
+			// status code rather than a 400.
+			ingestionBlockedError = httpgrpc.Errorf(statusCode, "%s", err.Error())
+			continue
+		}
+
+		stats, err := d.processStreamEntries(
+			ctx, vCtx, &stream, parsed.lbs, parsed.retentionHours, parsed.policy, format,
+			fieldDetector, &validationErrors,
+		)
+		if err != nil {
+			return validatedPush{}, err
+		}
+		if stats.entriesKept == 0 {
+			continue
+		}
+		result.streams = append(result.streams, acceptedStream{
+			stream:         stream,
+			lbs:            parsed.lbs,
+			retentionHours: parsed.retentionHours,
+			policy:         parsed.policy,
+			stats:          stats,
+		})
+	}
+
+	if validationErrors.Err() != nil {
+		result.err = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErrors.Error())
+	} else if ingestionBlockedError != nil {
+		// A 400 takes precedence over a blocked stream's status code.
+		result.err = ingestionBlockedError
+	}
+	return result, nil
+}
+
+// enforceStreamLimits applies the stream limit to the sharded streams and returns the streams to
+// write. Nothing is checked while the ingest limits are disabled. Rejected streams are reported as
+// discarded, and the returned error names one of them, preferring a live-mode rejection over an
+// EnforceLimits one. It is the only error returned: when the limits service fails, the limits fail
+// open.
+//
+// CheckLimitsAndShard checks the live-mode streams and decides their shard count, and they are
+// sharded here. Every other stream was sharded by shardStreams, before the rate limit, and is
+// checked by EnforceLimits. Streams are sharded in two places only while EnforceLimits
+// (ExceedsLimits) and CheckLimitsAndShard are both in use.
+func (d *Distributor) enforceStreamLimits(
+	ctx context.Context,
+	tenantID string,
+	sharded shardedStreams,
+	vCtx validationContext,
+	streamResolver push.StreamResolver,
+	format string,
+) ([]KeyedStream, error) {
+	streams := sharded.streams
+	// Candidates are only collected while the ingest limits are enabled, see
+	// streamSharder.shardByRate.
+	if !d.cfg.IngestLimitsEnabled {
+		return streams, nil
+	}
+
+	var (
+		liveStreams  []KeyedStream
+		liveRejected []logproto.InternalStreamAdapter
+	)
+	if len(sharded.liveCandidates) > 0 {
+		shardCounts := d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeLive, sharded.liveCandidates)
+		for i, c := range sharded.liveCandidates {
+			count := shardCounts[i]
+			if count == 0 {
+				// No stream budget left. In dry-run mode the limits service
+				// has recorded the rejection, and the stream is written
+				// unsharded.
+				if !d.cfg.IngestLimitsDryRunEnabled {
+					liveRejected = append(liveRejected, c.stream)
+					continue
+				}
+				count = 1
+			}
+			liveStreams = append(liveStreams, d.shardStreamToCount(c.stream, c.labels, tenantID, c.policy, c.shardStreamsCfg, count)...)
+		}
+	}
+
+	if len(sharded.shadowCandidates) > 0 {
+		// Only compared: the local rate store already sharded these streams.
+		d.limitsServiceShardCounts(ctx, tenantID, shardstreams.LimitsServiceStreamShardingModeShadow, sharded.shadowCandidates)
+	}
+
+	var limitsErr error
+	// streams excludes the live-mode streams, and is empty when the push has
+	// only live-mode streams.
+	if len(streams) > 0 {
+		enforceTimer := prometheus.NewTimer(d.m.limitsServiceExceedsLimitsDuration)
+		accepted, rejected, err := d.ingestLimits.EnforceLimits(ctx, tenantID, streams)
+		enforceTimer.ObserveDuration()
+		// When EnforceLimits fails, every stream is written: the limits fail
+		// open. Even when it rejects every stream, do not return yet, as the
+		// live-mode rejections below still need reporting.
+		if err == nil && !d.cfg.IngestLimitsDryRunEnabled {
+			if len(rejected) > 0 {
+				discarded := make([]logproto.InternalStreamAdapter, 0, len(rejected))
+				for _, stream := range rejected {
+					discarded = append(discarded, stream.Stream)
+				}
+				limitsErr = d.rejectOverStreamLimit(ctx, tenantID, discarded, vCtx, streamResolver, format)
+			}
+			streams = accepted
+		}
+	}
+
+	streams = append(streams, liveStreams...)
+	if len(liveRejected) > 0 {
+		limitsErr = d.rejectOverStreamLimit(ctx, tenantID, liveRejected, vCtx, streamResolver, format)
+	}
+	return streams, limitsErr
+}
+
+// rejectOverStreamLimit reports streams rejected for the stream limit as discarded and returns an
+// error naming the first of them. rejected must not be empty.
+func (d *Distributor) rejectOverStreamLimit(
+	ctx context.Context,
+	tenantID string,
+	rejected []logproto.InternalStreamAdapter,
+	vCtx validationContext,
+	streamResolver push.StreamResolver,
+	format string,
+) error {
+	d.reportDiscardedStreams(ctx, rejected, vCtx, validation.StreamLimit, streamResolver, format)
+
+	// Only the first stream is named, in the insight log and the error. Any stream can hit the
+	// limit, so the name rarely points at the cause.
+	err := fmt.Errorf(validation.StreamLimitErrorMsg, rejected[0].Labels, tenantID)
+	d.writeFailuresManager.Log(tenantID, err)
+	return err
+}
+
+// isTooManyRequests reports whether err carries an HTTP 429 status.
+func isTooManyRequests(err error) bool {
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	return ok && resp.Code == http.StatusTooManyRequests
+}
+
+// processStreamEntries validates and enriches entries, then removes empty scopes and resources.
+// Entry validation errors are collected; metadata normalization errors abort processing.
+func (d *Distributor) processStreamEntries(
+	ctx context.Context,
+	vContext validationContext,
+	stream *logproto.InternalStreamAdapter,
+	lbs labels.Labels,
+	retentionHours, policy, format string,
+	fieldDetector *FieldDetector,
+	validationErrors *util.GroupedErrors,
+) (streamStats, error) {
+	var entriesKept, unexpandedSize, expandedSize int
+	tenantID := vContext.userID
+	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
+	var duplicateTimestamps duplicateTimestampTracker
+
+	// The push parsers reserve the backfill label for X-Loki-Backfill-Shard.
+	// Backfills bypass the age limit, but future timestamps are still rejected.
+	if lbs.Has(constants.BackfillLabel) {
+		vContext.rejectOldSample = false
+	}
+
+	resourcesKept := 0
+	for resourceIdx := range stream.ResourceLogs {
+		resource := &stream.ResourceLogs[resourceIdx]
+		resourceMetadata := newMetadataGroup(&resource.Attrs)
+		scopesKept := 0
+		var resourceDiscardReason string
+		for scopeIdx := range resource.ScopeLogs {
+			scope := &resource.ScopeLogs[scopeIdx]
+			scopeMetadata := newMetadataGroup(&scope.Attrs)
+			sharedMetadataSize := resourceMetadata.originalSize + scopeMetadata.originalSize
+			sharedMetadataCount := resourceMetadata.originalCount + scopeMetadata.originalCount
+			var normalizedSharedMetadataSize int
+			sharedMetadata := make([]labels.Labels, 0, 2)
+			scopeEntriesKept := 0
+			var scopeDiscardReason string
+			for _, entry := range scope.Entries {
+				if reason, err := d.validator.ValidateEntry(vContext, lbs, entry, sharedMetadataSize, sharedMetadataCount); err != nil {
+					d.validator.reportDiscardedData(ctx, reason, vContext, lbs, retentionHours, policy, util.EntryTotalSize(&entry), 1, format)
+					scopeDiscardReason = reason
+					resourceDiscardReason = reason
+					d.writeFailuresManager.Log(tenantID, err)
+					validationErrors.Add(err)
+					continue
+				}
+
+				// Normalize shared attributes once, after an entry passes validation.
+				if scopeEntriesKept == 0 {
+					if err := d.normalizeMetadataGroup(&resourceMetadata, tenantID, format, shouldDiscoverLevels); err != nil {
+						return streamStats{}, err
+					}
+					if err := d.normalizeMetadataGroup(&scopeMetadata, tenantID, format, shouldDiscoverLevels); err != nil {
+						return streamStats{}, err
+					}
+					// Scope attributes take precedence over resource attributes.
+					if !scopeMetadata.labels.IsEmpty() {
+						sharedMetadata = append(sharedMetadata, scopeMetadata.labels)
+					}
+					if !resourceMetadata.labels.IsEmpty() {
+						sharedMetadata = append(sharedMetadata, resourceMetadata.labels)
+					}
+					normalizedSharedMetadataSize = resourceMetadata.normalizedSize + scopeMetadata.normalizedSize
+				}
+
+				structuredMetadata, _, err := d.normalizeStructuredMetadata(entry.StructuredMetadata, tenantID, format, false)
+				if err != nil {
+					return streamStats{}, err
+				}
+				entry.StructuredMetadata = logproto.CopyToLabelAdapters(entry.StructuredMetadata, structuredMetadata)
+
+				fieldDetector.discoverFields(ctx, lbs, &entry, structuredMetadata, sharedMetadata...)
+				if vContext.incrementDuplicateTimestamps {
+					duplicateTimestamps.increment(&entry)
+				}
+				scope.Entries[scopeEntriesKept] = entry
+				scopeEntriesKept++
+				entrySize := util.EntryTotalSize(&entry)
+				unexpandedSize += entrySize
+				expandedSize += entrySize + normalizedSharedMetadataSize
+			}
+			scope.Entries = scope.Entries[:scopeEntriesKept]
+			if scopeEntriesKept == 0 {
+				// Charge shared bytes only when the group is emptied, using its last rejection reason.
+				if scopeDiscardReason != "" && scopeMetadata.originalSize > 0 {
+					d.validator.reportDiscardedData(ctx, scopeDiscardReason, vContext, lbs, retentionHours, policy, scopeMetadata.originalSize, 0, format)
+				}
+				continue
+			}
+			unexpandedSize += scopeMetadata.normalizedSize
+			entriesKept += scopeEntriesKept
+			resource.ScopeLogs[scopesKept] = *scope
+			scopesKept++
+		}
+		clear(resource.ScopeLogs[scopesKept:])
+		resource.ScopeLogs = resource.ScopeLogs[:scopesKept]
+		if scopesKept == 0 {
+			if resourceDiscardReason != "" && resourceMetadata.originalSize > 0 {
+				d.validator.reportDiscardedData(ctx, resourceDiscardReason, vContext, lbs, retentionHours, policy, resourceMetadata.originalSize, 0, format)
+			}
+			continue
+		}
+		unexpandedSize += resourceMetadata.normalizedSize
+		stream.ResourceLogs[resourcesKept] = *resource
+		resourcesKept++
+	}
+	clear(stream.ResourceLogs[resourcesKept:])
+	stream.ResourceLogs = stream.ResourceLogs[:resourcesKept]
+	return streamStats{
+		entriesKept:    entriesKept,
+		unexpandedSize: unexpandedSize,
+		expandedSize:   expandedSize,
+	}, nil
+}
+
+func (d *Distributor) normalizeMetadataGroup(group *metadataGroup, tenantID, format string, normalizeLevel bool) error {
+	if group.normalized {
+		return nil
+	}
+
+	metadata, changed, err := d.normalizeStructuredMetadata(*group.attrs, tenantID, format, normalizeLevel)
+	if err != nil {
+		return err
+	}
+	if changed {
+		*group.attrs = logproto.CopyToLabelAdapters(nil, metadata)
+		group.normalizedSize = util.StructuredMetadataSize(*group.attrs)
+	}
+	group.labels = metadata
+	group.normalized = true
+	return nil
+}
+
+// normalizeStructuredMetadata normalizes names and values without changing the input.
+func (d *Distributor) normalizeStructuredMetadata(metadata []logproto.LabelAdapter, tenantID, format string, normalizeLevel bool) (labels.Labels, bool, error) {
+	if len(metadata) == 0 {
+		return labels.EmptyLabels(), false, nil
+	}
+	labelNamer := otlptranslator.LabelNamer{}
+	builder := labels.NewBuilder(logproto.FromLabelAdaptersToLabels(metadata))
+	changed := false
+	for _, lbl := range metadata {
+		name, err := labelNamer.Build(lbl.Name)
+		if err != nil {
+			return labels.EmptyLabels(), false, err
+		}
+		if name != lbl.Name {
+			builder.Del(lbl.Name)
+			builder.Set(name, lbl.Value)
+			changed = true
+			d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+		}
+		value := lbl.Value
+		if value == "" {
+			// The labels builder removes empty values.
+			changed = true
+		}
+		if strings.ContainsRune(value, utf8.RuneError) {
+			value = strings.Map(removeInvalidUtf, value)
+			builder.Set(name, value)
+			changed = true
+			d.m.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID, format).Inc()
+		}
+	}
+	if normalizeLevel {
+		value := builder.Get(constants.LevelLabel)
+		if normalized := normalizeLogLevel(value); normalized != value {
+			builder.Set(constants.LevelLabel, normalized)
+			changed = true
+		}
+	}
+	return builder.Labels(), changed, nil
 }
 
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
@@ -1110,10 +1159,10 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, 
 // rateLimitBucket accumulates the bytes and line count of the streams metered against a
 // single ingestion rate-limit bucket (either the tenant-wide bucket or a per-policy bucket).
 type rateLimitBucket struct {
-	policy      string
-	hasOverride bool
-	bytes       int
-	lines       int
+	policy      string // the name of the policy that owns this bucket.
+	hasOverride bool   // true if the policy has its own rate limit, false if it uses the tenant default rate limit.
+	bytes       int    // the total number of bytes metered for this policy.
+	lines       int    // the total number of log lines metered for this policy.
 }
 
 // rateLimitError builds the client-facing 429 error for the rate-limit buckets a request
@@ -1148,26 +1197,42 @@ func (d *Distributor) rateLimitError(now time.Time, tenantID string, exceeded []
 	return fmt.Errorf(validation.RateLimitedMultiErrorMsg, tenantID, strings.Join(clauses, "; "))
 }
 
-// enforceIngestionRateLimits applies the per-bucket ingestion rate limit as an all-or-nothing
-// decision. A bucket with a per-policy override is metered independently from the tenant-wide
-// bucket. We tentatively reserve each bucket's bytes and, if any bucket can't accept them
-// immediately, cancel every reservation (returning the tokens) and reject the whole request.
-// Using reservations rather than AllowN keeps the buckets independent: a request rejected
-// because one bucket is over its limit does not consume tokens from the others, so an
-// over-limit policy can't drain the budgets of unrelated policies across client retries.
+// enforceIngestionRateLimits applies the ingestion rate limit to the accepted streams, all or
+// nothing. A stream of a policy with its own ingestion rate is metered in that policy's bucket,
+// which replaces the tenant's limit for it, and every other stream in the tenant's bucket.
 //
-// It returns a non-nil 429 error if any bucket is over its limit (all reservations are rolled
-// back); nil means the request was admitted (the reservations are kept and the tokens consumed).
+// Each bucket's bytes are reserved. If any bucket cannot take them now, every reservation is
+// cancelled, every stream is reported as discarded, and the returned 429 rejects the whole push.
+// Reserving rather than AllowN means a push rejected for one bucket takes no tokens from the
+// others, so an over-limit policy cannot drain the budgets of other policies across retries. An
+// admitted push keeps its tokens.
 func (d *Distributor) enforceIngestionRateLimits(
 	ctx context.Context,
 	now time.Time,
-	tenantID string,
-	rlBuckets map[string]*rateLimitBucket,
-	streams []logproto.Stream,
-	validationContext validationContext,
-	streamResolver push.StreamResolver,
+	vCtx validationContext,
+	accepted []acceptedStream,
 	format string,
 ) error {
+	tenantID := vCtx.userID
+
+	// Keyed by policy for the buckets of policies with their own rate, and by "" for the
+	// tenant's bucket.
+	rlBuckets := map[string]*rateLimitBucket{}
+	for _, a := range accepted {
+		_, hasRateOverride := d.validator.PolicyIngestionRateBytes(tenantID, a.policy)
+		bucketKey := ""
+		if hasRateOverride {
+			bucketKey = a.policy
+		}
+		b := rlBuckets[bucketKey]
+		if b == nil {
+			b = &rateLimitBucket{policy: a.policy, hasOverride: hasRateOverride}
+			rlBuckets[bucketKey] = b
+		}
+		b.bytes += a.stats.unexpandedSize
+		b.lines += a.stats.entriesKept
+	}
+
 	type bucketReservation struct {
 		bucket      *rateLimitBucket
 		reservation *rate.Reservation
@@ -1181,10 +1246,8 @@ func (d *Distributor) enforceIngestionRateLimits(
 		}
 		r := d.ingestionRateLimiter.ReserveN(now, limiterKey, b.bytes)
 		reservations = append(reservations, bucketReservation{bucket: b, reservation: r})
-		// A reservation that isn't OK (bytes exceed the burst) or that requires a wait is not
-		// immediately allowed, which is equivalent to AllowN returning false. We evaluate every
-		// bucket (rather than stopping at the first failure) so the rejection error can
-		// deterministically report all exceeded buckets.
+		// Not OK (more bytes than the burst) or needing a wait is what AllowN would refuse.
+		// Every bucket is checked, so that the error names all the exceeded ones.
 		if !r.OK() || r.DelayFrom(now) > 0 {
 			exceeded = append(exceeded, b)
 		}
@@ -1194,18 +1257,16 @@ func (d *Distributor) enforceIngestionRateLimits(
 		return nil
 	}
 
-	// Roll back every reservation so no tokens are consumed for a rejected request.
 	for _, br := range reservations {
 		br.reservation.CancelAt(now)
 	}
 
-	// The whole request is dropped, so attribute every stream as discarded (each under its
-	// own policy label, handled by trackDiscardedData).
-	d.trackDiscardedData(ctx, streams, validationContext, tenantID, validation.RateLimited, streamResolver, format, nil)
+	for _, a := range accepted {
+		d.validator.reportDiscardedData(ctx, validation.RateLimited, vCtx, a.lbs, a.retentionHours, a.policy, nestedStreamSize(a.stream), a.stream.EntryCount(), format)
+	}
 
-	// Sort exceeded buckets deterministically: the tenant-wide bucket first, then policies
-	// alphabetically. This keeps the client-facing error (and tests) stable regardless of
-	// map iteration order.
+	// The tenant's bucket first, then policies by name, so the error does not depend on map
+	// iteration order.
 	slices.SortFunc(exceeded, func(a, b *rateLimitBucket) int {
 		if a.hasOverride != b.hasOverride {
 			if !a.hasOverride {
@@ -1218,232 +1279,234 @@ func (d *Distributor) enforceIngestionRateLimits(
 
 	err := d.rateLimitError(now, tenantID, exceeded)
 	d.writeFailuresManager.Log(tenantID, err)
-	// Return a 429 to indicate to the client they are being rate limited
 	return httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
 }
 
-// trackDiscardedData tracks discarded samples and bytes. When policyMatch is non-nil, only
-// streams whose resolved policy satisfies it are tracked (used to attribute discards to a
-// single ingestion rate-limit bucket); a nil policyMatch tracks all streams.
-func (d *Distributor) trackDiscardedData(
+// reportDiscardedStreams reports whole streams that passed validation as discarded for reason. The
+// stream limit rejects shards, whose labels are not the ones validation resolved, so it resolves
+// each stream's labels, retention and policy again. It must not validate them: a shard's extra
+// shard label can push a valid stream over max_label_names_per_series.
+func (d *Distributor) reportDiscardedStreams(
 	ctx context.Context,
-	streams []logproto.Stream,
-	validationContext validationContext,
-	tenantID string,
+	streams []logproto.InternalStreamAdapter,
+	vCtx validationContext,
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
-	policyMatch func(policy string) bool,
 ) {
 	for _, stream := range streams {
-		lbs, _, _, retentionHours, policy, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
+		parsed, _, err := d.parseStreamLabels(ctx, vCtx.userID, stream.Labels, streamResolver)
 		if err != nil {
 			level.Warn(d.logger).Log("msg", "failed to parse stream labels when tracking discarded samples and bytes, this data will not be tracked", "error", err, "stream", stream.Labels)
 			continue
 		}
-		if policyMatch != nil && !policyMatch(policy) {
-			continue
-		}
-		discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
-		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(len(stream.Entries)))
-		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy, format).Add(float64(discardedStreamBytes))
-		if d.usageTracker != nil {
-			d.usageTracker.DiscardedBytesAdd(ctx, tenantID, reason, lbs, float64(discardedStreamBytes), format)
-		}
+		d.validator.reportDiscardedData(ctx, reason, vCtx, parsed.lbs, parsed.retentionHours, parsed.policy, nestedStreamSize(stream), stream.EntryCount(), format)
 	}
 }
 
-type streamWithTimeShard struct {
-	logproto.Stream
-	linesTotalLen int
+// limitsServiceShardCandidate is a logical (pre-shard) stream whose tenant
+// asks the ingest-limits service for a shard count. rateStoreShards is
+// shardCountFor's recommendation for this push, which is not necessarily the
+// number of streams it produces, see shardStream. totalSize is the same push
+// size the rate store was given. labels and shardStreamsCfg are what live
+// mode needs to shard the stream once the service has answered.
+type limitsServiceShardCandidate struct {
+	stream          logproto.InternalStreamAdapter
+	labels          labels.Labels
+	policy          string
+	shardStreamsCfg shardstreams.Config
+	rateStoreShards int
+	rateStoreRate   int64
+	totalSize       uint64
 }
 
-// This should shard the stream into multiple sub-streams based on the log
-// timestamps, but with no new alocations for the log entries. It will sort them
-// in-place in the given stream object (so it may modify it!) and reference
-// sub-slices of the same stream.Entries slice.
+// TODO(chaudum): Is a 2s timeout too long? Running it in production will tell...
+const limitsServiceShardTimeout = 2 * time.Second
+
+// limitsServiceShardCounts asks the ingest-limits service for a shard count
+// for each candidate, records how its answer compares to the local rate
+// store's, and returns the shard count to use per candidate, in the order the
+// candidates were given.
 //
-// If the second result is false, it means that either there were no logs in the
-// stream, or all of the logs in the stream occurred after the given value of
-// ignoreLogsFrom, so there was no need to shard - the original `streams` value
-// can be used. However, due to the in-place logs sorting by their timestamp, it
-// might still have been reordered.
-func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen time.Duration, ignoreLogsFrom time.Time) ([]streamWithTimeShard, bool) {
-	entries := stream.Entries
-	entriesLen := len(entries)
-	if entriesLen == 0 {
-		return nil, false
+// Live mode never falls back to the local rate store's recommendation. A
+// candidate the service has no usable answer for -- the whole call failed,
+// there was no result for the stream, the service could not check it, or
+// the answering instance does not own its partition -- gets a count of 1:
+// it is written unsharded rather than rejected. A limits-service outage removes
+// sharding until it recovers rather than stopping ingestion.
+//
+// A candidate the service rejected, for example for exceeding the stream
+// limit, gets a count of 0.
+func (d *Distributor) limitsServiceShardCounts(ctx context.Context, tenantID, mode string, candidates []limitsServiceShardCandidate) []int {
+	// Deferred so that every path, success, failure and Unimplemented alike,
+	// records the latency the call adds.
+	defer prometheus.NewTimer(d.m.limitsServiceShardDuration).ObserveDuration()
+
+	// Defaults to 1 (written unsharded, not rejected) for every candidate the
+	// service ends up with no usable answer for, whether the whole call fails
+	// or only a specific candidate does; see the fail-open cases below.
+	shardCounts := make([]int, len(candidates))
+	for i := range shardCounts {
+		shardCounts[i] = 1
 	}
 
-	slices.SortStableFunc(entries, func(a, b logproto.Entry) int { return a.Timestamp.Compare(b.Timestamp) })
+	callCtx, cancel := context.WithTimeout(ctx, limitsServiceShardTimeout)
+	defer cancel()
 
-	// Shortcut to do no work if all of the logs are recent
-	if entries[0].Timestamp.After(ignoreLogsFrom) {
-		return nil, false
-	}
-
-	result := make([]streamWithTimeShard, 0, (entries[entriesLen-1].Timestamp.Sub(entries[0].Timestamp)/timeShardLen)+1)
-	labelBuilder := labels.NewBuilder(lbls)
-
-	startIdx := 0
-	for startIdx < entriesLen && entries[startIdx].Timestamp.Before(ignoreLogsFrom) /* the index is changed below */ {
-		timeShardStart := entries[startIdx].Timestamp.Truncate(timeShardLen)
-		timeShardEnd := timeShardStart.Add(timeShardLen)
-
-		timeShardCutoff := timeShardEnd
-		if timeShardCutoff.After(ignoreLogsFrom) {
-			// If the time_sharding_ignore_recent is in the middle of this
-			// shard, we need to cut off the logs at that point.
-			timeShardCutoff = ignoreLogsFrom
+	results, err := d.ingestLimits.CheckLimitsAndShard(callCtx, tenantID, candidates)
+	if err != nil {
+		// None of the candidates were answered, so count them all as failed
+		// rather than leaving them out of the coverage metrics.
+		d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, limits.ReasonFailed.String()).Add(float64(len(candidates)))
+		if status.Code(err) == codes.Unimplemented {
+			// The service predates the RPC, for instance during a rollout.
+			level.Warn(d.logger).Log("msg", "CheckLimitsAndShard call returned Unimplemented; the limits service may predate this RPC", "tenant", tenantID, "mode", mode)
+		} else {
+			level.Error(d.logger).Log("msg", "failed CheckLimitsAndShard call", "tenant", tenantID, "mode", mode, "err", err)
 		}
+		return shardCounts
+	}
 
-		endIdx := startIdx + 1
-		linesTotalLen := len(entries[startIdx].Line)
-		for ; endIdx < entriesLen && entries[endIdx].Timestamp.Before(timeShardCutoff); endIdx++ {
-			linesTotalLen += len(entries[endIdx].Line)
+	for i, c := range candidates {
+		result, ok := results[c.stream.Hash]
+		switch {
+		case result.GetRejectReason() != "":
+			// A difference in kind rather than in shard count: the local rate
+			// store never rejects a stream.
+			d.m.limitsServiceShardShadowRejected.WithLabelValues(tenantID, mode, result.GetRejectReason()).Inc()
+			shardCounts[i] = 0
+		case !ok,
+			result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonFailed):
+			// No usable answer: there was none, or the service could not check
+			// the stream. Comparing it would report agreement or disagreement
+			// that does not exist.
+			reason := limits.Reason(result.GetStats().GetShardDecisionContext())
+			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, reason.String()).Inc()
+			// Fail open: there is no decision from the service to enforce, so
+			// the stream is written unsharded rather than dropped.
+			shardCounts[i] = 1
+		case result.GetShards() < 1 && result.GetRejectReason() == "":
+			// Should never happen: the frontend's completeShardResults
+			// normalizes a zero shard count without a reject reason away
+			// before it reaches the distributor. Fail open rather than drop
+			// the stream on a contract violation we did not expect.
+			level.Error(d.logger).Log("msg", "zero shard count with no reject reason")
+			d.m.limitsServiceShardShadowFailed.WithLabelValues(tenantID, mode, limits.ReasonFailed.String()).Inc()
+			shardCounts[i] = 1
+		default:
+			resultShards := int(result.GetShards())
+			shardCounts[i] = resultShards
+			sharding := shardingState(c.rateStoreShards, resultShards)
+			d.m.limitsServiceShardShadowCompared.WithLabelValues(tenantID, mode, sharding).Inc()
+			// Record both rates so their distributions can be compared as
+			// heatmaps. Both are sustained rates, before this push is
+			// amortized on top.
+			d.m.limitsServiceShardShadowStreamRate.WithLabelValues(tenantID, mode, "rate_store").Observe(float64(c.rateStoreRate))
+			d.m.limitsServiceShardShadowStreamRate.WithLabelValues(tenantID, mode, "limits").Observe(float64(result.GetStats().GetEvaluatedRate()))
+			if result.GetStats().GetShardDecisionContext() == uint32(limits.ReasonStreamShardsCapped) {
+				d.m.limitsServiceShardShadowCapped.WithLabelValues(tenantID, mode).Inc()
+			}
+			if resultShards != c.rateStoreShards {
+				d.m.limitsServiceShardShadowDivergence.WithLabelValues(tenantID, mode, sharding).Inc()
+				// Record the gap as a positive magnitude tagged by direction,
+				// so over- and under-sharding are separate distributions.
+				direction := "over"
+				difference := resultShards - c.rateStoreShards
+				if difference < 0 {
+					direction = "under"
+					difference = -difference
+				}
+				d.m.limitsServiceShardShadowDivergenceMagnitude.WithLabelValues(tenantID, mode, direction).Observe(float64(difference))
+				level.Debug(log.With(util_log.WithUserID(tenantID, d.logger), "stream", c.stream.Labels)).Log(
+					"msg", "shard count divergence",
+					"mode", mode,
+					"rate_store_shards", c.rateStoreShards,
+					"limits_service_shards", resultShards,
+					"rate_store_rate", c.rateStoreRate,
+					"limits_service_rate", result.GetStats().GetEvaluatedRate(),
+				)
+			}
 		}
-
-		shardLbls := labelBuilder.Set(timeShardLabel, fmt.Sprintf("%d_%d", timeShardStart.Unix(), timeShardEnd.Unix())).Labels()
-		result = append(result, streamWithTimeShard{
-			Stream: logproto.Stream{
-				Labels:  shardLbls.String(),
-				Hash:    labels.StableHash(shardLbls),
-				Entries: stream.Entries[startIdx:endIdx],
-			},
-			linesTotalLen: linesTotalLen,
-		})
-
-		startIdx = endIdx
 	}
+	return shardCounts
+}
 
-	if startIdx == entriesLen {
-		// We do not have any remaining entries
-		return result, true
+// shardingState reports which side's decision shards the stream.
+func shardingState(rateStoreShards, limitsShards int) string {
+	rateStoreSharded := rateStoreShards > 1
+	limitsSharded := limitsShards > 1
+	switch {
+	case rateStoreSharded && limitsSharded:
+		return "both"
+	case limitsSharded:
+		return "limits_only"
+	case rateStoreSharded:
+		return "rate_store_only"
+	default:
+		return "neither"
 	}
-
-	// Append one last shard with all of the logs without a time shard
-	logsWithoutTimeShardLen := 0
-	for i := startIdx; i < entriesLen; i++ {
-		logsWithoutTimeShardLen += len(entries[i].Line)
-	}
-
-	return append(result, streamWithTimeShard{
-		Stream: logproto.Stream{
-			Labels:  stream.Labels,
-			Hash:    stream.Hash,
-			Entries: stream.Entries[startIdx:entriesLen],
-		},
-		linesTotalLen: logsWithoutTimeShardLen,
-	}), true
 }
 
 // shardStream shards (divides) the given stream into N smaller streams, where
 // N is the sharding size for the given stream. shardSteam returns the smaller
-// streams and their associated keys for hashing to ingesters.
+// streams and their associated keys for hashing to ingesters, along with the
+// shard count shardCountFor recommended. That count is not necessarily the
+// number of streams returned, as shardNested limits the shards to the number
+// of entries.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) []KeyedStream {
+func (d *Distributor) shardStream(stream logproto.InternalStreamAdapter, lbls labels.Labels, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) ([]KeyedStream, int) {
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
-	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
+	shardCount := d.shardCountFor(logger, stream, pushSize, tenantID, shardStreamsCfg)
+	return d.shardStreamToCount(stream, lbls, tenantID, policy, shardStreamsCfg, shardCount), shardCount
+}
 
+// shardStreamToCount shards stream into shardCount smaller streams, whoever
+// decided that count, and returns them with their hash keys. The number of
+// streams returned is not necessarily shardCount, as shardNested limits the
+// shards to the number of entries.
+func (d *Distributor) shardStreamToCount(stream logproto.InternalStreamAdapter, lbls labels.Labels, tenantID string, policy string, shardStreamsCfg shardstreams.Config, shardCount int) []KeyedStream {
 	if shardCount <= 1 {
 		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream, Policy: policy}}
 	}
 
 	d.m.streamShardCount.Inc()
 	if shardStreamsCfg.LoggingEnabled {
-		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
+		level.Info(log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)).Log("msg", "sharding request", "shard_count", shardCount)
 	}
 
-	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream, policy)
+	return d.divideEntriesBetweenShards(tenantID, lbls, shardCount, shardStreamsCfg, stream, policy)
 }
 
-func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.Stream, policy string) []KeyedStream {
-	derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg, policy)
-
-	for i := 0; i < len(stream.Entries); i++ {
-		streamIndex := i % len(derivedStreams)
-		entries := append(derivedStreams[streamIndex].Stream.Entries, stream.Entries[i])
-		derivedStreams[streamIndex].Stream.Entries = entries
-	}
-
-	return derivedStreams
-}
-
-func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg shardstreams.Config, policy string) []KeyedStream {
-	var (
-		streamLabels   = labelTemplate(stream.Labels, d.logger)
-		streamPattern  = streamLabels.String()
-		derivedStreams = make([]KeyedStream, 0, totalShards)
-
-		streamCount = streamCount(totalShards, stream)
-	)
-
+func (d *Distributor) divideEntriesBetweenShards(tenantID string, lbls labels.Labels, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.InternalStreamAdapter, policy string) []KeyedStream {
 	if totalShards <= 0 {
-		level.Error(d.logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
-		return derivedStreams
+		level.Error(d.logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", stream.EntryCount())
+		return nil
 	}
 
-	entriesPerShard := int(math.Ceil(float64(len(stream.Entries)) / float64(totalShards)))
+	// Only nonempty shards advance the shard rotation.
 	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
-	for i := 0; i < streamCount; i++ {
-		shardNum := (startShard + i) % totalShards
-		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
+	shards := shardNested(stream, lbls, totalShards, startShard)
 
+	derivedStreams := make([]KeyedStream, 0, len(shards))
+	for i := range shards {
 		derivedStreams = append(derivedStreams, KeyedStream{
-			HashKey:        lokiring.TokenFor(tenantID, shard.Labels),
+			HashKey:        lokiring.TokenFor(tenantID, shards[i].Labels),
 			HashKeyNoShard: stream.Hash,
-			Stream:         shard,
+			Stream:         shards[i],
 			Policy:         policy,
 		})
 
 		if shardStreamsCfg.LoggingEnabled {
-			level.Info(d.logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shard.Labels)
+			level.Info(d.logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shards[i].Labels)
 		}
 	}
-	d.shardTracker.SetLastShardNum(tenantID, stream.Hash, startShard+streamCount)
+	d.shardTracker.SetLastShardNum(tenantID, stream.Hash, startShard+len(shards))
 
 	return derivedStreams
 }
 
-func streamCount(totalShards int, stream logproto.Stream) int {
-	if len(stream.Entries) < totalShards {
-		return len(stream.Entries)
-	}
-	return totalShards
-}
-
-// labelTemplate returns a label set that includes the dummy label to be replaced
-// To avoid allocations, this slice is reused when we know the stream value
-func labelTemplate(lbls string, logger log.Logger) labels.Labels {
-	baseLbls, err := syntax.ParseLabels(lbls)
-	if err != nil {
-		level.Error(logger).Log("msg", "couldn't extract labels from stream", "stream", lbls)
-		return labels.EmptyLabels()
-	}
-
-	builder := labels.NewBuilder(baseLbls)
-	builder.Set(ingester.ShardLbName, ingester.ShardLbPlaceholder)
-	return builder.Labels()
-}
-
-func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber, numOfEntries int) logproto.Stream {
-	shardLabel := strconv.Itoa(shardNumber)
-
-	builder := labels.NewBuilder(lbls)
-	if lbls.Has(ingester.ShardLbName) {
-		builder.Set(ingester.ShardLbName, shardLabel)
-	}
-	lbls = builder.Labels()
-
-	return logproto.Stream{
-		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
-		Hash:    labels.StableHash(lbls),
-		Entries: make([]logproto.Entry, 0, numOfEntries),
-	}
-}
-
-func (d *Distributor) truncateLines(vContext validationContext, stream *logproto.Stream) {
+func (d *Distributor) truncateLines(vContext validationContext, stream logproto.InternalStreamAdapter) {
 	if !vContext.maxLineSizeTruncate {
 		return
 	}
@@ -1451,19 +1514,21 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 	suffix := vContext.maxLineSizeTruncateIdentifier
 
 	var truncatedSamples, truncatedBytes int
-	for i, e := range stream.Entries {
-		if maxSize := vContext.maxLineSize; maxSize != 0 && len(e.Line) > maxSize {
-			truncateTo := maxSize - len(suffix)
-			if truncateTo <= 0 {
-				continue
+	stream.EachGroup(func(_, _ []logproto.LabelAdapter, entries []logproto.Entry) {
+		for i, e := range entries {
+			if maxSize := vContext.maxLineSize; maxSize != 0 && len(e.Line) > maxSize {
+				truncateTo := maxSize - len(suffix)
+				if truncateTo <= 0 {
+					continue
+				}
+
+				entries[i].Line = e.Line[:truncateTo] + suffix
+
+				truncatedSamples++
+				truncatedBytes += len(e.Line) - truncateTo
 			}
-
-			stream.Entries[i].Line = e.Line[:truncateTo] + suffix
-
-			truncatedSamples++
-			truncatedBytes += len(e.Line) - truncateTo
 		}
-	}
+	})
 
 	if truncatedSamples > 0 {
 		validation.MutatedSamples.WithLabelValues(validation.LineTooLong, vContext.userID).Add(float64(truncatedSamples))
@@ -1543,7 +1608,8 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 		Streams: make([]logproto.Stream, len(streams)),
 	}
 	for i, s := range streams {
-		req.Streams[i] = s.Stream
+		// Ingester RPCs serialize the flat view without any modifications.
+		req.Streams[i] = s.Stream.FlatView()
 	}
 
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
@@ -1607,17 +1673,24 @@ func (d *Distributor) recordsForStreams(
 	subring *ring.PartitionRing,
 ) ([]*kgo.Record, error) {
 	records := make([]*kgo.Record, 0, len(streams))
+
 	for _, stream := range streams {
 		// TODO(grobinson): Check if this is still needed, I would have expected
 		// streams with no entries to have be removed when the request was validated.
-		if len(stream.Stream.Entries) == 0 {
+		if stream.Stream.EntryCount() == 0 {
 			continue
 		}
 		partition, err := subring.ActivePartitionForKey(stream.HashKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to find partition for stream: %w", err)
 		}
-		streamRecords, err := kafka.Encode(partition, tenant, stream.Stream, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+		var streamRecords []*kgo.Record
+		if d.cfg.OTLPConfig.DeferAttributeExpansion {
+			streamRecords, err = kafka.EncodeInternal(partition, tenant, stream.Stream, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+		} else {
+			// Encode reads the view synchronously without modifying it.
+			streamRecords, err = kafka.Encode(partition, tenant, stream.Stream.FlatView(), d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal streams to records: %w", err)
 		}
@@ -1642,32 +1715,57 @@ type labelData struct {
 	hash uint64
 }
 
-// parseStreamLabels parses stream labels using a request-scoped policy resolver
-func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
+// parsedStreamLabels is what parseStreamLabels resolved for a stream.
+type parsedStreamLabels struct {
+	lbs labels.Labels
+	// labelsString is lbs in canonical form. validateStreams replaces the stream's labels with it.
+	labelsString   string
+	hash           uint64
+	retentionHours string
+	policy         string
+}
+
+// parseStreamLabels takes the labels for key from the label cache, or parses them, and resolves the
+// stream's retention and policy. cached reports a cache hit. It neither validates the labels nor
+// adds them to the cache, which only holds labels parseAndValidateStreamLabels has validated. If
+// key does not parse, only retentionHours is set.
+func (d *Distributor) parseStreamLabels(ctx context.Context, tenantID, key string, streamResolver push.StreamResolver) (parsed parsedStreamLabels, cached bool, err error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := streamResolver.RetentionHoursFor(val.ls)
 		policy := streamResolver.PolicyFor(ctx, val.ls)
-		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
+		return parsedStreamLabels{lbs: val.ls, labelsString: val.ls.String(), hash: val.hash, retentionHours: retentionHours, policy: policy}, true, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, labels.EmptyLabels())
+		retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, labels.EmptyLabels())
 		// TODO: check for global policy.
-		return labels.EmptyLabels(), "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: retentionHours}, false, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	policy := streamResolver.PolicyFor(ctx, ls)
-	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
+	retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, ls)
+	return parsedStreamLabels{lbs: ls, labelsString: ls.String(), hash: labels.StableHash(ls), retentionHours: retentionHours, policy: policy}, false, nil
+}
 
-	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy, format); err != nil {
-		return labels.EmptyLabels(), "", 0, retentionHours, policy, err
+// parseAndValidateStreamLabels parses stream labels (see parseStreamLabels) and validates them,
+// adding them to the label cache once valid. For invalid labels it returns the discard reason with
+// the error, and sets only lbs (empty), retentionHours and policy, as far as they resolved.
+func (d *Distributor) parseAndValidateStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.InternalStreamAdapter, streamResolver push.StreamResolver) (parsedStreamLabels, string, error) {
+	parsed, cached, err := d.parseStreamLabels(ctx, vContext.userID, key, streamResolver)
+	if err != nil {
+		return parsed, validation.InvalidLabels, err
+	}
+	if cached {
+		return parsed, "", nil
 	}
 
-	lsHash := labels.StableHash(ls)
+	if reason, err := d.validator.ValidateLabels(vContext, parsed.lbs, stream); err != nil {
+		return parsedStreamLabels{lbs: labels.EmptyLabels(), retentionHours: parsed.retentionHours, policy: parsed.policy}, reason, err
+	}
 
-	d.labelCache.Add(key, labelData{ls, lsHash})
-	return ls, ls.String(), lsHash, retentionHours, policy, nil
+	d.labelCache.Add(key, labelData{parsed.lbs, parsed.hash})
+	return parsed, "", nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
@@ -1676,7 +1774,7 @@ func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validation
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
+func (d *Distributor) shardCountFor(logger log.Logger, stream logproto.InternalStreamAdapter, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
 	if streamShardcfg.DesiredRate.Val() <= 0 {
 		if streamShardcfg.LoggingEnabled {
 			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
@@ -1697,28 +1795,52 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 		pushRate = 1
 	}
 
-	shards := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate.Val())
-	if shards == 0 {
-		// 1 shard is enough for the given stream.
-		return 1
+	n, capped := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate.Val(), streamShardcfg.MaxShardCount)
+	if capped {
+		d.m.rateStoreMaxShardsLimited.WithLabelValues(tenantID).Inc()
 	}
-
-	return shards
+	return n
 }
 
-func calculateShards(rate int64, pushSize, desiredRate int) int {
+func calculateShards(rate int64, pushSize, desiredRate, maxShardCount int) (n int, capped bool) {
 	shards := float64(rate+int64(pushSize)) / float64(desiredRate)
 	if shards <= 1 {
-		return 1
+		return 1, false
 	}
-	return int(math.Ceil(shards))
+	n = int(math.Ceil(shards))
+	if maxShardCount > 0 && n > maxShardCount {
+		n = maxShardCount
+		capped = true
+	}
+	n = max(n, 1) // minumum number of shards is 1
+	return
 }
 
-func calculateStreamSizes(stream logproto.Stream) (uint64, uint64) {
+func nestedStreamSize(s logproto.InternalStreamAdapter) int {
+	lines, structuredMetadata := calculateStreamSizes(s)
+	return int(lines + structuredMetadata)
+}
+
+// calculateStreamSizes counts line and metadata bytes, with shared attributes counted once
+// per nonempty resource or scope, without deduplicating names.
+func calculateStreamSizes(stream logproto.InternalStreamAdapter) (uint64, uint64) {
 	var entriesSize, structuredMetadataSize uint64
-	for _, entry := range stream.Entries {
-		entriesSize += uint64(len(entry.Line))
-		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+	for _, resource := range stream.ResourceLogs {
+		hasEntries := false
+		for _, scope := range resource.ScopeLogs {
+			if len(scope.Entries) == 0 {
+				continue
+			}
+			hasEntries = true
+			structuredMetadataSize += uint64(util.StructuredMetadataSize(scope.Attrs))
+			for _, entry := range scope.Entries {
+				entriesSize += uint64(len(entry.Line))
+				structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+			}
+		}
+		if hasEntries {
+			structuredMetadataSize += uint64(util.StructuredMetadataSize(resource.Attrs))
+		}
 	}
 	return entriesSize, structuredMetadataSize
 }
@@ -1807,4 +1929,52 @@ func (r requestScopedStreamResolver) PolicyFor(ctx context.Context, lbs labels.L
 	}
 
 	return policy
+}
+
+// streamStats counts retained entries and their sizes after normalization and field discovery.
+type streamStats struct {
+	entriesKept int
+	// Shared attributes counted once per group for ingestion rate limiting.
+	unexpandedSize int
+	// Shared attributes counted once per entry for rate sharding.
+	expandedSize int
+}
+
+// metadataGroup keeps validation counts separate from normalized ingestion sizes.
+type metadataGroup struct {
+	attrs          *[]logproto.LabelAdapter
+	originalSize   int
+	originalCount  int
+	normalizedSize int
+	labels         labels.Labels
+	normalized     bool
+}
+
+func newMetadataGroup(attrs *[]logproto.LabelAdapter) metadataGroup {
+	size := util.StructuredMetadataSize(*attrs)
+	return metadataGroup{
+		attrs:          attrs,
+		originalSize:   size,
+		originalCount:  len(*attrs),
+		normalizedSize: size,
+	}
+}
+
+// duplicateTimestampTracker tracks consecutive kept entries across a stream's groups.
+type duplicateTimestampTracker struct {
+	previousLine      string
+	previousTimestamp time.Time
+	originalTimestamp time.Time
+}
+
+func (t *duplicateTimestampTracker) increment(entry *logproto.Entry) {
+	// Preserve identical lines' timestamps for downstream deduplication.
+	if !t.previousTimestamp.IsZero() && t.previousLine != entry.Line &&
+		(entry.Timestamp.Equal(t.originalTimestamp) || entry.Timestamp.Equal(t.previousTimestamp)) {
+		entry.Timestamp = t.previousTimestamp.Add(time.Nanosecond)
+	} else {
+		t.originalTimestamp = entry.Timestamp
+	}
+	t.previousLine = entry.Line
+	t.previousTimestamp = entry.Timestamp
 }

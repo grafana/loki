@@ -3,24 +3,42 @@ package compactor
 import (
 	"bytes"
 	"context"
-	"flag"
-	"io"
+	"errors"
+	"fmt"
 	"math"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/grafana/dskit/flagext"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/engine/compactor/internal/compactortest"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -29,14 +47,64 @@ import (
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
-// TestCoordinator_EndToEnd drives the coordinator against a real
+// compactionScenario owns the durable inputs and scheduler/worker used by one
+// test. Steps read the current ToC, so consecutive runs use persisted state.
+type compactionScenario struct {
+	ctx         context.Context
+	t           *testing.T
+	stored      *compactortest.Scenario
+	coordinator *coordinator
+}
+
+type scenarioInput struct {
+	window        time.Time
+	logs          []compactortest.Source
+	logsobjConfig *logsobj.BuilderBaseConfig
+}
+
+// newCompactionScenario wraps compactortest.New without needing to export the coordinator.
+func newCompactionScenario(ctx context.Context, t *testing.T, input scenarioInput) *compactionScenario {
+	t.Helper()
+	seeded := compactortest.New(ctx, t, input.window, input.logs)
+
+	s := &compactionScenario{
+		ctx:         ctx,
+		t:           t,
+		stored:      seeded,
+		coordinator: newIntegrationCoordinator(ctx, t, seeded.Bucket, input.window.Add(time.Hour), input.logsobjConfig),
+	}
+	s.coordinator.limits = integrationLimits{}
+	return s
+}
+
+// compactUntilIdle compacts tenant with the planner of the planner version of
+// the coordinator, until the planner has no work.
+func (s *compactionScenario) compactUntilIdle(tenant string) {
+	s.t.Helper()
+	if s.coordinator.cfg.PlannerVersion == plannerVersionCoupled {
+		s.compactPairsUntilIdle(tenant)
+		return
+	}
+	for cycle := range 10 {
+		indexOutcome := s.coordinator.runIndexMergePhase(s.ctx, tenant, s.stored.Window, 0)
+		require.NotEqual(s.t, phaseOutcomeError, indexOutcome, "index phase failed in cycle %d", cycle)
+		logOutcome := s.coordinator.runLogMergePhase(s.ctx, tenant)
+		require.NotEqual(s.t, phaseOutcomeError, logOutcome, "log phase failed in cycle %d", cycle)
+		if indexOutcome == phaseOutcomeNoWork && logOutcome == phaseOutcomeNoWork {
+			return
+		}
+	}
+	s.t.Fatal("compaction did not reach a no-work cycle")
+}
+
+// TestCoordinator_IndexCompactionCycles drives the coordinator against a real
 // scheduler + worker pair wired in-process via wire.Local transport. Asserts:
 //
 //   - Merges create the expected number of index objects and report their paths.
 //   - The coordinator atomically swaps the ToC: source paths removed, output paths
 //     added with the right timestamps.
 //   - Other tenants' rows survive byte-equivalent across the swap.
-func TestCoordinator_EndToEnd(t *testing.T) {
+func TestCoordinator_IndexCompactionCycles(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -57,64 +125,32 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 	}
 	writeToCWithIndexes(ctx, t, bucket, seed)
 
-	// Upload an index with postings + stats per distinct path, tenant-tagged.
-	// Build a path→tenants map so each path is seeded once with all its tenants.
-	pathTenants := map[string][]string{}
-	pathStart := map[string]time.Time{}
-	for tenant, entries := range seed {
-		for _, e := range entries {
-			if _, ok := pathStart[e.path]; !ok {
-				pathStart[e.path] = e.start
-			}
-			pathTenants[e.path] = append(pathTenants[e.path], tenant)
-		}
-	}
-	for path, tenants := range pathTenants {
-		seedSourceIndexObject(ctx, t, bucket, path, pathStart[path], tenants...)
-	}
+	seedSourceIndexObject(ctx, t, bucket, "indexes/aa/src-0", window.Add(time.Hour), "acme", "untouched")
+	seedSourceIndexObject(ctx, t, bucket, "indexes/bb/src-1", window.Add(2*time.Hour), "acme")
+	seedSourceIndexObject(ctx, t, bucket, "indexes/cc/src-2", window.Add(3*time.Hour), "acme")
+	seedSourceIndexObject(ctx, t, bucket, "indexes/dd/idx-d-0", window.Add(time.Hour), "untouched")
 
-	// Bring up a real scheduler + worker pair using wire.Local transport.
-	sched, _ := startInProcessSchedulerAndWorker(ctx, t, bucket)
-
-	// Construct the metastore writer + coordinator.
-	tocWriter := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
-	c := &coordinator{
-		cfg: Config{
-			Enabled:                   true,
-			PollingInterval:           1 * time.Second,
-			MaxRunsPerTask:            2,
-			ToCConsolidateTimeout:     10 * time.Second,
-			MaxRunningCompactionTasks: 4,
-			PlanVersion:               1,
-			Scheduler:                 SchedulerConfig{Endpoint: defaultEndpoint},
-		},
-		logger: log.NewNopLogger(),
-		bucket: bucket,
-		runPlan: func(rpCtx context.Context, opts workflow.Options, plan *physical.Plan) (arrow.RecordBatch, error) {
-			return runPlan(rpCtx, log.NewNopLogger(), sched, opts, plan)
-		},
-		metastoreWriter: tocWriter,
-		clock:           func() time.Time { return window.Add(1 * time.Hour) },
-	}
+	c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
+	c.indexDispatcher.limit = 4
 
 	// --- Cycle 1: 3 sources → ⌈P/K⌉ outputs ---
-	preCycle1 := mustLoadTenant(ctx, t, bucket, window, "acme")
-	require.Len(t, preCycle1, 3, "sanity: 3 source indexes seeded")
-	_, runErr := c.compactTenant(ctx, "acme", window, preCycle1)
+	initial := mustLoadTenantIndexes(ctx, t, bucket, window)
+	require.Equal(t, []string{"indexes/aa/src-0", "indexes/dd/idx-d-0"}, pathsOf(initial["untouched"]))
+	require.Len(t, initial["acme"], 3, "sanity: 3 source indexes seeded")
+	_, runErr := c.compactTenantIndexes(ctx, "acme", window, initial["acme"])
 	require.NoError(t, runErr)
 
-	postCycle1 := mustLoadTenants(ctx, t, bucket, window)
+	postCycle1 := mustLoadTenantIndexes(ctx, t, bucket, window)
 	require.Less(t, len(postCycle1["acme"]), 3,
 		"cycle 1 must reduce acme's index count from 3 to fewer")
-	require.Equal(t,
-		[]string{"indexes/aa/src-0", "indexes/dd/idx-d-0"},
-		pathsOf(postCycle1["untouched"]),
-		"untouched tenant must be byte-identical across the swap")
+	require.Equal(t, initial["untouched"], postCycle1["untouched"],
+		"other tenant's index entries, including the shared source path, must survive the swap")
 
 	// The merged output objects must exist in the bucket after the swap.
 	for _, entry := range postCycle1["acme"] {
 		_, err := bucket.Attributes(ctx, entry.Path)
 		require.NoError(t, err, "phase 1 output %q must exist after the swap", entry.Path)
+		requireToCShardBuckets(ctx, t, bucket, "acme", window, entry.Path)
 	}
 	// Pre-swap source paths must be gone from acme's section.
 	acmePaths := pathsOf(postCycle1["acme"])
@@ -123,50 +159,701 @@ func TestCoordinator_EndToEnd(t *testing.T) {
 			"source path %q must be removed from acme's section after the swap", p)
 	}
 
-	// But the same path must remain present in any OTHER tenant's section that
-	// also referenced it — ReplaceIndexPointers is scoped to one tenant.
-	// indexes/aa/src-0 is shared between acme and untouched here.
-	untouchedPaths := pathsOf(postCycle1["untouched"])
-	for _, p := range []string{"indexes/aa/src-0", "indexes/dd/idx-d-0"} {
-		require.Contains(t, untouchedPaths, p,
-			"shared path %q must remain in untouched's section; the swap is tenant-scoped", p)
-	}
-
-	// --- Cycle 2: drive against the post-swap ToC. Should converge further. ---
-	indexesC2 := mustLoadTenant(ctx, t, bucket, window, "acme")
-	if len(indexesC2) > 1 {
-		_, runErr := c.compactTenant(ctx, "acme", window, indexesC2)
-		require.NoError(t, runErr)
-		postCycle2 := mustLoadTenants(ctx, t, bucket, window)
-		t.Logf("cycle 2: acme went from %d → %d indexes", len(indexesC2), len(postCycle2["acme"]))
-		require.LessOrEqual(t, len(postCycle2["acme"]), len(postCycle1["acme"]),
-			"cycle 2 must not increase index count")
-	}
-
-	// --- Cycle 3+: drive until convergence (≤1 index). Bounded by max-iters
-	// so a regression doesn't infinite-loop. ---
-	for i := range 5 {
-		acmeIdx := mustLoadTenant(ctx, t, bucket, window, "acme")
-		if len(acmeIdx) <= 1 {
+	// Drive subsequent cycles from persisted state, bounded to prevent hangs.
+	for cycle := range 6 {
+		before := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
+		if len(before) <= 1 {
 			break
 		}
-		_, runErr := c.compactTenant(ctx, "acme", window, acmeIdx)
+		_, runErr := c.compactTenantIndexes(ctx, "acme", window, before)
 		require.NoError(t, runErr)
-		t.Logf("convergence loop iter %d: acme → %d indexes", i,
-			len(mustLoadTenant(ctx, t, bucket, window, "acme")))
+		after := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
+		require.LessOrEqual(t, len(after), len(before), "cycle %d must not increase index count", cycle+2)
+		t.Logf("cycle %d: acme went from %d → %d indexes", cycle+2, len(before), len(after))
 	}
-	final := mustLoadTenants(ctx, t, bucket, window)
-	require.LessOrEqual(t, len(final["acme"]), 1,
-		"after multiple cycles, acme must converge to ≤ 1 covering index")
-	require.ElementsMatch(t,
-		[]string{"indexes/aa/src-0", "indexes/dd/idx-d-0"},
-		pathsOf(final["untouched"]),
-		"untouched tenant must remain byte-identical across all cycles (including the path shared with acme)")
+	final := mustLoadTenantIndexes(ctx, t, bucket, window)
+	require.Equal(t, len(final["acme"]), 1,
+		"after multiple cycles, acme tenant must converge to 1 covering index")
+	require.Equal(t, initial["untouched"], final["untouched"],
+		"other tenant's index entries must survive every cycle")
 }
 
-// startInProcessSchedulerAndWorker brings up a wire.Local scheduler + worker
-// pair sharing the supplied bucket. Both register cleanup hooks on t.
-func startInProcessSchedulerAndWorker(ctx context.Context, t *testing.T, bucket objstore.Bucket) (*scheduler.Scheduler, *worker.Worker) {
+func TestCoordinator_IndexMergeShardBuckets(t *testing.T) {
+	t.Run("records the shard layout of the merged indexes in the ToC when the layout is not the default", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		bucket := objstore.NewInMemBucket()
+		window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{"acme": {
+			{path: "indexes/aa/src-0", start: window.Add(1 * time.Hour), end: window.Add(5 * time.Hour)},
+			{path: "indexes/bb/src-1", start: window.Add(2 * time.Hour), end: window.Add(6 * time.Hour)},
+		}})
+		layout := streams.MustShardLayoutFromBuckets(8)
+		seedSourceIndexObjectWithShardLayout(ctx, t, bucket, "indexes/aa/src-0", window.Add(time.Hour), layout, "acme")
+		seedSourceIndexObjectWithShardLayout(ctx, t, bucket, "indexes/bb/src-1", window.Add(2*time.Hour), layout, "acme")
+
+		c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
+		_, err := c.compactTenantIndexes(ctx, "acme", window, mustLoadTenantIndexes(ctx, t, bucket, window)["acme"])
+		require.NoError(t, err)
+
+		after := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
+		require.Len(t, after, 1)
+		requireToCShardBuckets(ctx, t, bucket, "acme", window, after[0].Path)
+	})
+}
+
+func TestCoordinator_LogCompactionSortSchemaGroups(t *testing.T) {
+	appSchema := []string{"label:app"}
+	clusterSchema := []string{"label:cluster"}
+	appLayout := streams.NewLayout(streams.DefaultShardLayout(), appSchema)
+	clusterLayout := streams.NewLayout(streams.DefaultShardLayout(), clusterSchema)
+	defaultShardCount := int64(streams.DefaultShardLayout().Buckets())
+	appLayout8 := streams.NewLayout(streams.MustShardLayoutFromBuckets(8), appSchema)
+	appLayout256 := streams.NewLayout(streams.MustShardLayoutFromBuckets(256), appSchema)
+
+	tests := []struct {
+		name            string
+		indexGroups     []sortSchemaIndexGroup
+		expectedIndexes int
+		expectedLayouts []streams.Layout
+	}{
+		{
+			name: "an index compacts to one index in its sort schema",
+			indexGroups: []sortSchemaIndexGroup{{
+				schema: appSchema, shardCount: defaultShardCount, layouts: []streams.Layout{appLayout, appLayout},
+			}},
+			expectedIndexes: 1,
+			expectedLayouts: []streams.Layout{appLayout},
+		},
+		{
+			name: "indexes with different sort schemas compact separately and never merge",
+			indexGroups: []sortSchemaIndexGroup{
+				{schema: appSchema, shardCount: defaultShardCount, layouts: []streams.Layout{appLayout, appLayout}},
+				{schema: clusterSchema, shardCount: defaultShardCount, layouts: []streams.Layout{clusterLayout, clusterLayout}},
+			},
+			expectedIndexes: 2,
+			expectedLayouts: []streams.Layout{appLayout, clusterLayout},
+		},
+		{
+			name: "indexes with different shard layouts compact separately and never merge",
+			indexGroups: []sortSchemaIndexGroup{
+				{schema: appSchema, shardCount: int64(appLayout8.ShardLayout().Buckets()), layouts: []streams.Layout{appLayout8, appLayout8}},
+				{schema: appSchema, shardCount: defaultShardCount, layouts: []streams.Layout{appLayout, appLayout}},
+				{schema: appSchema, shardCount: int64(appLayout256.ShardLayout().Buckets()), layouts: []streams.Layout{appLayout256, appLayout256}},
+			},
+			expectedIndexes: 3,
+			expectedLayouts: []streams.Layout{appLayout8, appLayout, appLayout256},
+		},
+	}
+
+	for _, plannerVersion := range plannerVersions {
+		for _, test := range tests {
+			t.Run(fmt.Sprintf("planner version %d: %s", plannerVersion, test.name), func(t *testing.T) {
+				testLogCompactionSortSchemaGroup(t, plannerVersion, test.indexGroups, test.expectedIndexes, test.expectedLayouts)
+			})
+		}
+	}
+}
+
+// sortSchemaIndexGroup is one index over log objects of one sort schema and
+// shard layout.
+type sortSchemaIndexGroup struct {
+	schema     []string
+	shardCount int64
+	layouts    []streams.Layout
+}
+
+// testLogCompactionSortSchemaGroup seeds one index per group, compacts until
+// idle with the planner of plannerVersion, and checks that the window ends with
+// expectedIndexes indexes of expectedLayouts.
+func testLogCompactionSortSchemaGroup(t *testing.T, plannerVersion uint, indexGroups []sortSchemaIndexGroup, expectedIndexes int, expectedLayouts []streams.Layout) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	const tenant = "acme"
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	base := window.Add(time.Hour)
+
+	bucket := compactortest.NewBucket()
+	var sourceLines []string
+	var tocIndexes []testIndex
+	for i, group := range indexGroups {
+		groupSources := make([]string, len(group.layouts))
+		for j, layout := range group.layouts {
+			sourcePath := fmt.Sprintf("objects/group-%d-source-%d", i, j)
+			groupSources[j] = sourcePath
+			first, second := sourcePath+"/first", sourcePath+"/second"
+			sourceLines = append(sourceLines, first, second)
+
+			entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+			entries.ForStream(`{app="api",cluster="prod"}`).
+				Entry(int(base.Add(time.Second).Unix()), "{}", second).
+				Entry(int(base.Unix()), "{}", first)
+
+			source := newScenarioLogSource(t, sourcePath, tenant, entries, layout)
+			reader, err := source.Object.Reader(ctx)
+			require.NoError(t, err)
+			require.NoError(t, errors.Join(bucket.Upload(ctx, source.Path, reader), reader.Close()))
+		}
+		indexPath := fmt.Sprintf("indexes/%02d/log-sources", i)
+		tocIndexes = append(tocIndexes, seedLogCompactionIndex(ctx, t, bucket, indexPath, tenant, groupSources, group.schema, group.shardCount, base))
+	}
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: tocIndexes})
+	c := newIntegrationCoordinator(ctx, t, bucket, base, nil)
+	c.limits = integrationLimits{}
+	c.cfg.PlannerVersion = plannerVersion
+
+	before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+	require.Len(t, before, len(indexGroups))
+
+	stored := &compactortest.Scenario{Bucket: bucket, Window: window}
+	scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
+	scenario.compactUntilIdle(tenant)
+
+	after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+	require.Len(t, after, expectedIndexes)
+	for _, entry := range after {
+		require.NotContains(t, pathsOf(before), entry.Path, "compaction must replace every source index")
+	}
+	contents := stored.ReadReachableContents(ctx, t, tenant)
+	requireLogContents(t, contents, sourceLines, expectedLayouts...)
+	var indexLayouts []streams.Layout
+	for _, entry := range after {
+		require.True(t, entry.StartTs.Equal(base))
+		require.True(t, entry.EndTs.Equal(base.Add(time.Second)))
+		exists, err := bucket.Exists(ctx, entry.Path)
+		require.NoError(t, err)
+		require.True(t, exists, "replacement index %q must exist", entry.Path)
+
+		indexLayout, ok, err := indexLayoutAt(ctx, bucket, tenant, entry.Path)
+		require.NoError(t, err)
+		require.True(t, ok, "replacement index %q must record a layout", entry.Path)
+		indexLayouts = append(indexLayouts, indexLayout)
+		requireToCShardBuckets(ctx, t, bucket, tenant, window, entry.Path)
+	}
+	require.ElementsMatch(t, expectedLayouts, indexLayouts)
+}
+
+// seedLogCompactionRunIndex writes one index object of a run over the log
+// objects at sourcePaths. It holds the column=value postings of every source,
+// and the stats rows of statSources only, so the run spreads both its postings
+// and its stats across its index objects. Every index object records the
+// layout in a stats section.
+func seedLogCompactionRunIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, path, tenant, column, value string, sourcePaths, statSources, sortSchema []string, ts time.Time) {
+	t.Helper()
+	streamLabels := labels.FromStrings("app", "api", "cluster", "prod")
+	shardLayout := streams.DefaultShardLayout()
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+	postingsBuilder.SetTenant(tenant)
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), streams.NewLayout(shardLayout, sortSchema))
+	statsBuilder.SetTenant(tenant)
+	schemaLabels := make(map[string]string, len(sortSchema))
+	for _, key := range sortSchema {
+		_, name, _ := strings.Cut(key, ":")
+		schemaLabels[name] = streamLabels.Get(name)
+	}
+	for _, sourcePath := range sourcePaths {
+		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: sourcePath, ShardBuckets: int64(shardLayout.Buckets()), SectionIndex: 0,
+			ColumnName: column, LabelValue: value, StreamID: 0,
+			Time: postings.At(ts), UncompressedSize: 100,
+		})
+	}
+	for _, sourcePath := range statSources {
+		obj, err := dataobj.FromBucket(ctx, bucket, sourcePath, 0)
+		require.NoError(t, err)
+		var uncompressedSize int64
+		for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
+			uncompressedSize += record.UncompressedSize()
+		}
+		statsBuilder.Append(stats.Stat{
+			ObjectPath: sourcePath, SectionIndex: 0, SortSchema: strings.Join(sortSchema, ","),
+			Labels: schemaLabels, MinTimestamp: ts.UnixNano(), MaxTimestamp: ts.Add(time.Second).UnixNano(),
+			RowCount: 2, UncompressedSize: uncompressedSize, ShardBucket: shardLayout.BucketFromLabels(streamLabels),
+		})
+	}
+	storeIntegrationObject(ctx, t, bucket, path, postingsBuilder, statsBuilder)
+}
+
+func TestCoordinator_LogCompactionRuns(t *testing.T) {
+	t.Run("compacts the log objects of an index run until idle, keeps every log line and replaces the whole run", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		const tenant = "acme"
+		window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+		base := window.Add(time.Hour)
+		schema := []string{"label:app"}
+		layout := streams.NewLayout(streams.DefaultShardLayout(), schema)
+
+		bucket := objstore.NewInMemBucket()
+		var sources, sourceLines []string
+		for i := range 2 {
+			sourcePath := fmt.Sprintf("objects/source-%d", i)
+			sources = append(sources, sourcePath)
+			first, second := sourcePath+"/first", sourcePath+"/second"
+			sourceLines = append(sourceLines, first, second)
+
+			entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+			entries.ForStream(`{app="api",cluster="prod"}`).
+				Entry(int(base.Add(time.Second).Unix()), "{}", second).
+				Entry(int(base.Unix()), "{}", first)
+			source := newScenarioLogSource(t, sourcePath, tenant, entries, layout)
+			reader, err := source.Object.Reader(ctx)
+			require.NoError(t, err)
+			require.NoError(t, errors.Join(bucket.Upload(ctx, source.Path, reader), reader.Close()))
+		}
+		seedLogCompactionRunIndex(ctx, t, bucket, "indexes/run/app", tenant, "app", "api", sources, sources[:1], schema, base)
+		seedLogCompactionRunIndex(ctx, t, bucket, "indexes/run/cluster", tenant, "cluster", "prod", sources, sources[1:], schema, base)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			indexpointers.IndexPointer{Path: "indexes/run/app", StartTs: base, EndTs: base.Add(time.Second), RunID: 1},
+			indexpointers.IndexPointer{Path: "indexes/run/cluster", StartTs: base, EndTs: base.Add(time.Second), RunID: 1},
+		)
+
+		c := newIntegrationCoordinator(ctx, t, bucket, base, nil)
+		c.limits = integrationLimits{}
+		stored := &compactortest.Scenario{Bucket: bucket, Window: window}
+		scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
+		scenario.compactUntilIdle(tenant)
+
+		after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+		require.Len(t, after, 1)
+		require.NotContains(t, []string{"indexes/run/app", "indexes/run/cluster"}, after[0].Path)
+		requireLogContents(t, stored.ReadReachableContents(ctx, t, tenant), sourceLines, layout)
+	})
+
+	t.Run("filters an index run that the ToC lists out of key order for the log objects that a merge leaves unmerged, and keeps every log line", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		const tenant = "acme"
+		window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+		base := window.Add(time.Hour)
+		schema := []string{"label:app"}
+		layout := streams.NewLayout(streams.DefaultShardLayout(), schema)
+
+		bucket := objstore.NewInMemBucket()
+		var sources, sourceLines []string
+		for i := range 3 {
+			sourcePath := fmt.Sprintf("objects/source-%d", i)
+			sources = append(sources, sourcePath)
+			first, second := sourcePath+"/first", sourcePath+"/second"
+			sourceLines = append(sourceLines, first, second)
+
+			entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+			entries.ForStream(`{app="api",cluster="prod"}`).
+				Entry(int(base.Add(time.Second).Unix()), "{}", second).
+				Entry(int(base.Unix()), "{}", first)
+			source := newScenarioLogSource(t, sourcePath, tenant, entries, layout)
+			reader, err := source.Object.Reader(ctx)
+			require.NoError(t, err)
+			require.NoError(t, errors.Join(bucket.Upload(ctx, source.Path, reader), reader.Close()))
+		}
+		seedLogCompactionRunIndex(ctx, t, bucket, "indexes/run/app", tenant, "app", "api", sources, sources[:1], schema, base)
+		seedLogCompactionRunIndex(ctx, t, bucket, "indexes/run/cluster", tenant, "cluster", "prod", sources, sources[1:], schema, base)
+		keysOf := func(column, value string) postings.KeyRange {
+			key := postings.Key{Kind: postings.KindLabel, ColumnName: column, LabelValue: value}
+			keys, err := postings.NewKeyRange(key, key)
+			require.NoError(t, err)
+			return keys
+		}
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			indexpointers.IndexPointer{Path: "indexes/run/cluster", StartTs: base, EndTs: base.Add(time.Second), RunID: 1, PostingKeys: keysOf("cluster", "prod")},
+			indexpointers.IndexPointer{Path: "indexes/run/app", StartTs: base, EndTs: base.Add(time.Second), RunID: 1, PostingKeys: keysOf("app", "api")},
+		)
+
+		c := newIntegrationCoordinator(ctx, t, bucket, base, nil)
+		c.limits = integrationLimits{}
+		plans, _, anyError := c.planLogCompactions(ctx, tenant)
+		require.False(t, anyError)
+		require.Len(t, plans, 1)
+		var filters int
+		for _, task := range plans[0].tasks {
+			if filter, ok := task.(indexFilterTask); ok {
+				filters++
+				require.Equal(t, []string{"indexes/run/app", "indexes/run/cluster"}, filter.sourceIndexPaths)
+			}
+		}
+		require.Equal(t, 1, filters, "a merge of two of the three log objects leaves one unmerged")
+
+		stored := &compactortest.Scenario{Bucket: bucket, Window: window}
+		scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
+		scenario.compactUntilIdle(tenant)
+		requireLogContents(t, stored.ReadReachableContents(ctx, t, tenant), sourceLines, layout)
+	})
+}
+
+func seedLogCompactionIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, path, tenant string, sourcePaths, sortSchema []string, shardCount int64, ts time.Time) testIndex {
+	t.Helper()
+	streamLabels := labels.FromStrings("app", "api", "cluster", "prod")
+	postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+	postingsBuilder.SetTenant(tenant)
+	shardLayout, err := streams.ShardLayoutFromBuckets(uint32(shardCount))
+	require.NoError(t, err)
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), streams.NewLayout(shardLayout, sortSchema))
+	statsBuilder.SetTenant(tenant)
+	schemaLabels := make(map[string]string, len(sortSchema))
+	for _, key := range sortSchema {
+		_, name, _ := strings.Cut(key, ":")
+		schemaLabels[name] = streamLabels.Get(name)
+	}
+	for _, sourcePath := range sourcePaths {
+		// LogMerge checks its input bytes against the stats, so they must hold
+		// the real size of the source records.
+		obj, err := dataobj.FromBucket(ctx, bucket, sourcePath, 0)
+		require.NoError(t, err)
+		var uncompressedSize int64
+		for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
+			uncompressedSize += record.UncompressedSize()
+		}
+		statsBuilder.Append(stats.Stat{
+			ObjectPath: sourcePath, SectionIndex: 0, SortSchema: strings.Join(sortSchema, ","),
+			Labels: schemaLabels, MinTimestamp: ts.UnixNano(), MaxTimestamp: ts.Add(time.Second).UnixNano(),
+			RowCount: 2, UncompressedSize: uncompressedSize, ShardBucket: shardLayout.BucketFromLabels(streamLabels),
+		})
+		postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+			ObjectPath: sourcePath, ShardBuckets: shardCount, SectionIndex: 0,
+			ColumnName: "app", LabelValue: "api", StreamID: 0,
+			Time: postings.At(ts), UncompressedSize: 100,
+		})
+	}
+	storeIntegrationObject(ctx, t, bucket, path, postingsBuilder, statsBuilder)
+	return testIndex{path: path, start: ts, end: ts.Add(time.Second)}
+}
+
+// plannerVersions are the planner versions that the end-to-end tests run with.
+var plannerVersions = []uint{plannerVersionPhased, plannerVersionCoupled}
+
+func TestE2ECompactionConvergence(t *testing.T) {
+	fiveSourceLayouts := func(shardLayout streams.ShardLayout) []streams.Layout {
+		layout := streams.NewLayout(shardLayout, []string{"label:app"})
+		return []streams.Layout{layout, layout, layout, layout, layout}
+	}
+	// Five level 1 runs give two merges and a filter. The two level 2
+	// outputs then merge into level 3, and the lone level 1 run is filtered
+	// again. The coupled planner needs no filters.
+	levelTasks := map[uint]map[string]int{
+		plannerVersionPhased:  {"log-merge": 3, "index-filter": 2},
+		plannerVersionCoupled: {"log-merge": 3},
+	}
+	// The coupled planner merges five pairs in four merges. Each merge runs
+	// as several LogMerge tasks, so each also runs one IndexMerge.
+	splitTasks := map[uint]map[string]int{
+		plannerVersionPhased:  {"log-merge": 13, "index-filter": 2},
+		plannerVersionCoupled: {"log-merge": 12, "index-merge": 4},
+	}
+
+	for _, plannerVersion := range plannerVersions {
+		t.Run(fmt.Sprintf("planner version %d", plannerVersion), func(t *testing.T) {
+			t.Run("equal sort layouts converge to one sorted run", func(t *testing.T) {
+				runConvergenceTest(t, convergenceCase{plannerVersion: plannerVersion, layouts: fiveSourceLayouts(streams.DefaultShardLayout())})
+			})
+
+			t.Run("runs spread across size levels converge with fewer than k runs in every level", func(t *testing.T) {
+				// A fresh source run holds about 80KB. A 100KB base with a
+				// ratio of 2 puts fresh runs in level 1, a merge of two in
+				// level 2, and a merge of two level 2 runs in level 3.
+				runConvergenceTest(t, convergenceCase{
+					plannerVersion: plannerVersion,
+					layouts:        fiveSourceLayouts(streams.DefaultShardLayout()),
+					levelBase:      100_000,
+					levelRatio:     2,
+					wantRunsEnd:    2,
+					wantTasks:      levelTasks[plannerVersion],
+				})
+			})
+
+			t.Run("a merge above the maximum task size splits into key range tasks that keep every record once", func(t *testing.T) {
+				// A 100KB maximum splits the merges into many tasks. Their
+				// disjoint outputs still converge to one sorted run.
+				runConvergenceTest(t, convergenceCase{
+					plannerVersion: plannerVersion,
+					layouts:        fiveSourceLayouts(streams.DefaultShardLayout()),
+					maxTaskSize:    100_000,
+					wantTasks:      splitTasks[plannerVersion],
+				})
+			})
+
+			for _, buckets := range []uint32{8, 256} {
+				shardLayout := streams.MustShardLayoutFromBuckets(buckets)
+
+				t.Run(fmt.Sprintf("equal sort layouts with %d shard buckets converge to one sorted run", buckets), func(t *testing.T) {
+					runConvergenceTest(t, convergenceCase{plannerVersion: plannerVersion, layouts: fiveSourceLayouts(shardLayout)})
+				})
+
+				t.Run(fmt.Sprintf("runs spread across size levels converge with %d shard buckets", buckets), func(t *testing.T) {
+					runConvergenceTest(t, convergenceCase{
+						plannerVersion: plannerVersion,
+						layouts:        fiveSourceLayouts(shardLayout),
+						levelBase:      100_000,
+						levelRatio:     2,
+						wantRunsEnd:    2,
+						wantTasks:      levelTasks[plannerVersion],
+					})
+				})
+
+				t.Run(fmt.Sprintf("a merge above the maximum task size splits into key range tasks that keep every record once with %d shard buckets", buckets), func(t *testing.T) {
+					runConvergenceTest(t, convergenceCase{
+						plannerVersion: plannerVersion,
+						layouts:        fiveSourceLayouts(shardLayout),
+						maxTaskSize:    100_000,
+						wantTasks:      splitTasks[plannerVersion],
+					})
+				})
+			}
+		})
+	}
+}
+
+// convergenceCase configures runConvergenceTest.
+type convergenceCase struct {
+	// plannerVersion selects the planner.
+	plannerVersion uint
+
+	layouts []streams.Layout
+
+	// levelBase and levelRatio replace the default size levels when
+	// levelBase is non-zero. With the defaults, every fixture run is in level
+	// 0, so compaction ends with one sorted run.
+	levelBase, levelRatio uint64
+
+	// wantRunsEnd is the number of runs left when compaction stops, for a
+	// case with custom size levels.
+	wantRunsEnd int
+
+	// wantTasks, when set, is the number of log tasks run for each actor.
+	wantTasks map[string]int
+
+	// maxTaskSize is the maximum input size of one LogMerge task. 0 disables
+	// the split.
+	maxTaskSize uint64
+}
+
+// runConvergenceTest creates one overlapping object for every layout and
+// compacts until a cycle does no work. Every source record must stay
+// reachable.
+func runConvergenceTest(t *testing.T, test convergenceCase) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	const tenant = "acme"
+
+	const streamCount = 26
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	base := window.Add(time.Hour)
+	// Small outputs and moderately sized lines exercise rollover across objects.
+	outputConfig := logsobj.BuilderBaseConfig{
+		TargetPageSize: 2048, TargetSectionSize: 8 * 1024,
+		TargetObjectSize: 16 * 1024, BufferSize: 2048,
+		SectionStripeMergeLimit: 2, EstimatedCompressionRatio: 1,
+	}
+	input := scenarioInput{window: window, logsobjConfig: &outputConfig}
+	payload := strings.Repeat("A", 1024)
+	for file, layout := range test.layouts {
+		entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+		for app := 'a'; app <= 'z'; app++ {
+			stream := entries.ForStream(fmt.Sprintf(`{app=%q}`, string(app)))
+			for record := range 3 {
+				stream.Entry(int(base.Unix())+record, "{}", fmt.Sprintf("file-%d/app-%c/record-%d:%s", file, app, record, payload))
+			}
+		}
+
+		input.logs = append(input.logs, newScenarioLogSource(t, fmt.Sprintf("objects/source-%d", file), tenant, entries, layout))
+	}
+
+	scenario := newCompactionScenario(ctx, t, input)
+	scenario.coordinator.cfg.PlannerVersion = test.plannerVersion
+	if test.levelBase != 0 {
+		strategy, err := v2.NewSizeLeveledStrategy(test.levelBase, test.levelRatio, scenario.coordinator.cfg.LogMaxRunsPerTask)
+		require.NoError(t, err)
+		scenario.coordinator.logMergePlanningStrategy = strategy
+	}
+	scenario.coordinator.cfg.LogMaxTaskSize = flagext.Bytes(test.maxTaskSize)
+	actors := recordLogActors(scenario.coordinator)
+	if test.plannerVersion == plannerVersionCoupled {
+		actors = recordActors(scenario.coordinator.pairDispatcher)
+	}
+	indexes := scenario.stored.Indexes(ctx, t, tenant)
+	require.Len(t, indexes, len(test.layouts))
+	var sourceLines []string
+	for fileIdx, source := range input.logs {
+		indexPath := compactortest.IndexPath(fileIdx)
+		require.True(t, slices.ContainsFunc(indexes, func(index indexpointers.IndexPointer) bool {
+			return index.Path == indexPath
+		}), "index for source %q must be in the ToC", source.Path)
+
+		// Check the file pointed to by this index is the correct shape according to the index
+		refs, _, err := logSectionRefsFor(ctx, scenario.stored.Bucket, tenant, runOfPath(indexPath))
+		require.NoError(t, err)
+		require.NotEmpty(t, refs)
+		require.Equal(t, source.Path, refs[0].Ref.ObjectPath)
+		indexedLayout, ok, err := indexLayoutAt(ctx, scenario.stored.Bucket, tenant, indexPath)
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.Equal(t, test.layouts[fileIdx], indexedLayout)
+
+		// Check the actual logs section is the correct shape too
+		obj, err := dataobj.FromBucket(ctx, scenario.stored.Bucket, source.Path, 0)
+		require.NoError(t, err)
+		tenantSections, err := sections.ForTenant(obj.Sections(), tenant)
+		require.NoError(t, err)
+		require.NotEmpty(t, tenantSections.Logs, "source %q must contain tenant logs", source.Path)
+		streamsSection, err := streams.Open(ctx, tenantSections.Streams)
+		require.NoError(t, err)
+		gotLayout, ok, err := streamsSection.Layout()
+		require.NoError(t, err)
+		require.True(t, ok)
+		require.True(t, test.layouts[fileIdx].Equal(gotLayout), "source %q must record its stream layout", source.Path)
+		for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
+			sourceLines = append(sourceLines, string(record.Line))
+		}
+	}
+	require.Len(t, sourceLines, len(test.layouts)*streamCount*3, "seeded source objects must contain all records")
+
+	scenario.compactUntilIdle(tenant)
+	if test.wantTasks != nil {
+		tasks := make(map[string]int)
+		for _, actor := range actors() {
+			tasks[actor]++
+		}
+		require.Equal(t, test.wantTasks, tasks)
+	}
+
+	finalContents := scenario.stored.ReadReachableContents(ctx, t, tenant)
+	requireLogContents(t, finalContents, sourceLines, test.layouts[0])
+	finalIndexes := scenario.stored.Indexes(ctx, t, tenant)
+	if test.levelBase == 0 {
+		requireSingleSortedRun(t, scenario, finalIndexes, tenant, test.layouts[0], len(sourceLines))
+		return
+	}
+	if test.plannerVersion == plannerVersionCoupled {
+		logRuns := scenario.requirePairs(tenant)
+		require.Len(t, logRuns, test.wantRunsEnd)
+		require.False(t, scenario.coordinator.logMergePlanningStrategy.NeedsCompaction(logRuns), "every size level must hold fewer than k pairs")
+		return
+	}
+	requireConvergedLevels(t, scenario, finalIndexes, tenant, test.wantRunsEnd)
+}
+
+// requireConvergedLevels checks that the window holds wantRuns runs and that
+// no size level of the coordinator's strategy holds k runs.
+func requireConvergedLevels(t *testing.T, scenario *compactionScenario, indexes []indexpointers.IndexPointer, tenant string, wantRuns int) {
+	t.Helper()
+	require.Len(t, indexes, 1, "all overlapping indexes should consolidate")
+
+	sections, _, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, runOfPath(indexes[0].Path))
+	require.NoError(t, err)
+	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
+	require.Len(t, runs, wantRuns)
+	require.False(t, scenario.coordinator.logMergePlanningStrategy.NeedsCompaction(runs),
+		"every size level must hold fewer than k runs")
+}
+
+func newScenarioLogSource(t *testing.T, path, tenant string, entries *fixtures.LogFixtureBuilder, layout streams.Layout) compactortest.Source {
+	t.Helper()
+	options := logs.BuilderOptions{
+		PageSizeHint: 2048, PageMaxRowCount: 10000, BufferSize: 2048 * 8,
+		StripeMergeLimit: 2, AppendStrategy: logs.AppendOrdered,
+		SortOrder: logs.SortSchemaASC,
+	}
+	obj, closer := fixtures.DataObject(t,
+		fixtures.StreamsSection(t, tenant, entries.Streams(), fixtures.WithStreamsLayout(layout)),
+		fixtures.LogsSection(t, tenant, entries.Logs(), fixtures.WithBuilderOptions(&options)),
+	)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+	return compactortest.Source{Path: path, Object: obj}
+}
+
+// requireLogContents checks the reachable contents of a compaction.
+//
+// The contents must hold exactly sourceLines. The index stats must hold exactly
+// the sort schemas of wantLayouts. The streams sections must record exactly the
+// layouts in wantLayouts.
+func requireLogContents(t *testing.T, contents compactortest.Contents, sourceLines []string, wantLayouts ...streams.Layout) {
+	t.Helper()
+	require.ElementsMatch(t, sourceLines, contents.Lines, "all source records must be reachable exactly once")
+	require.Equal(t, int64(len(sourceLines)), contents.StatsRowCount, "index stats must account for every reachable log row")
+	require.Equal(t, contents.StatsObjectPaths, contents.PostingsObjectPaths, "stats and postings must reference the same log objects")
+
+	wantSchemas := make(map[string]bool, len(wantLayouts))
+	for _, layout := range wantLayouts {
+		wantSchemas[strings.Join(layout.SchemaLabels(), ",")] = true
+	}
+	require.Equal(t, wantSchemas, contents.SortSchemas)
+	require.NotEmpty(t, contents.StreamLayouts)
+	for _, layout := range contents.StreamLayouts {
+		require.True(t, slices.ContainsFunc(wantLayouts, layout.Equal),
+			"stream layout %+v must match one of the expected layouts", layout)
+	}
+	for _, want := range wantLayouts {
+		require.True(t, slices.ContainsFunc(contents.StreamLayouts, want.Equal),
+			"no streams section records the expected layout %+v", want)
+	}
+}
+
+func requireSingleSortedRun(t *testing.T, scenario *compactionScenario, indexes []indexpointers.IndexPointer, tenant string, layout streams.Layout, wantRows int) {
+	t.Helper()
+	require.Len(t, indexes, 1, "all overlapping indexes should consolidate")
+	schema := layout.SchemaLabels()
+
+	sections, _, err := logSectionRefsFor(t.Context(), scenario.stored.Bucket, tenant, runOfPath(indexes[0].Path))
+	require.NoError(t, err)
+	indexedLayout, ok, err := indexLayoutAt(t.Context(), scenario.stored.Bucket, tenant, indexes[0].Path)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, layout, indexedLayout)
+	require.NotEmpty(t, sections)
+
+	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
+	require.Len(t, runs, 1, "reachable log objects must form one globally ordered schema run")
+
+	outputPaths := make(map[string]struct{})
+	var orderedKeys []logSortPrefix
+	for _, sectionRef := range runs[0].Sections() {
+		outputPaths[sectionRef.ObjectPath] = struct{}{}
+		obj, err := dataobj.FromBucket(t.Context(), scenario.stored.Bucket, sectionRef.ObjectPath, 0)
+		require.NoError(t, err)
+		streamKeys := make(map[int64]logSortPrefix)
+		for _, stream := range fixtures.ReadTenantStreams(t, obj, tenant) {
+			streamKeys[stream.ID] = scenarioStreamSortKey(t, stream, schema)
+		}
+		require.GreaterOrEqual(t, sectionRef.SectionIndex, int64(0))
+		for _, record := range fixtures.ReadTenantLogSection(t, obj, tenant, int(sectionRef.SectionIndex)) {
+			require.Contains(t, streamKeys, record.StreamID, "log stream must be present in %q", sectionRef.ObjectPath)
+			orderedKeys = append(orderedKeys, streamKeys[record.StreamID])
+		}
+	}
+	require.Greater(t, len(outputPaths), 1, "compaction should produce more than one reachable log file")
+	require.Len(t, orderedKeys, wantRows)
+	require.True(t, slices.IsSortedFunc(orderedKeys, compareLogSortPrefix),
+		"log sort keys must be nondecreasing across object and section boundaries: %v", orderedKeys)
+}
+
+func scenarioStreamSortKey(t *testing.T, stream streams.Stream, schema []string) logSortPrefix {
+	t.Helper()
+	values := make([]string, len(schema))
+	for i, label := range schema {
+		kind, name, ok := strings.Cut(label, ":")
+		require.True(t, ok, "schema key %q must be qualified", label)
+		require.Equal(t, "label", kind, "schema key %q must reference a stream label", label)
+		require.NotEmpty(t, name, "schema key %q must name a label", label)
+		values[i] = stream.Labels.Get(name)
+	}
+	return newLogSortPrefix(uint32(stream.ShardBucket), values)
+}
+
+// newIntegrationCoordinator owns an in-process scheduler and worker sharing the
+// supplied bucket. Cleanup hooks stop the worker before the scheduler.
+func newIntegrationCoordinator(ctx context.Context, t *testing.T, bucket objstore.Bucket, now time.Time, logsobjConfig *logsobj.BuilderBaseConfig) *coordinator {
+	t.Helper()
+	return newIntegrationCoordinatorWithIndexConfig(ctx, t, bucket, now, logsobjConfig, nil)
+}
+
+// newIntegrationCoordinatorWithIndexConfig is newIntegrationCoordinator with
+// the index object config of its workers. A nil config keeps the default.
+func newIntegrationCoordinatorWithIndexConfig(ctx context.Context, t *testing.T, bucket objstore.Bucket, now time.Time, logsobjConfig, indexobjConfig *logsobj.BuilderBaseConfig) *coordinator {
 	t.Helper()
 
 	schedulerListener := &wire.Local{Address: wire.LocalScheduler}
@@ -179,54 +866,210 @@ func startInProcessSchedulerAndWorker(ctx context.Context, t *testing.T, bucket 
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, sched.Service()))
+	activeServices := []services.Service{sched.Service()}
 	t.Cleanup(func() {
-		stopCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
-		defer c()
-		_ = services.StopAndAwaitTerminated(stopCtx, sched.Service())
+		for _, service := range slices.Backward(activeServices) {
+			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = services.StopAndAwaitTerminated(stopCtx, service)
+			cancel()
+		}
 	})
 
-	ms := metastore.NewObjectMetastore(bucket, metastore.Config{}, log.NewNopLogger(),
-		metastore.NewObjectMetastoreMetrics(prometheus.NewRegistry()))
-
 	var compactionCfg Config
-	compactionCfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+	flagext.DefaultValues(&compactionCfg)
+	if logsobjConfig != nil {
+		compactionCfg.LogsobjBuilder = *logsobjConfig
+	}
+	if indexobjConfig != nil {
+		compactionCfg.IndexobjBuilder = *indexobjConfig
+	}
+	compactionCfg.LogMinCompactionSize = 0 // disabled
+	// The fixtures seed fewer runs than the default K, so they would never
+	// fill a size level and trigger a merge.
+	compactionCfg.LogMaxRunsPerTask = 2
+	compactionCfg.ToCConsolidateTimeout = 10 * time.Second
+	compactionCfg.TaskRetryMinBackoff = time.Millisecond
+	compactionCfg.TaskRetryMaxBackoff = time.Millisecond
+	require.NoError(t, compactionCfg.Validate())
 
 	w, err := worker.New(worker.Config{
 		Logger:           log.NewNopLogger(),
 		Bucket:           bucket,
-		Metastore:        ms,
-		BatchSize:        2048,
+		DataBucket:       bucket,
 		Dialer:           dialer,
 		Listener:         workerListener,
 		SchedulerAddress: wire.LocalScheduler,
 		NumThreads:       2,
 		ScratchStore:     scratch.NewMemory(),
 		IndexobjCfg:      compactionCfg.IndexobjBuilder,
+		LogsobjCfg:       compactionCfg.LogsobjBuilder,
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, w.Service()))
-	t.Cleanup(func() {
-		stopCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
-		defer c()
-		_ = services.StopAndAwaitTerminated(stopCtx, w.Service())
+	activeServices = append(activeServices, w.Service())
+
+	run := func(runCtx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
+		return runPlan(runCtx, log.NewNopLogger(), sched, opts, plan)
+	}
+	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
+	c := &coordinator{
+		cfg:             compactionCfg,
+		logger:          log.NewNopLogger(),
+		bucket:          bucket,
+		indexDispatcher: newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.MaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		logDispatcher:   newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.LogMaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		pairDispatcher:  newPlanDispatcher(log.NewNopLogger(), run, 0, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		publisher: &tocPublisher{
+			writer:  metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
+			timeout: compactionCfg.ToCConsolidateTimeout,
+			dryRun:  compactionCfg.DryRun,
+		},
+		clock:   func() time.Time { return now },
+		metrics: metrics,
+
+		logMergePlanningStrategy: newTestLogMergePlanningStrategy(t, compactionCfg.LogMaxRunsPerTask),
+	}
+	c.sweeps = newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: 1, DryRun: true}, log.NewNopLogger(), bucket, integrationLimits{}, run, metrics.taskAttemptsTotal)
+	return c
+}
+
+func TestDeletionSweepDispatch(t *testing.T) {
+	t.Run("worker runs a dispatched DeletionSweep task and stores the file list of the tenant", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+		c := newIntegrationCoordinator(ctx, t, bucket, time.Now(), nil)
+
+		c.sweeps.sweep(ctx, "acme")
+
+		r, err := deletion.OpenFileList(ctx, bucket, "acme")
+		require.NoError(t, err)
+		require.NoError(t, r.Close())
+		require.Equal(t, "acme", r.Tenant())
 	})
-
-	return sched, w
 }
 
-func mustLoadTenants(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) tenantIndexes {
+func TestRunPlan(t *testing.T) {
+	t.Run("runs the same plan twice on the scheduler and worker with the same artifact", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+		window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+		writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{"acme": {
+			{path: "indexes/aa/src-0", start: window.Add(time.Hour), end: window.Add(5 * time.Hour)},
+			{path: "indexes/bb/src-1", start: window.Add(2 * time.Hour), end: window.Add(6 * time.Hour)},
+		}})
+		seedSourceIndexObject(ctx, t, bucket, "indexes/aa/src-0", window.Add(time.Hour), "acme")
+		seedSourceIndexObject(ctx, t, bucket, "indexes/bb/src-1", window.Add(2*time.Hour), "acme")
+		c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
+		entries := mustLoadTenantIndexes(ctx, t, bucket, window)["acme"]
+		reads, err := c.readIndexRuns(ctx, "acme", window, groupIndexRuns(entries))
+		require.NoError(t, err)
+		var sections []v2.Section[indexSortKey]
+		for _, read := range reads {
+			sections = append(sections, read.sections...)
+		}
+		specs := v2.Plan(v2.CalculateRuns(sections, compareIndexSortKey), "acme", c.cfg.MaxRunsPerTask)
+		require.Len(t, specs, 1)
+		plan := buildIndexMergePlan("acme", window, indexMergeTask{spec: specs[0]})
+		opts := workflow.Options{Tenant: "acme", Actor: []string{"compaction", "index-merge"}}
+
+		first, err := c.indexDispatcher.runPlan(ctx, opts, plan)
+		require.NoError(t, err)
+		second, err := c.indexDispatcher.runPlan(ctx, opts, plan)
+		require.NoError(t, err)
+
+		require.Equal(t, first, second)
+		require.Len(t, second, 1)
+		_, err = bucket.Attributes(ctx, second[0].Path)
+		require.NoError(t, err)
+	})
+}
+
+// recordLogActors wraps c's log dispatcher and returns a function that
+// reports the actors of every log task run so far.
+func recordLogActors(c *coordinator) func() []string {
+	return recordActors(c.logDispatcher)
+}
+
+// recordActors wraps dispatcher and returns a function that reports the
+// actors of every task it ran so far.
+func recordActors(dispatcher *planDispatcher) func() []string {
+	var (
+		mu     sync.Mutex
+		actors []string
+	)
+	inner := dispatcher.runPlan
+	dispatcher.runPlan = func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
+		mu.Lock()
+		actors = append(actors, opts.Actor[len(opts.Actor)-1])
+		mu.Unlock()
+		return inner(ctx, opts, plan)
+	}
+	return func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(actors)
+	}
+}
+
+// integrationLimits enables every compaction phase and the deletion sweep
+// for every tenant.
+type integrationLimits struct{}
+
+func (integrationLimits) CompactionPhases(string) (bool, bool) {
+	return true, true
+}
+
+func (integrationLimits) DeletionSweepEnabled(string) bool {
+	return true
+}
+
+// mustLoadTenantIndexes loads the ToC of every tenant in the window, keyed by tenant.
+func mustLoadTenantIndexes(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time) map[string][]indexpointers.IndexPointer {
 	t.Helper()
-	got, err := loadTenantIndexes(ctx, b, window)
+	tenants, err := metastore.ListTableOfContentsTenants(ctx, b, window)
 	require.NoError(t, err)
-	return got
+	out := make(map[string][]indexpointers.IndexPointer, len(tenants))
+	for _, tenant := range tenants {
+		got, err := loadTenantIndexes(ctx, b, window, tenant)
+		require.NoError(t, err)
+		out[tenant] = got
+	}
+	return out
 }
 
-func mustLoadTenant(ctx context.Context, t *testing.T, b objstore.Bucket, window time.Time, tenant string) []indexEntry {
+// requireToCShardBuckets asserts that the ToC row of the index at path holds
+// the shard layout that a reader of the index object finds, and that the
+// layout is known.
+func requireToCShardBuckets(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant string, window time.Time, path string) {
 	t.Helper()
-	return mustLoadTenants(ctx, t, b, window)[tenant]
+	toc, err := metastore.OpenTableOfContents(ctx, bucket, metastore.TableOfContentsPath(tenant, window))
+	require.NoError(t, err)
+
+	var (
+		got   indexpointers.ShardBuckets
+		found bool
+	)
+	for res := range indexpointers.Iter(ctx, toc) {
+		pointer, err := res.Value()
+		require.NoError(t, err)
+		if pointer.Path == path {
+			got, found = pointer.ShardBuckets, true
+		}
+	}
+	require.True(t, found, "ToC must hold %q", path)
+
+	obj, err := dataobj.FromBucket(ctx, bucket, path, prefetchBytes)
+	require.NoError(t, err)
+	want, err := indexobj.TenantShardBuckets(ctx, obj, tenant)
+	require.NoError(t, err)
+	_, known := want.Layout()
+	require.True(t, known, "index %q must record a layout", path)
+	require.Equal(t, want, got, "ToC row of %q", path)
 }
 
-func pathsOf(entries []indexEntry) []string {
+func pathsOf(entries []indexpointers.IndexPointer) []string {
 	out := make([]string, len(entries))
 	for i, e := range entries {
 		out[i] = e.Path
@@ -234,11 +1077,19 @@ func pathsOf(entries []indexEntry) []string {
 	return out
 }
 
-// seedSourceIndexObject builds and uploads tenant-tagged postings and stats sections.
+// seedSourceIndexObject builds and uploads tenant-tagged postings and stats
+// sections with the default shard layout.
 func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, ts time.Time, tenants ...string) {
 	t.Helper()
+	seedSourceIndexObjectWithShardLayout(ctx, t, bucket, path, ts, streams.DefaultShardLayout(), tenants...)
+}
 
-	objBuilder := dataobj.NewBuilder(nil)
+// seedSourceIndexObjectWithShardLayout is seedSourceIndexObject with the
+// given shard layout.
+func seedSourceIndexObjectWithShardLayout(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, ts time.Time, shardLayout streams.ShardLayout, tenants ...string) {
+	t.Helper()
+
+	sections := make([]dataobj.SectionBuilder, 0, 2*len(tenants))
 	for _, tenant := range tenants {
 		postingsBuilder := postings.NewBuilder(nil, 0, 0, math.MaxInt)
 		postingsBuilder.SetTenant(tenant)
@@ -249,13 +1100,13 @@ func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bu
 				ColumnName:       "service",
 				LabelValue:       value,
 				StreamID:         int64(streamID),
-				Timestamp:        ts,
+				Time:             postings.At(ts),
 				UncompressedSize: 100,
 			})
 		}
-		require.NoError(t, objBuilder.Append(postingsBuilder))
+		sections = append(sections, postingsBuilder)
 
-		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000))
+		statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), streams.NewLayout(shardLayout, []string{"label:service"}))
 		statsBuilder.SetTenant(tenant)
 		statsBuilder.Append(stats.Stat{
 			ObjectPath:       path,
@@ -267,18 +1118,787 @@ func seedSourceIndexObject(ctx context.Context, t *testing.T, bucket objstore.Bu
 			RowCount:         10,
 			UncompressedSize: 1000,
 		})
-		require.NoError(t, objBuilder.Append(statsBuilder))
+		sections = append(sections, statsBuilder)
 	}
 
-	obj, closer, err := objBuilder.Flush()
-	require.NoError(t, err)
+	storeIntegrationObject(ctx, t, bucket, path, sections...)
+}
+
+func storeIntegrationObject(ctx context.Context, t *testing.T, bucket objstore.Bucket, path string, sections ...dataobj.SectionBuilder) {
+	t.Helper()
+	obj, closer := fixtures.DataObject(t, sections...)
 	defer closer.Close()
 
 	reader, err := obj.Reader(ctx)
 	require.NoError(t, err)
 	defer reader.Close()
+	require.NoError(t, bucket.Upload(ctx, path, reader))
+}
 
-	objBytes, err := io.ReadAll(reader)
+func TestE2ECompactionLegacyObjects(t *testing.T) {
+	for _, plannerVersion := range plannerVersions {
+		t.Run(fmt.Sprintf("planner version %d compacts legacy objects with a new object of the same layout until idle", plannerVersion), func(t *testing.T) {
+			testCompactLegacyObjects(t, plannerVersion)
+		})
+	}
+}
+
+func testCompactLegacyObjects(t *testing.T, plannerVersion uint) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	const tenant = "T"
+	schema := []string{"label:cluster"}
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	window := base.Truncate(metastore.MetastoreWindowSize)
+	bucket := compactortest.NewBucket()
+
+	var (
+		sourcePaths []string
+		sourceLines []string
+	)
+	upload := func(path string, obj *dataobj.Object) {
+		reader, err := obj.Reader(ctx)
+		require.NoError(t, err)
+		require.NoError(t, errors.Join(bucket.Upload(ctx, path, reader), reader.Close()))
+		for _, record := range fixtures.ReadTenantLogs(t, obj, tenant) {
+			sourceLines = append(sourceLines, string(record.Line))
+		}
+		sourcePaths = append(sourcePaths, path)
+	}
+	for _, name := range []string{"legacy-cluster-a", "legacy-cluster-b"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "dataobj", "testdata", "legacy", name+".dataobj"))
+		require.NoError(t, err)
+		obj, err := dataobj.FromReaderAt(bytes.NewReader(data), int64(len(data)))
+		require.NoError(t, err)
+		upload("objects/"+name, obj)
+	}
+	entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithSchemaLabels(schema...))
+	entries.ForStream(`{app="z",cluster="c-z"}`).
+		Entry(int(base.Unix()), "{}", "new/z/0").
+		Entry(int(base.Unix())+1, "{}", "new/z/1")
+	upload("objects/new", newScenarioLogSource(t, "objects/new", tenant, entries, streams.NewLayout(streams.DefaultShardLayout(), schema)).Object)
+	require.Len(t, sourceLines, 10)
+
+	// The legacy objects were indexed by the writer that built them, so the
+	// index is seeded by hand rather than with the current calculator.
+	index := seedLogCompactionIndex(ctx, t, bucket, "indexes/00/sources", tenant, sourcePaths, schema, int64(streams.DefaultShardLayout().Buckets()), base)
+	writeToCWithIndexes(ctx, t, bucket, map[string][]testIndex{tenant: {index}})
+	c := newIntegrationCoordinator(ctx, t, bucket, window.Add(time.Hour), nil)
+	c.limits = integrationLimits{}
+	c.cfg.PlannerVersion = plannerVersion
+	stored := &compactortest.Scenario{Bucket: bucket, Window: window}
+	scenario := &compactionScenario{ctx: ctx, t: t, stored: stored, coordinator: c}
+	scenario.compactUntilIdle(tenant)
+
+	contents := stored.ReadReachableContents(ctx, t, tenant)
+	requireLogContents(t, contents, sourceLines, streams.NewLayout(streams.DefaultShardLayout(), schema))
+	require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-a", "compaction must rewrite the legacy objects")
+	require.NotContains(t, contents.StatsObjectPaths, "objects/legacy-cluster-b", "compaction must rewrite the legacy objects")
+}
+
+// TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes pins the planner side of
+// the key range contract to the worker side. The planner cuts by the sort
+// prefixes of the stats rows that the index calculator writes. The worker
+// derives each stream's prefix with logsobj.StreamSortPrefix. If they
+// disagree, a split task can miss records, and nothing at run time detects
+// it.
+func TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes(t *testing.T) {
+	const tenant = "acme"
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	base := window.Add(time.Hour)
+
+	tests := []struct {
+		name         string
+		shardBuckets uint32
+		schema       []string
+		streams      []string
+	}{
+		{
+			name:         "agree for a one-label schema",
+			shardBuckets: streams.DefaultShardBuckets,
+			schema:       []string{"label:app"},
+			streams:      []string{`{app="api"}`, `{app="web"}`, `{app="db"}`},
+		},
+		{
+			name:         "agree for a multi-label schema",
+			shardBuckets: streams.DefaultShardBuckets,
+			schema:       []string{"label:app", "label:cluster"},
+			streams:      []string{`{app="api",cluster="prod"}`, `{app="api",cluster="dev"}`, `{app="web",cluster="prod"}`},
+		},
+		{
+			name:         "agree when a stream has no value for a schema label",
+			shardBuckets: streams.DefaultShardBuckets,
+			schema:       []string{"label:app", "label:cluster"},
+			streams:      []string{`{app="api"}`, `{cluster="prod"}`, `{app="api",cluster="prod"}`},
+		},
+		{
+			name:         "agree for a layout of 8 shard buckets",
+			shardBuckets: 8,
+			schema:       []string{"label:app", "label:cluster"},
+			streams:      []string{`{app="api",cluster="prod"}`, `{app="api",cluster="dev"}`, `{app="web",cluster="prod"}`, `{app="db",cluster="dev"}`, `{app="queue",cluster="prod"}`},
+		},
+		{
+			name:         "agree for a layout of 256 shard buckets",
+			shardBuckets: 256,
+			schema:       []string{"label:app", "label:cluster"},
+			streams:      []string{`{app="api",cluster="prod"}`, `{app="api",cluster="dev"}`, `{app="web",cluster="prod"}`, `{app="db",cluster="dev"}`, `{app="queue",cluster="prod"}`},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(tc.shardBuckets), tc.schema)
+			entries := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+			for i, ls := range tc.streams {
+				entries.ForStream(ls).Entry(int(base.Unix())+i, "{}", fmt.Sprintf("line-%d", i))
+			}
+			source := newScenarioLogSource(t, "objects/source-0", tenant, entries, layout)
+			scenario := compactortest.New(ctx, t, window, []compactortest.Source{source})
+
+			refs, _, err := logSectionRefsFor(ctx, scenario.Bucket, tenant, runOfPath(compactortest.IndexPath(0)))
+			require.NoError(t, err)
+
+			obj, err := dataobj.FromBucket(ctx, scenario.Bucket, source.Path, 0)
+			require.NoError(t, err)
+			tenantSections, err := sections.ForTenant(obj.Sections(), tenant)
+			require.NoError(t, err)
+			streamsSection, err := streams.Open(ctx, tenantSections.Streams)
+			require.NoError(t, err)
+			labelsByID := make(map[int64]labels.Labels)
+			for res := range streams.IterSection(ctx, streamsSection) {
+				stream, err := res.Value()
+				require.NoError(t, err)
+				labelsByID[stream.ID] = stream.Labels.Copy()
+			}
+
+			for i, section := range obj.Sections().Filter(logs.CheckSection) {
+				if section.Tenant != tenant {
+					continue
+				}
+				logsSection, err := logs.Open(ctx, section)
+				require.NoError(t, err)
+				workerPrefixes := make(map[streams.SortPrefix]bool)
+				for res := range logs.IterSection(ctx, logsSection) {
+					record, err := res.Value()
+					require.NoError(t, err)
+					prefix, err := logsobj.StreamSortPrefix(labelsByID[record.StreamID], layout)
+					require.NoError(t, err)
+					workerPrefixes[prefix] = true
+				}
+
+				plannerPrefixes := make(map[streams.SortPrefix]bool)
+				for _, ref := range refs {
+					if ref.Ref.ObjectPath == source.Path && ref.Ref.SectionIndex == int64(i) {
+						for _, key := range ref.Keys {
+							plannerPrefixes[key.Key.prefix] = true
+						}
+					}
+				}
+				require.NotEmpty(t, workerPrefixes, "logs section %d", i)
+				require.Equal(t, workerPrefixes, plannerPrefixes, "logs section %d", i)
+			}
+		})
+	}
+}
+
+// writeToCWithPointers writes the ToC of tenant and window with pointers. Unlike
+// writeToCWithIndexes, it can write pointers of a run.
+func writeToCWithPointers(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant string, window time.Time, pointers ...indexpointers.IndexPointer) {
+	t.Helper()
+	builder, err := indexobj.NewBuilder(tenant, metastore.DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
 	require.NoError(t, err)
-	require.NoError(t, bucket.Upload(ctx, path, io.NopCloser(bytes.NewReader(objBytes))))
+	for _, pointer := range pointers {
+		require.NoError(t, builder.AppendIndexPointer(pointer))
+	}
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+	reader, err := obj.Reader(ctx)
+	require.NoError(t, err)
+	defer reader.Close()
+	require.NoError(t, bucket.Upload(ctx, metastore.TableOfContentsPath(tenant, window), reader))
+}
+
+// readIndexRows returns the postings rows and the stats rows of tenant in the
+// index object at path.
+func readIndexRows(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant, path string) ([]postings.Row, []stats.Stat) {
+	t.Helper()
+	obj, err := dataobj.FromBucket(ctx, bucket, path, 0)
+	require.NoError(t, err)
+
+	var (
+		postingRows []postings.Row
+		statRows    []stats.Stat
+	)
+	for _, section := range obj.Sections() {
+		if section.Tenant != tenant {
+			continue
+		}
+		switch {
+		case postings.CheckSection(section):
+			opened, err := postings.Open(ctx, section)
+			require.NoError(t, err)
+			reader := postings.NewReader(postings.ReaderOptions{Columns: opened.Columns()})
+			require.NoError(t, reader.Open(ctx))
+			rows := postings.NewRowReader(ctx, reader)
+			for rows.Next() {
+				postingRows = append(postingRows, rows.At())
+			}
+			require.NoError(t, rows.Err())
+			require.NoError(t, rows.Close())
+		case stats.CheckSection(section):
+			opened, err := stats.Open(ctx, section)
+			require.NoError(t, err)
+			rows := stats.NewRowReader(ctx, opened)
+			for rows.Next() {
+				statRows = append(statRows, rows.At())
+			}
+			require.NoError(t, rows.Err())
+			require.NoError(t, rows.Close())
+		}
+	}
+	return postingRows, statRows
+}
+
+func TestCoordinator_IndexMergeRuns(t *testing.T) {
+	const tenant = "acme"
+	window := time.Date(2026, 5, 14, 0, 0, 0, 0, time.UTC).Truncate(metastore.MetastoreWindowSize)
+	start, end := window.Add(time.Hour), window.Add(2*time.Hour)
+	ts := start.UnixNano()
+
+	label := func(object, name, value string) postings.Row {
+		return postings.Row{Kind: postings.KindLabel, ObjectPath: object, ColumnName: name, LabelValue: value, MinTimestamp: ts, MaxTimestamp: ts + 10}
+	}
+	var statAt func(object, app string, section int64) stats.Stat
+	stat := func(object, app string) stats.Stat { return statAt(object, app, 0) }
+	statAt = func(object, app string, section int64) stats.Stat {
+		return stats.Stat{
+			ObjectPath: object, SectionIndex: section, SortSchema: "label:app", Labels: map[string]string{"app": app},
+			MinTimestamp: ts, MaxTimestamp: ts + 10, RowCount: 1, UncompressedSize: 100,
+		}
+	}
+	pointer := func(path string, runID indexpointers.RunID) indexpointers.IndexPointer {
+		return indexpointers.IndexPointer{Path: path, StartTs: start, EndTs: end, RunID: runID}
+	}
+
+	// seedRun writes a run of two index objects that hold the postings of logs/run, split by
+	// key, and one stats row each. The key env=a sorts inside the key range of a plain index, so
+	// planning without runs would split the run.
+	seedRun := func(ctx context.Context, t *testing.T, bucket objstore.Bucket, shardBuckets uint32) []string {
+		t.Helper()
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/app", sectionSize: 1 << 21, shardBuckets: shardBuckets,
+			postings: []postings.Row{label("logs/run", "app", "api")}, stats: []stats.Stat{statAt("logs/run", "api", 0)}})
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/env", sectionSize: 1 << 21, shardBuckets: shardBuckets,
+			postings: []postings.Row{label("logs/run", "env", "a")}, stats: []stats.Stat{statAt("logs/run", "api", 1)}})
+		return []string{"indexes/run/app", "indexes/run/env"}
+	}
+	seedPlain := func(ctx context.Context, t *testing.T, bucket objstore.Bucket, path, object string, shardBuckets uint32) {
+		t.Helper()
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 1 << 21, shardBuckets: shardBuckets,
+			postings: []postings.Row{label(object, "app", "web"), label(object, "env", "dev")},
+			stats:    []stats.Stat{stat(object, "web")}})
+	}
+
+	t.Run("publishes a run of several index objects, merges it again and plans log merge from it", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		// Two indexes with many columns each, so a small target object size
+		// splits their merge.
+		seedWide := func(path, object string, offset int) {
+			var rows []postings.Row
+			for i := range 150 {
+				rows = append(rows, label(object, fmt.Sprintf("c%04d", 2*i+offset), "v"))
+			}
+			buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 1 << 21, shardBuckets: 8,
+				postings: rows, stats: []stats.Stat{stat(object, "web")}})
+		}
+		seedWide("indexes/wide-a", "logs/a", 0)
+		seedWide("indexes/wide-b", "logs/b", 1)
+		writeToCWithPointers(ctx, t, bucket, tenant, window, pointer("indexes/wide-a", 0), pointer("indexes/wide-b", 0))
+
+		small := defaultIndexobjConfig(t)
+		small.TargetPageSize = 2048
+		small.TargetObjectSize = 4096
+		small.TargetSectionSize = 4096
+		c := newIntegrationCoordinatorWithIndexConfig(ctx, t, bucket, start, nil, &small)
+
+		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+		run := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+		require.Greater(t, len(run), 1, "a small target object size must split the merge into a run")
+		for i, entry := range run {
+			require.NotZero(t, entry.RunID)
+			require.Equal(t, run[0].RunID, entry.RunID)
+			require.Equal(t, int32(len(run)), entry.RunLength)
+			require.Equal(t, start, entry.StartTs.UTC())
+			require.Equal(t, end, entry.EndTs.UTC())
+			require.False(t, entry.PostingKeys.IsZero())
+			if i > 0 {
+				require.Negative(t, run[i-1].PostingKeys.Max().Compare(entry.PostingKeys.Min()), "the key ranges of a run are disjoint and in order")
+			}
+			requireToCShardBuckets(ctx, t, bucket, tenant, window, entry.Path)
+		}
+
+		var columns []string
+		var statRows int
+		for _, entry := range run {
+			postingRows, stats := readIndexRows(ctx, t, bucket, tenant, entry.Path)
+			for _, row := range postingRows {
+				columns = append(columns, row.ColumnName)
+			}
+			statRows += len(stats)
+		}
+		slices.Sort(columns)
+		require.Len(t, columns, 300)
+		require.Equal(t, 2, statRows)
+
+		runs := groupIndexRuns(run)
+		require.Len(t, runs, 1)
+		refs, _, err := logSectionRefsFor(ctx, bucket, tenant, runs[0])
+		require.NoError(t, err)
+		require.Len(t, refs, 2, "log merge planning reads the stats rows of the run")
+
+		seedPlain(ctx, t, bucket, "indexes/plain", "logs/plain", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window, append(run, pointer("indexes/plain", 0))...)
+		_, err = c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+		after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+		require.NotEmpty(t, after)
+		var merged []string
+		for _, entry := range after {
+			require.NotEqual(t, "indexes/plain", entry.Path, "the run and the other index must merge")
+			for _, old := range run {
+				require.NotEqual(t, old.Path, entry.Path, "the merge must replace every index object of the run")
+			}
+			postingRows, _ := readIndexRows(ctx, t, bucket, tenant, entry.Path)
+			for _, row := range postingRows {
+				merged = append(merged, row.ObjectPath+" "+row.ColumnName)
+			}
+		}
+		require.Len(t, merged, 302, "the merge keeps the 300 postings rows of the run and the 2 of the other index")
+	})
+
+	// seedSplittableIndex writes the index of object, which is source n of a
+	// set of count sources. The postings of the sources interleave, 200 columns
+	// each, in small sections that give the planner many key samples. The
+	// index has 5 stats rows of object.
+	seedSplittableIndex := func(ctx context.Context, t *testing.T, bucket objstore.Bucket, object string, n, count int) indexpointers.IndexPointer {
+		t.Helper()
+		var rows []postings.Row
+		for j := range 200 {
+			rows = append(rows, label(object, fmt.Sprintf("c%04d", count*j+n), "v"))
+		}
+		var statRows []stats.Stat
+		for section := range int64(5) {
+			statRows = append(statRows, statAt(object, "web", section))
+		}
+		path := "indexes/" + object
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: path, sectionSize: 2048, shardBuckets: 8, postings: rows, stats: statRows})
+		return pointer(path, 0)
+	}
+	// seedLowIndex writes the index of logs/low. Its postings sort below the
+	// last key span of a split merge of splittable indexes.
+	seedLowIndex := func(ctx context.Context, t *testing.T, bucket objstore.Bucket) indexpointers.IndexPointer {
+		t.Helper()
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/logs/low", sectionSize: 2048, shardBuckets: 8,
+			postings: []postings.Row{label("logs/low", "b0000", "v"), label("logs/low", "c0000", "v")},
+			stats:    []stats.Stat{statAt("logs/low", "web", 0)}})
+		return pointer("indexes/logs/low", 0)
+	}
+	// readSplitRun checks that run is one index run of the merged time range
+	// with ordered, disjoint posting keys. It returns the postings rows of
+	// run, the stats rows of run, and the number of index objects of run with
+	// stats rows.
+	readSplitRun := func(ctx context.Context, t *testing.T, bucket objstore.Bucket, run []indexpointers.IndexPointer) ([]postings.Row, []stats.Stat, int) {
+		t.Helper()
+		require.NotEmpty(t, run)
+		var (
+			postingRows      []postings.Row
+			statRows         []stats.Stat
+			objectsWithStats int
+		)
+		for i, entry := range run {
+			if len(run) > 1 {
+				require.NotZero(t, entry.RunID)
+				require.Equal(t, run[0].RunID, entry.RunID)
+				require.Equal(t, int32(len(run)), entry.RunLength)
+			}
+			require.Equal(t, start, entry.StartTs.UTC())
+			require.Equal(t, end, entry.EndTs.UTC())
+			if i > 0 {
+				require.Negative(t, run[i-1].PostingKeys.Max().Compare(entry.PostingKeys.Min()), "the key ranges of a run are disjoint and in order")
+			}
+			requireToCShardBuckets(ctx, t, bucket, tenant, window, entry.Path)
+			entryPostings, entryStats := readIndexRows(ctx, t, bucket, tenant, entry.Path)
+			if len(entryStats) > 0 {
+				objectsWithStats++
+			}
+			postingRows = append(postingRows, entryPostings...)
+			statRows = append(statRows, entryStats...)
+		}
+		return postingRows, statRows, objectsWithStats
+	}
+	// compactOnce compacts the window once with the given task size and
+	// returns the stats of the pass and the indexes of the window after it.
+	compactOnce := func(ctx context.Context, t *testing.T, c *coordinator, bucket objstore.Bucket, maxTaskSize flagext.Bytes) (compactionStats, []indexpointers.IndexPointer) {
+		t.Helper()
+		c.cfg.MaxTaskSize = maxTaskSize
+		compacted, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+		return compacted, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+	}
+
+	t.Run("publishes the parallel tasks of a merge split by key span as one run that holds the rows of the unsplit merge", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		compact := func(t *testing.T, maxTaskSize flagext.Bytes) (compactionStats, []indexpointers.IndexPointer, []postings.Row, []stats.Stat, int) {
+			t.Helper()
+			bucket := objstore.NewInMemBucket()
+			var pointers []indexpointers.IndexPointer
+			for i, object := range []string{"logs/a", "logs/b", "logs/c"} {
+				pointers = append(pointers, seedSplittableIndex(ctx, t, bucket, object, i, 3))
+			}
+			writeToCWithPointers(ctx, t, bucket, tenant, window, append(pointers, seedLowIndex(ctx, t, bucket))...)
+
+			compacted, run := compactOnce(ctx, t, newIntegrationCoordinator(ctx, t, bucket, start, nil), bucket, maxTaskSize)
+			postingRows, statRows, objectsWithStats := readSplitRun(ctx, t, bucket, run)
+			return compacted, run, postingRows, statRows, objectsWithStats
+		}
+
+		_, _, wantPostings, wantStats, _ := compact(t, 0)
+		compacted, run, gotPostings, gotStats, objectsWithStats := compact(t, 1)
+
+		require.Greater(t, compacted.dispatched, 2, "a tiny task size must split the merge into several tasks")
+		require.Equal(t, 1, compacted.added, "the tasks of one merge publish one run")
+		require.GreaterOrEqual(t, len(run), compacted.dispatched, "each task writes at least one index object of the run")
+		lastSpanStart := run[len(run)-1].PostingKeys.Min()
+		for _, row := range gotPostings {
+			if row.ObjectPath == "logs/low" {
+				require.Negative(t, row.Key().Compare(lastSpanStart), "the postings of logs/low sort below the last task")
+			}
+		}
+		require.Len(t, gotPostings, 602)
+		require.Equal(t, wantPostings, gotPostings)
+		require.Len(t, wantStats, 16, "the merge keeps the stats rows of every source")
+		require.ElementsMatch(t, wantStats, gotStats)
+		require.Greater(t, objectsWithStats, 1, "the tasks of the split share the stats work")
+	})
+
+	t.Run("publishes one run for each merge when several merges in one window are each split by key span", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+		objects := []string{"logs/a", "logs/b", "logs/c", "logs/d"}
+		var pointers []indexpointers.IndexPointer
+		for i, object := range objects {
+			pointers = append(pointers, seedSplittableIndex(ctx, t, bucket, object, i, len(objects)))
+		}
+		writeToCWithPointers(ctx, t, bucket, tenant, window, pointers...)
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		c.cfg.MaxRunsPerTask = 2
+
+		compacted, after := compactOnce(ctx, t, c, bucket, 1)
+		runs := groupIndexRuns(after)
+		require.Len(t, runs, 2, "each merge of two of the four indexes publishes one run")
+		require.Equal(t, 2, compacted.added)
+		require.Greater(t, compacted.dispatched, 2*2, "a tiny task size must split each merge into several tasks")
+
+		var sources []string
+		for _, run := range runs {
+			require.Greater(t, len(run.entries), 1, "each merge must split into several tasks")
+			postingRows, statRows, _ := readSplitRun(ctx, t, bucket, run.entries)
+			var runSources []string
+			for _, row := range postingRows {
+				if !slices.Contains(runSources, row.ObjectPath) {
+					runSources = append(runSources, row.ObjectPath)
+				}
+			}
+			require.Len(t, runSources, 2, "a run holds the postings of the two indexes of its merge only")
+			require.Len(t, postingRows, 400)
+			require.Len(t, statRows, 10, "a run holds the stats rows of its two indexes")
+			sources = append(sources, runSources...)
+		}
+		require.ElementsMatch(t, objects, sources)
+	})
+
+	t.Run("merges a run of a split merge again with another index, writes some index objects again at the same path and keeps every row once", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+		var pointers []indexpointers.IndexPointer
+		for i, object := range []string{"logs/a", "logs/b", "logs/c"} {
+			pointers = append(pointers, seedSplittableIndex(ctx, t, bucket, object, i, 3))
+		}
+		writeToCWithPointers(ctx, t, bucket, tenant, window, append(pointers, seedLowIndex(ctx, t, bucket))...)
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		_, run := compactOnce(ctx, t, c, bucket, 1)
+		require.Greater(t, len(run), 1)
+
+		seedPlain(ctx, t, bucket, "indexes/plain", "logs/plain", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window, append(run, pointer("indexes/plain", 0))...)
+		compacted, after := compactOnce(ctx, t, c, bucket, 1)
+
+		require.Equal(t, 1, compacted.added, "the swap publishes the new run")
+		require.Len(t, groupIndexRuns(after), 1, "the run and the other index merge into one run")
+		again, _ := compactOnce(ctx, t, c, bucket, 1)
+		require.Zero(t, again.dispatched, "the window is converged, so the next pass merges nothing")
+		reused := 0
+		for _, entry := range after {
+			require.NotEqual(t, "indexes/plain", entry.Path)
+			if slices.ContainsFunc(run, func(old indexpointers.IndexPointer) bool { return old.Path == entry.Path }) {
+				reused++
+			}
+		}
+		require.Positive(t, reused, "the merge writes some index objects of the old run again, at the same path")
+		postingRows, statRows, _ := readSplitRun(ctx, t, bucket, after)
+		require.Len(t, postingRows, 604, "the merge keeps the 602 postings rows of the run and the 2 of the other index")
+		require.Len(t, statRows, 17, "the merge keeps the 16 stats rows of the run and the 1 of the other index")
+	})
+
+	t.Run("reads a run of several index objects and an index after it in key order as one sequence and keeps every row once", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		runPaths := seedRun(ctx, t, bucket, 8)
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/zone", sectionSize: 1 << 21, shardBuckets: 8,
+			postings: []postings.Row{label("logs/zone", "zone", "x")}, stats: []stats.Stat{stat("logs/zone", "web")}})
+		seedPlain(ctx, t, bucket, "indexes/plain", "logs/plain", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			pointer(runPaths[1], 1), pointer(runPaths[0], 1), pointer("indexes/zone", 0), pointer("indexes/plain", 0))
+
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+
+		var inputRuns dto.Metric
+		require.NoError(t, c.metrics.indexInputRuns.Write(&inputRuns))
+		require.Equal(t, 2.0, inputRuns.GetHistogram().GetSampleSum(), "the planner chains the run and indexes/zone into one run, and indexes/plain overlaps them")
+
+		after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+		var keys []string
+		for _, entry := range after {
+			postingRows, _ := readIndexRows(ctx, t, bucket, tenant, entry.Path)
+			require.True(t, slices.IsSortedFunc(postingRows, postings.CompareRows))
+			for _, row := range postingRows {
+				keys = append(keys, row.ObjectPath+" "+row.ColumnName+"="+row.LabelValue)
+			}
+		}
+		require.ElementsMatch(t, []string{
+			"logs/run app=api", "logs/run env=a", "logs/zone zone=x", "logs/plain app=web", "logs/plain env=dev",
+		}, keys)
+	})
+
+	t.Run("merges every index object of a run with another index", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		runPaths := seedRun(ctx, t, bucket, 8)
+		seedPlain(ctx, t, bucket, "indexes/plain", "logs/plain", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			pointer(runPaths[0], 1), pointer(runPaths[1], 1), pointer("indexes/plain", 0))
+
+		before := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+		runIDs := make(map[string]indexpointers.RunID)
+		for _, entry := range before {
+			runIDs[entry.Path] = entry.RunID
+		}
+		require.Equal(t, map[string]indexpointers.RunID{runPaths[0]: 1, runPaths[1]: 1, "indexes/plain": 0}, runIDs)
+
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		stats, err := c.compactTenantIndexes(ctx, tenant, window, before)
+		require.NoError(t, err)
+		require.Equal(t, 2, stats.removed, "the index objects of the run count as one index")
+
+		after := mustLoadTenantIndexes(ctx, t, bucket, window)[tenant]
+		require.Len(t, after, 1, "the run and the other index must merge into one index")
+		requireToCShardBuckets(ctx, t, bucket, tenant, window, after[0].Path)
+		require.Equal(t, start, after[0].StartTs.UTC(), "the entry takes the time range of the merged indexes")
+		require.Equal(t, end, after[0].EndTs.UTC(), "the entry takes the time range of the merged indexes")
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"}, after[0].PostingKeys.Min())
+		require.Equal(t, postings.Key{Kind: postings.KindLabel, ColumnName: "env", LabelValue: "dev"}, after[0].PostingKeys.Max())
+
+		postingRows, statRows := readIndexRows(ctx, t, bucket, tenant, after[0].Path)
+		var keys []string
+		for _, row := range postingRows {
+			keys = append(keys, row.ObjectPath+" "+row.ColumnName+"="+row.LabelValue)
+		}
+		require.ElementsMatch(t, []string{"logs/run app=api", "logs/run env=a", "logs/plain app=web", "logs/plain env=dev"}, keys)
+		var statObjects []string
+		for _, row := range statRows {
+			statObjects = append(statObjects, row.ObjectPath)
+		}
+		require.ElementsMatch(t, []string{"logs/run", "logs/run", "logs/plain"}, statObjects)
+	})
+
+	t.Run("merges every index object of a run in one task when the tasks hold one run each", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		runPaths := seedRun(ctx, t, bucket, 8)
+		seedPlain(ctx, t, bucket, "indexes/plain-0", "logs/plain-0", 8)
+		seedPlain(ctx, t, bucket, "indexes/plain-1", "logs/plain-1", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			pointer(runPaths[0], 1), pointer(runPaths[1], 1),
+			pointer("indexes/plain-0", 0), pointer("indexes/plain-1", 0))
+
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		c.cfg.MaxRunsPerTask = 1
+		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+
+		outputsOfRun := make(map[string][]string)
+		for _, entry := range mustLoadTenantIndexes(ctx, t, bucket, window)[tenant] {
+			require.NotContains(t, runPaths, entry.Path, "a task must replace every index object of the run")
+			postingRows, statRows := readIndexRows(ctx, t, bucket, tenant, entry.Path)
+			for _, row := range postingRows {
+				if row.ObjectPath == "logs/run" {
+					outputsOfRun[entry.Path] = append(outputsOfRun[entry.Path], row.ColumnName+"="+row.LabelValue)
+				}
+			}
+			for _, row := range statRows {
+				if row.ObjectPath == "logs/run" {
+					outputsOfRun[entry.Path] = append(outputsOfRun[entry.Path], "stats")
+				}
+			}
+		}
+		require.Len(t, outputsOfRun, 1, "one task must merge every index object of the run: %v", outputsOfRun)
+		for _, keys := range outputsOfRun {
+			require.ElementsMatch(t, []string{"app=api", "env=a", "stats", "stats"}, keys)
+		}
+	})
+
+	t.Run("skips a run whose index objects record different layouts and keeps it in the ToC", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/a", sectionSize: 1 << 21, shardBuckets: 8,
+			postings: []postings.Row{label("logs/run", "app", "api")}, stats: []stats.Stat{stat("logs/run", "api")}})
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/b", sectionSize: 1 << 21, shardBuckets: 16,
+			postings: []postings.Row{label("logs/run", "env", "prod")}, stats: []stats.Stat{stat("logs/run", "api")}})
+		seedPlain(ctx, t, bucket, "indexes/plain-0", "logs/plain-0", 8)
+		seedPlain(ctx, t, bucket, "indexes/plain-1", "logs/plain-1", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			pointer("indexes/run/a", 1), pointer("indexes/run/b", 1),
+			pointer("indexes/plain-0", 0), pointer("indexes/plain-1", 0))
+
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+
+		var runEntries, others []string
+		for _, entry := range mustLoadTenantIndexes(ctx, t, bucket, window)[tenant] {
+			if entry.RunID == 1 {
+				runEntries = append(runEntries, entry.Path)
+			} else {
+				others = append(others, entry.Path)
+			}
+		}
+		require.ElementsMatch(t, []string{"indexes/run/a", "indexes/run/b"}, runEntries)
+		require.Len(t, others, 1, "the other indexes must still merge")
+		require.NotContains(t, []string{"indexes/plain-0", "indexes/plain-1"}, others[0])
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phaseLabelIndexMerge)))
+	})
+
+	t.Run("skips a run with an index object without stats and keeps the run in the ToC", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/app", sectionSize: 1 << 21, shardBuckets: 8,
+			postings: []postings.Row{label("logs/run", "app", "api")}, stats: []stats.Stat{statAt("logs/run", "api", 0)}})
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/env", sectionSize: 1 << 21, shardBuckets: 8,
+			postings: []postings.Row{label("logs/run", "env", "prod")}})
+		seedPlain(ctx, t, bucket, "indexes/plain-0", "logs/plain-0", 8)
+		seedPlain(ctx, t, bucket, "indexes/plain-1", "logs/plain-1", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			pointer("indexes/run/app", 1), pointer("indexes/run/env", 1),
+			pointer("indexes/plain-0", 0), pointer("indexes/plain-1", 0))
+
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+
+		var runEntries []string
+		for _, entry := range mustLoadTenantIndexes(ctx, t, bucket, window)[tenant] {
+			if entry.RunID == 1 {
+				runEntries = append(runEntries, entry.Path)
+			}
+		}
+		require.ElementsMatch(t, []string{"indexes/run/app", "indexes/run/env"}, runEntries)
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phaseLabelIndexMerge)))
+	})
+
+	t.Run("skips a run with an index object without postings rows and keeps the run in the ToC", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/app", sectionSize: 1 << 21, shardBuckets: 8,
+			postings: []postings.Row{label("logs/run", "app", "api")}, stats: []stats.Stat{statAt("logs/run", "api", 0)}})
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/stats", sectionSize: 1 << 21, shardBuckets: 8,
+			stats: []stats.Stat{statAt("logs/run", "api", 1)}})
+		seedPlain(ctx, t, bucket, "indexes/plain-0", "logs/plain-0", 8)
+		seedPlain(ctx, t, bucket, "indexes/plain-1", "logs/plain-1", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			pointer("indexes/run/app", 1), pointer("indexes/run/stats", 1),
+			pointer("indexes/plain-0", 0), pointer("indexes/plain-1", 0))
+
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+
+		var runEntries []string
+		for _, entry := range mustLoadTenantIndexes(ctx, t, bucket, window)[tenant] {
+			if entry.RunID == 1 {
+				runEntries = append(runEntries, entry.Path)
+			}
+		}
+		require.ElementsMatch(t, []string{"indexes/run/app", "indexes/run/stats"}, runEntries)
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phaseLabelIndexMerge)))
+	})
+
+	t.Run("skips a run with a corrupt index object and keeps every index object of the run in the ToC", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		bucket := objstore.NewInMemBucket()
+
+		buildIndex(ctx, t, bucket, testIndexObject{tenant: tenant, path: "indexes/run/a", sectionSize: 1 << 21, shardBuckets: 8,
+			postings: []postings.Row{label("logs/run", "app", "api")}, stats: []stats.Stat{stat("logs/run", "api")}})
+		buildMixedLayoutIndex(ctx, t, bucket, tenant, "indexes/run/corrupt")
+		seedPlain(ctx, t, bucket, "indexes/plain-0", "logs/plain-0", 8)
+		seedPlain(ctx, t, bucket, "indexes/plain-1", "logs/plain-1", 8)
+		writeToCWithPointers(ctx, t, bucket, tenant, window,
+			pointer("indexes/run/a", 1), pointer("indexes/run/corrupt", 1),
+			pointer("indexes/plain-0", 0), pointer("indexes/plain-1", 0))
+
+		c := newIntegrationCoordinator(ctx, t, bucket, start, nil)
+		_, err := c.compactTenantIndexes(ctx, tenant, window, mustLoadTenantIndexes(ctx, t, bucket, window)[tenant])
+		require.NoError(t, err)
+
+		var runEntries []string
+		for _, entry := range mustLoadTenantIndexes(ctx, t, bucket, window)[tenant] {
+			if entry.RunID == 1 {
+				runEntries = append(runEntries, entry.Path)
+			}
+		}
+		require.ElementsMatch(t, []string{"indexes/run/a", "indexes/run/corrupt"}, runEntries)
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues(tenant, phaseLabelIndexMerge)))
+	})
+}
+
+// defaultIndexobjConfig returns the default index object config of the
+// compactor.
+func defaultIndexobjConfig(t *testing.T) logsobj.BuilderBaseConfig {
+	t.Helper()
+	var cfg Config
+	flagext.DefaultValues(&cfg)
+	return cfg.IndexobjBuilder
 }

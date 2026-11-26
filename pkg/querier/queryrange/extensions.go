@@ -170,6 +170,22 @@ func (m *IndexStatsResponse) WithHeaders(h []queryrangebase.PrometheusResponseHe
 	return m
 }
 
+func (m *LoglineIndexResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}
+
+func (m *LoglineIndexResponse) SetHeader(name, value string) {
+	m.Headers = setHeader(m.Headers, name, value)
+}
+
+func (m *LoglineIndexResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	m.Headers = h
+	return m
+}
+
 // GetHeaders returns the HTTP headers in the response.
 func (m *VolumeResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
@@ -234,6 +250,23 @@ func (m *CountMinSketchResponse) SetHeader(name, value string) {
 }
 
 func (m *CountMinSketchResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	m.Headers = h
+	return m
+}
+
+// GetHeaders returns the HTTP headers in the response.
+func (m *CountDistinctSketchResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}
+
+func (m *CountDistinctSketchResponse) SetHeader(name, value string) {
+	m.Headers = setHeader(m.Headers, name, value)
+}
+
+func (m *CountDistinctSketchResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
 	m.Headers = h
 	return m
 }

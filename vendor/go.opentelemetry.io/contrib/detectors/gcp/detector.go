@@ -10,10 +10,11 @@ import (
 	"strconv"
 
 	"cloud.google.com/go/compute/metadata"
-	"github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
+
+	"go.opentelemetry.io/contrib/detectors/gcp/internal"
 )
 
 // NewDetector returns a resource detector which detects resource attributes on:
@@ -23,7 +24,7 @@ import (
 // * Cloud Run.
 // * Cloud Functions.
 func NewDetector() resource.Detector {
-	return &detector{detector: gcp.NewDetector()}
+	return &detector{detector: internal.NewDetector()}
 }
 
 type detector struct {
@@ -41,44 +42,44 @@ func (d *detector) Detect(context.Context) (*resource.Resource, error) {
 	b.add(semconv.CloudAccountIDKey, d.detector.ProjectID)
 
 	switch d.detector.CloudPlatform() {
-	case gcp.GKE:
+	case internal.GKE:
 		b.attrs = append(b.attrs, semconv.CloudPlatformGCPKubernetesEngine)
 		b.addZoneOrRegion(d.detector.GKEAvailabilityZoneOrRegion)
 		b.add(semconv.K8SClusterNameKey, d.detector.GKEClusterName)
 		b.add(semconv.HostIDKey, d.detector.GKEHostID)
-	case gcp.CloudRun:
+	case internal.CloudRun:
 		b.attrs = append(b.attrs, semconv.CloudPlatformGCPCloudRun)
 		b.add(semconv.FaaSNameKey, d.detector.FaaSName)
 		b.add(semconv.FaaSVersionKey, d.detector.FaaSVersion)
 		b.add(semconv.FaaSInstanceKey, d.detector.FaaSID)
 		b.add(semconv.CloudRegionKey, d.detector.FaaSCloudRegion)
-	case gcp.CloudRunJob:
+	case internal.CloudRunJob:
 		b.attrs = append(b.attrs, semconv.CloudPlatformGCPCloudRun)
 		b.add(semconv.FaaSNameKey, d.detector.FaaSName)
 		b.add(semconv.FaaSInstanceKey, d.detector.FaaSID)
 		b.add(semconv.GCPCloudRunJobExecutionKey, d.detector.CloudRunJobExecution)
 		b.addInt(semconv.GCPCloudRunJobTaskIndexKey, d.detector.CloudRunJobTaskIndex)
 		b.add(semconv.CloudRegionKey, d.detector.FaaSCloudRegion)
-	case gcp.CloudFunctions:
+	case internal.CloudFunctions:
 		b.attrs = append(b.attrs, semconv.CloudPlatformGCPCloudFunctions)
 		b.add(semconv.FaaSNameKey, d.detector.FaaSName)
 		b.add(semconv.FaaSVersionKey, d.detector.FaaSVersion)
 		b.add(semconv.FaaSInstanceKey, d.detector.FaaSID)
 		b.add(semconv.CloudRegionKey, d.detector.FaaSCloudRegion)
-	case gcp.AppEngineFlex:
+	case internal.AppEngineFlex:
 		b.attrs = append(b.attrs, semconv.CloudPlatformGCPAppEngine)
 		b.addZoneAndRegion(d.detector.AppEngineFlexAvailabilityZoneAndRegion)
 		b.add(semconv.FaaSNameKey, d.detector.AppEngineServiceName)
 		b.add(semconv.FaaSVersionKey, d.detector.AppEngineServiceVersion)
 		b.add(semconv.FaaSInstanceKey, d.detector.AppEngineServiceInstance)
-	case gcp.AppEngineStandard:
+	case internal.AppEngineStandard:
 		b.attrs = append(b.attrs, semconv.CloudPlatformGCPAppEngine)
 		b.add(semconv.CloudAvailabilityZoneKey, d.detector.AppEngineStandardAvailabilityZone)
 		b.add(semconv.CloudRegionKey, d.detector.AppEngineStandardCloudRegion)
 		b.add(semconv.FaaSNameKey, d.detector.AppEngineServiceName)
 		b.add(semconv.FaaSVersionKey, d.detector.AppEngineServiceVersion)
 		b.add(semconv.FaaSInstanceKey, d.detector.AppEngineServiceInstance)
-	case gcp.GCE:
+	case internal.GCE:
 		b.attrs = append(b.attrs, semconv.CloudPlatformGCPComputeEngine)
 		b.addZoneAndRegion(d.detector.GCEAvailabilityZoneAndRegion)
 		b.add(semconv.HostTypeKey, d.detector.GCEHostType)
@@ -119,7 +120,7 @@ func (r *resourceBuilder) addInt(key attribute.Key, detect func() (string, error
 	}
 }
 
-// zoneAndRegion functions are expected to return zone, region, err.
+// addZoneAndRegion functions are expected to return zone, region, err.
 func (r *resourceBuilder) addZoneAndRegion(detect func() (string, string, error)) {
 	if zone, region, err := detect(); err == nil {
 		r.attrs = append(
@@ -132,12 +133,12 @@ func (r *resourceBuilder) addZoneAndRegion(detect func() (string, string, error)
 	}
 }
 
-func (r *resourceBuilder) addZoneOrRegion(detect func() (string, gcp.LocationType, error)) {
+func (r *resourceBuilder) addZoneOrRegion(detect func() (string, internal.LocationType, error)) {
 	if v, locType, err := detect(); err == nil {
 		switch locType {
-		case gcp.Zone:
+		case internal.Zone:
 			r.attrs = append(r.attrs, semconv.CloudAvailabilityZone(v))
-		case gcp.Region:
+		case internal.Region:
 			r.attrs = append(r.attrs, semconv.CloudRegion(v))
 		default:
 			r.errs = append(r.errs, fmt.Errorf("location must be zone or region. Got %v", locType))

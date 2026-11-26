@@ -40,6 +40,7 @@ var (
 		Bool()
 	logLevel   = app.Flag("log.level", "Log level").Default("error").Enum("error", "warning", "info", "debug")
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
+	warnings   = app.Flag("warnings", "Show query warnings").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").
 			Default("default").
 			Short('o').
@@ -104,6 +105,10 @@ Example with --output-timestamp-format:
 	   --to="2021-01-19T20:00:00Z"
 	   --output-timestamp-format=rfc3339nano
 	   'my-query'
+
+By default the query command sends the request to be executed by a Loki server.
+Optionally, logcli can execute the query itself, reading from object storage
+via --store-config.
 
 The output is limited to 30 entries by default; use --limit to increase.
 
@@ -454,13 +459,19 @@ func main() {
 		}
 
 		if *tail || *follow {
-			rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out)
+			if err := rangeQuery.TailQuery(time.Duration(*delayFor)*time.Second, queryClient, out); err != nil {
+				log.Fatalf("Tail failed: %s", err)
+			}
 		} else if rangeQuery.ParallelMaxWorkers == 1 {
-			rangeQuery.DoQuery(queryClient, out, *statistics)
+			if err := rangeQuery.DoQuery(queryClient, out, *statistics); err != nil {
+				log.Fatalf("Range query failed: %s", err)
+			}
 		} else {
 			// `--limit` doesn't make sense when using parallelism.
 			rangeQuery.Limit = 0
-			rangeQuery.DoQueryParallel(queryClient, out, *statistics)
+			if err := rangeQuery.DoQueryParallel(queryClient, out, *statistics); err != nil {
+				log.Fatalf("Range query failed: %s", err)
+			}
 		}
 	case instantQueryCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
@@ -479,17 +490,25 @@ func main() {
 			log.Fatalf("Unable to create log output: %s", err)
 		}
 
-		instantQuery.DoQuery(queryClient, out, *statistics)
+		if err := instantQuery.DoQuery(queryClient, out, *statistics); err != nil {
+			log.Fatalf("Instant query failed: %s", err)
+		}
 	case labelsCmd.FullCommand():
-		labelsQuery.DoLabels(queryClient)
+		if err := labelsQuery.DoLabels(queryClient); err != nil {
+			log.Fatalf("Labels query failed: %s", err)
+		}
 	case seriesCmd.FullCommand():
-		seriesQuery.DoSeries(queryClient)
+		if err := seriesQuery.DoSeries(queryClient); err != nil {
+			log.Fatalf("Series query failed: %s", err)
+		}
 	case fmtCmd.FullCommand():
 		if err := formatLogQL(os.Stdin, os.Stdout); err != nil {
 			log.Fatalf("unable to format logql: %s", err)
 		}
 	case statsCmd.FullCommand():
-		statsQuery.DoStats(queryClient)
+		if err := statsQuery.DoStats(queryClient); err != nil {
+			log.Fatalf("Stats query failed: %s", err)
+		}
 	case volumeCmd.FullCommand(), volumeRangeCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
 		if err != nil {
@@ -508,12 +527,18 @@ func main() {
 		}
 
 		if cmd == volumeRangeCmd.FullCommand() {
-			index.GetVolumeRange(volumeRangeQuery, queryClient, out, *statistics)
+			if err := index.GetVolumeRange(volumeRangeQuery, queryClient, out, *statistics); err != nil {
+				log.Fatalf("Volume range query failed: %s", err)
+			}
 		} else {
-			index.GetVolume(volumeQuery, queryClient, out, *statistics)
+			if err := index.GetVolume(volumeQuery, queryClient, out, *statistics); err != nil {
+				log.Fatalf("Volume query failed: %s", err)
+			}
 		}
 	case detectedFieldsCmd.FullCommand():
-		detectedFieldsQuery.Do(queryClient, *outputMode)
+		if err := detectedFieldsQuery.Do(queryClient, *outputMode); err != nil {
+			log.Fatalf("Detected-fields query failed: %s", err)
+		}
 	case deleteCreateCmd.FullCommand():
 		if err := deleteCreateQuery.CreateQuery(queryClient); err != nil {
 			log.Fatalf("Error creating delete request: %s", err)
@@ -678,6 +703,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 			}
 		}
 		q.Quiet = *quiet
+		q.ShowWarnings = *warnings
 
 		return nil
 	})
@@ -782,6 +808,7 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 		q.End = mustParse(to, defaultEnd)
 
 		q.Quiet = *quiet
+		q.ShowWarnings = *warnings
 
 		return nil
 	})

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	stdlog "log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -393,7 +394,7 @@ func Test_batch(t *testing.T) {
 				FixedLabelsLen:  0,
 				LocalConfig:     "",
 			}
-			q.DoQuery(tc, out, false)
+			require.NoError(t, q.DoQuery(tc, out, false))
 			split := strings.Split(writer.String(), "\n")
 			// Remove the last entry because there is always a newline after the last line which
 			// leaves an entry element in the list of lines.
@@ -409,6 +410,17 @@ func Test_batch(t *testing.T) {
 type testQueryClient struct {
 	engine          *logql.QueryEngine
 	queryRangeCalls int
+	queryErr        error
+}
+
+func TestQueryDoQueryPropagatesClientError(t *testing.T) {
+	expectedErr := errors.New("client query failed")
+	q := &Query{}
+	q.SetInstant(time.Now())
+
+	err := q.DoQuery(&testQueryClient{queryErr: expectedErr}, nil, false)
+	require.ErrorIs(t, err, expectedErr)
+	require.ErrorContains(t, err, "query failed")
 }
 
 func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
@@ -421,7 +433,10 @@ func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
 }
 
 func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
-	panic("implement me")
+	if t.queryErr == nil {
+		panic("implement me")
+	}
+	return nil, t.queryErr
 }
 
 func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
@@ -506,6 +521,115 @@ func (t *testQueryClient) ListDeleteRequests(_ bool) ([]logcli_client.DeleteRequ
 
 func (t *testQueryClient) CancelDeleteRequest(_ string, _ bool, _ bool) error {
 	panic("not implemented")
+}
+
+// warningsQueryClient answers like testQueryClient and adds warnings[i] to the answer of the i-th call.
+type warningsQueryClient struct {
+	*testQueryClient
+	warnings [][]string
+	calls    int
+}
+
+func (c *warningsQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
+	return c.withWarnings(&loghttp.QueryResponse{
+		Status: "success",
+		Data:   loghttp.QueryResponseData{ResultType: loghttp.ResultTypeStream, Result: loghttp.Streams{}},
+	}), nil
+}
+
+func (c *warningsQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+	resp, err := c.testQueryClient.QueryRange(queryStr, limit, from, through, direction, step, interval, quiet)
+	if err != nil {
+		return nil, err
+	}
+	return c.withWarnings(resp), nil
+}
+
+func (c *warningsQueryClient) withWarnings(resp *loghttp.QueryResponse) *loghttp.QueryResponse {
+	if c.calls < len(c.warnings) {
+		resp.Warnings = c.warnings[c.calls]
+	}
+	c.calls++
+	return resp
+}
+
+func TestDoQueryPrintsWarnings(t *testing.T) {
+	streams := []logproto.Stream{{
+		Labels: `{test="simple"}`,
+		Entries: []logproto.Entry{
+			{Timestamp: time.Unix(1, 0), Line: "line1"},
+			{Timestamp: time.Unix(2, 0), Line: "line2"},
+			{Timestamp: time.Unix(3, 0), Line: "line3"},
+			{Timestamp: time.Unix(4, 0), Line: "line4"},
+		},
+	}}
+	tests := []struct {
+		name         string
+		instant      bool
+		showWarnings bool
+		warnings     [][]string
+		expectedLog  string
+	}{
+		{
+			name:         "instant query",
+			instant:      true,
+			showWarnings: true,
+			warnings:     [][]string{{"partial results"}},
+			expectedLog:  "Warning: partial results\n",
+		},
+		{
+			name:         "range query in batches prints each warning once",
+			showWarnings: true,
+			warnings:     [][]string{{"partial results"}, nil, {"partial results", "series limit reached"}},
+			expectedLog:  "Warning: partial results\nWarning: series limit reached\n",
+		},
+		{
+			name:         "range query without warnings",
+			showWarnings: true,
+			expectedLog:  "",
+		},
+		{
+			name:        "instant query doesn't print warnings by default",
+			instant:     true,
+			warnings:    [][]string{{"partial results"}},
+			expectedLog: "",
+		},
+		{
+			name:        "range query doesn't print warnings by default",
+			warnings:    [][]string{{"partial results"}, nil, {"partial results", "series limit reached"}},
+			expectedLog: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			prevOutput, prevFlags := stdlog.Writer(), stdlog.Flags()
+			stdlog.SetOutput(&logs)
+			stdlog.SetFlags(0)
+			t.Cleanup(func() {
+				stdlog.SetOutput(prevOutput)
+				stdlog.SetFlags(prevFlags)
+			})
+
+			tc := &warningsQueryClient{testQueryClient: newTestQueryClient(streams...), warnings: tt.warnings}
+			q := Query{
+				QueryString:  `{test="simple"}`,
+				Start:        time.Unix(1, 0),
+				End:          time.Unix(5, 0),
+				Limit:        10,
+				BatchSize:    2,
+				Forward:      true,
+				Quiet:        true,
+				ShowWarnings: tt.showWarnings,
+			}
+			if tt.instant {
+				q.SetInstant(time.Unix(5, 0))
+			}
+
+			require.NoError(t, q.DoQuery(tc, output.NewRaw(&bytes.Buffer{}, nil), false))
+			assert.Equal(t, tt.expectedLog, logs.String())
+		})
+	}
 }
 
 var legacySchemaConfigContents = `schema_config:

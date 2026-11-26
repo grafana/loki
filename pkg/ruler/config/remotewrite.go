@@ -27,6 +27,8 @@ type RemoteWriteConfig struct {
 	// ProtobufMessage specifies the protobuf message to use against the remote
 	// receiver as specified in https://prometheus.io/docs/specs/remote_write_spec_2_0/
 	ProtobufMessage remoteapi.WriteMessageType `yaml:"protobuf_message,omitempty"`
+	// FailedRequestLogging enables debug logging of remote write V2 request on send error.
+	FailedRequestLogging bool `yaml:"failed_request_logging,omitempty"`
 
 	// // We cannot do proper Go type embedding below as the parser will then parse
 	// // values arbitrarily into the overflow maps of further-down types.
@@ -36,6 +38,8 @@ type RemoteWriteConfig struct {
 	SigV4Config      *sigv4.SigV4Config            `yaml:"sigv4,omitempty"`
 	AzureADConfig    *azuread.AzureADConfig        `yaml:"azuread,omitempty"`
 	GoogleIAMConfig  *googleiam.Config             `yaml:"google_iam,omitempty"`
+
+	ConvertNHCBToClassic bool `yaml:"convert_nhcb_to_classic,omitempty"`
 }
 
 // Static check to ensure safe conversion between structs

@@ -1,7 +1,10 @@
 package postings
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -77,6 +80,41 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 	require.False(t, checkBit(bitmaps[0], 0), "bit 0 should not be set")
 }
 
+func TestMergeBuilder_AppendLabelEntry_ShardBuckets(t *testing.T) {
+	t.Run("a merged label row keeps the shard bucket range of the source row", func(t *testing.T) {
+		source := NewBuilder(nil, 0, 0, 1<<20)
+		for streamID, bucket := range map[int64]uint32{1: 3, 2: 9} {
+			source.ObserveLabelPosting(LabelObservation{
+				ObjectPath: "/o", SectionIndex: 0, ColumnName: "env", LabelValue: "prod",
+				StreamID: streamID, Time: At(time.Unix(0, 10).UTC()), ShardBucket: bucket,
+			})
+		}
+		sourceSections := flushAndOpenSections(t, source)
+		require.Len(t, sourceSections, 1)
+
+		reader := NewReader(ReaderOptions{Columns: sourceSections[0].Columns()})
+		require.NoError(t, reader.Open(t.Context()))
+		t.Cleanup(func() { _ = reader.Close() })
+
+		merge := NewMergeBuilder(nil, 0, 0, 1<<20)
+		rows := NewRowReader(t.Context(), reader)
+		var merged int
+		for rows.Next() {
+			require.NoError(t, merge.AppendLabelEntry(rows.At().LabelEntry()))
+			merged++
+		}
+		require.NoError(t, rows.Err())
+		require.Equal(t, 1, merged)
+
+		mergedSections := flushMergeBuilderAndOpenSections(t, merge)
+		require.Len(t, mergedSections, 1)
+		got, _ := readAllRows(t, mergedSections[0])
+		require.Len(t, got, 1)
+		require.Equal(t, int64(3), got[0]["min_shard_bucket.int64"])
+		require.Equal(t, int64(9), got[0]["max_shard_bucket.int64"])
+	})
+}
+
 // TestMergeBuilder_AppendBloomEntry_RoundTrip verifies that appended bloom
 // entries round-trip correctly without aggregation.
 func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
@@ -147,71 +185,235 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 	require.False(t, checkBit(bitmaps[0], 1), "bit 1 should not be set")
 }
 
-// TestMergeBuilder_AppendLabelEntry_DuplicateKey_Errors verifies that
-// appending two label entries with the same key returns an error on the
-// second append.
-func TestMergeBuilder_AppendLabelEntry_DuplicateKey_Errors(t *testing.T) {
-	b := NewMergeBuilder(nil, 0, 0, 1<<20)
-	b.SetTenant("test-tenant")
-
-	ts := int64(0) // unix nanoseconds
-
-	bitmapBytes := []byte{0x01}
-	entry := LabelEntry{
-		ObjectPath:       "/obj",
-		SectionIndex:     0,
-		ColumnName:       "env",
-		LabelValue:       "prod",
-		StreamIDBitmap:   bitmapBytes,
-		MinTimestamp:     ts,
-		MaxTimestamp:     ts,
-		UncompressedSize: 100,
+// testLabelEntry returns a label entry for section 0 of objectPath.
+func testLabelEntry(objectPath, columnName, labelValue string, minTimestamp int64) LabelEntry {
+	return LabelEntry{
+		ObjectPath:     objectPath,
+		ColumnName:     columnName,
+		LabelValue:     labelValue,
+		StreamIDBitmap: []byte{0x01},
+		MinTimestamp:   minTimestamp,
+		MaxTimestamp:   minTimestamp,
 	}
-
-	// First append should succeed
-	err := b.AppendLabelEntry(entry)
-	require.NoError(t, err)
-
-	// Second append with same key should fail
-	err = b.AppendLabelEntry(entry)
-	require.Error(t, err, "appending duplicate key should return an error")
-	require.Contains(t, err.Error(), "already exists")
 }
 
-// TestMergeBuilder_AppendBloomEntry_DuplicateKey_Errors verifies that
-// appending two bloom entries with the same key returns an error on the
-// second append.
-func TestMergeBuilder_AppendBloomEntry_DuplicateKey_Errors(t *testing.T) {
-	timeVal := time.Unix(0, 0).UTC()
+// testBloomEntry returns a bloom entry for section 0 of objectPath.
+func testBloomEntry(t *testing.T, objectPath, columnName string, minTimestamp int64) BloomEntry {
+	t.Helper()
+	return BloomEntry{
+		ObjectPath:     objectPath,
+		ColumnName:     columnName,
+		BloomFilter:    mustBuildBloomBytes(t, objectPath, 0, columnName, "value", time.Unix(0, minTimestamp).UTC()),
+		StreamIDBitmap: []byte{0x01},
+		MinTimestamp:   minTimestamp,
+		MaxTimestamp:   minTimestamp,
+	}
+}
 
-	// Generate valid bloom bytes using the helper
-	bloomBytes := mustBuildBloomBytes(t, "/obj", 0, "col", "val", timeVal)
+// flushMergeBuilderRows flushes b and returns the rows of all its sections in
+// their stored order.
+func flushMergeBuilderRows(t *testing.T, b *MergeBuilder) []Row {
+	t.Helper()
+	var rows []Row
+	for _, section := range flushMergeBuilderAndOpenSections(t, b) {
+		rows = append(rows, readSectionRows(t, section)...)
+	}
+	return rows
+}
 
-	// Now use a fresh builder for the duplicate append test
-	b := NewMergeBuilder(nil, 0, 0, 1<<20)
-	b.SetTenant("test-tenant")
+func TestMergeBuilder_Append(t *testing.T) {
+	t.Run("returns an error when a label entry sorts before the previous label entry", func(t *testing.T) {
+		b := NewMergeBuilder(nil, 0, 0, 1<<20)
+		require.NoError(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "prod", 0)))
+		require.ErrorContains(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "dev", 0)), "sorts before the previous entry")
+	})
 
-	ts := int64(0) // unix nanoseconds
-	bitmapBytes := []byte{0x01}
-	entry := BloomEntry{
-		ObjectPath:       "/obj",
-		SectionIndex:     0,
-		ColumnName:       "col",
-		BloomFilter:      bloomBytes,
-		StreamIDBitmap:   bitmapBytes,
-		MinTimestamp:     ts,
-		MaxTimestamp:     ts,
-		UncompressedSize: 200,
+	t.Run("returns an error when a bloom entry sorts before the previous bloom entry", func(t *testing.T) {
+		b := NewMergeBuilder(nil, 0, 0, 1<<20)
+		require.NoError(t, b.AppendBloomEntry(testBloomEntry(t, "/obj", "trace_id", 10)))
+		require.ErrorContains(t, b.AppendBloomEntry(testBloomEntry(t, "/obj", "trace_id", 5)), "sorts before the previous entry")
+	})
+
+	t.Run("returns an error when a label entry repeats the previous label entry", func(t *testing.T) {
+		b := NewMergeBuilder(nil, 0, 0, 1<<20)
+		require.NoError(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "prod", 0)))
+		require.ErrorContains(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "prod", 0)), "duplicate posting entry")
+	})
+
+	t.Run("returns an error when a bloom entry repeats the previous bloom entry", func(t *testing.T) {
+		b := NewMergeBuilder(nil, 0, 0, 1<<20)
+		require.NoError(t, b.AppendBloomEntry(testBloomEntry(t, "/obj", "trace_id", 0)))
+		require.ErrorContains(t, b.AppendBloomEntry(testBloomEntry(t, "/obj", "trace_id", 0)), "duplicate posting entry")
+	})
+
+	t.Run("keeps a rejected label entry out of the flushed rows", func(t *testing.T) {
+		b := NewMergeBuilder(nil, 0, 0, 1<<20)
+		prod, dev, qa := testLabelEntry("/obj", "env", "prod", 0), testLabelEntry("/obj", "env", "dev", 0), testLabelEntry("/obj", "env", "qa", 0)
+		require.NoError(t, b.AppendLabelEntry(prod))
+		size := b.EstimatedSize()
+		require.Error(t, b.AppendLabelEntry(dev))
+		require.Equal(t, size, b.EstimatedSize())
+		require.NoError(t, b.AppendLabelEntry(qa))
+
+		require.Equal(t, []Row{prod.Row(), qa.Row()}, flushMergeBuilderRows(t, b))
+	})
+
+	t.Run("keeps a rejected bloom entry out of the flushed rows", func(t *testing.T) {
+		b := NewMergeBuilder(nil, 0, 0, 1<<20)
+		first, earlier, later := testBloomEntry(t, "/obj", "trace_id", 5), testBloomEntry(t, "/obj", "trace_id", 1), testBloomEntry(t, "/obj", "trace_id", 9)
+		require.NoError(t, b.AppendBloomEntry(first))
+		size := b.EstimatedSize()
+		require.Error(t, b.AppendBloomEntry(earlier))
+		require.Equal(t, size, b.EstimatedSize())
+		require.NoError(t, b.AppendBloomEntry(later))
+
+		require.Equal(t, []Row{first.Row(), later.Row()}, flushMergeBuilderRows(t, b))
+	})
+
+	t.Run("accepts interleaved label and bloom entries that are each in order", func(t *testing.T) {
+		b := NewMergeBuilder(nil, 0, 0, 1<<20)
+		require.NoError(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "prod", 0)))
+		require.NoError(t, b.AppendBloomEntry(testBloomEntry(t, "/obj", "a", 0)))
+		require.NoError(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "qa", 0)))
+		require.NoError(t, b.AppendBloomEntry(testBloomEntry(t, "/obj", "b", 0)))
+	})
+
+	t.Run("accepts an entry for the same logs section and key with a later time range", func(t *testing.T) {
+		b := NewMergeBuilder(nil, 0, 0, 1<<20)
+		require.NoError(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "prod", 0)))
+		require.NoError(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "prod", 2)))
+	})
+}
+
+func TestMergeBuilder_Reset(t *testing.T) {
+	t.Run("accepts any first entry after a reset", func(t *testing.T) {
+		b := NewMergeBuilder(nil, 0, 0, 1<<20)
+		require.NoError(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "prod", 0)))
+		require.NoError(t, b.AppendBloomEntry(testBloomEntry(t, "/obj", "trace_id", 10)))
+		b.Reset()
+		require.Zero(t, b.EstimatedSize())
+		require.NoError(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "dev", 0)))
+		require.NoError(t, b.AppendBloomEntry(testBloomEntry(t, "/obj", "trace_id", 5)))
+	})
+}
+
+func TestMergeBuilder_Flush(t *testing.T) {
+	t.Run("writes the entries in arrival order across sections", func(t *testing.T) {
+		var want []Row
+		// A target section size of one byte puts each entry in its own section.
+		b := NewMergeBuilder(nil, 0, 0, 1)
+		blooms := []BloomEntry{
+			testBloomEntry(t, "/obj", "span_id", 0),
+			testBloomEntry(t, "/obj-b", "trace_id", 0),
+			testBloomEntry(t, "/obj-a", "trace_id", 7),
+		}
+		for _, entry := range blooms {
+			require.NoError(t, b.AppendBloomEntry(entry))
+			want = append(want, entry.Row())
+		}
+		labels := []LabelEntry{
+			testLabelEntry("/obj", "app", "api", 3),
+			testLabelEntry("/obj", "env", "dev", 1),
+			testLabelEntry("/obj-b", "env", "prod", 0),
+			testLabelEntry("/obj-a", "env", "prod", 2),
+		}
+		for _, entry := range labels {
+			require.NoError(t, b.AppendLabelEntry(entry))
+			want = append(want, entry.Row())
+		}
+
+		sections := flushMergeBuilderAndOpenSections(t, b)
+		require.Len(t, sections, len(want))
+
+		var got []Row
+		for _, section := range sections {
+			got = append(got, readSectionRows(t, section)...)
+		}
+		require.True(t, slices.IsSortedFunc(got, CompareRows))
+		require.Equal(t, want, got)
+	})
+
+	t.Run("writes only the entries appended after the previous flush", func(t *testing.T) {
+		b := NewMergeBuilder(nil, 0, 0, 1<<20)
+		require.NoError(t, b.AppendBloomEntry(testBloomEntry(t, "/obj", "trace_id", 10)))
+		require.NoError(t, b.AppendLabelEntry(testLabelEntry("/obj", "env", "prod", 0)))
+		require.Len(t, flushMergeBuilderRows(t, b), 2)
+		require.Zero(t, b.EstimatedSize())
+
+		second := testLabelEntry("/obj", "env", "dev", 0)
+		require.NoError(t, b.AppendLabelEntry(second))
+		require.Equal(t, []Row{second.Row()}, flushMergeBuilderRows(t, b))
+	})
+}
+
+// readSectionRows returns the rows of section in their stored order.
+func readSectionRows(t *testing.T, section *Section) []Row {
+	t.Helper()
+	reader := NewReader(ReaderOptions{Columns: section.Columns()})
+	require.NoError(t, reader.Open(t.Context()))
+	t.Cleanup(func() { _ = reader.Close() })
+
+	var rows []Row
+	rowReader := NewRowReader(t.Context(), reader)
+	for rowReader.Next() {
+		rows = append(rows, rowReader.At())
+	}
+	require.NoError(t, rowReader.Err())
+	return rows
+}
+
+// BenchmarkMergeBuilder appends entries in [CompareRows] order and flushes
+// them.
+func BenchmarkMergeBuilder(b *testing.B) {
+	const (
+		numBlooms = 10_000
+		numLabels = 90_000
+	)
+	bitmap := []byte{0x01, 0x02}
+	bloom := bytes.Repeat([]byte{0xAB}, 64)
+
+	blooms := make([]BloomEntry, numBlooms)
+	for i := range blooms {
+		blooms[i] = BloomEntry{
+			ObjectPath:     fmt.Sprintf("logs/tenant/obj-%06d", i),
+			ColumnName:     "trace_id",
+			BloomFilter:    bloom,
+			StreamIDBitmap: bitmap,
+			MinTimestamp:   int64(i),
+			MaxTimestamp:   int64(i) + 1,
+		}
+	}
+	labels := make([]LabelEntry, numLabels)
+	for i := range labels {
+		labels[i] = LabelEntry{
+			ObjectPath:     fmt.Sprintf("logs/tenant/obj-%06d", i),
+			ColumnName:     "service_name",
+			LabelValue:     fmt.Sprintf("svc-%06d", i),
+			StreamIDBitmap: bitmap,
+			MinTimestamp:   int64(i),
+			MaxTimestamp:   int64(i) + 1,
+		}
 	}
 
-	// First append should succeed
-	err := b.AppendBloomEntry(entry)
-	require.NoError(t, err)
+	builder := NewMergeBuilder(nil, 2<<10, 0, 2<<20)
+	builder.SetTenant("tenant")
 
-	// Second append with same key should fail
-	err = b.AppendBloomEntry(entry)
-	require.Error(t, err, "appending duplicate key should return an error")
-	require.Contains(t, err.Error(), "already exists")
+	b.ReportAllocs()
+	for b.Loop() {
+		for _, entry := range blooms {
+			if err := builder.AppendBloomEntry(entry); err != nil {
+				b.Fatal(err)
+			}
+		}
+		for _, entry := range labels {
+			if err := builder.AppendLabelEntry(entry); err != nil {
+				b.Fatal(err)
+			}
+		}
+		if _, err := builder.Flush(discardSectionWriter{}); err != nil {
+			b.Fatal(err)
+		}
+	}
 }
 
 // flushMergeBuilderAndOpenSections flushes the merge builder and opens all

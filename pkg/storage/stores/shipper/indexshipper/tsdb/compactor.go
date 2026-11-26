@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -22,6 +23,7 @@ import (
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	tsdbindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const readDBsConcurrency = 50
@@ -55,7 +57,7 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 
 	builder := NewBuilder(indexFormat)
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
-		builder.AddSeries(lbls.Copy(), fp, chks)
+		builder.AddSeries(lbls, fp, chks)
 		return false
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -244,7 +246,7 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 	}()
 
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
-		builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
+		builder.AddSeries(withoutTenantLabel(lbls), fp, chks)
 		return false
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 
@@ -260,7 +262,7 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
 		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
-			builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
+			builder.AddSeries(withoutTenantLabel(lbls), fp, chks)
 			return false
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
@@ -289,9 +291,15 @@ type compactedIndex struct {
 	tableInterval model.Interval
 	periodConfig  config.PeriodConfig
 
-	indexChunks     map[string][]tsdbindex.ChunkMeta
-	deleteChunks    map[string][]tsdbindex.ChunkMeta
+	indexChunks     map[string]seriesChunks
+	deleteChunks    map[string]seriesChunks
 	seriesToCleanup map[string]struct{}
+}
+
+// seriesChunks holds the chunks lined up to be added to or removed from a series.
+type seriesChunks struct {
+	lbls   labels.Labels
+	chunks []tsdbindex.ChunkMeta
 }
 
 func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string, periodConfig config.PeriodConfig, builder *Builder) *compactedIndex {
@@ -302,8 +310,8 @@ func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string
 		workingDir:      workingDir,
 		periodConfig:    periodConfig,
 		tableInterval:   retention.ExtractIntervalFromTableName(tableName),
-		indexChunks:     map[string][]tsdbindex.ChunkMeta{},
-		deleteChunks:    map[string][]tsdbindex.ChunkMeta{},
+		indexChunks:     map[string]seriesChunks{},
+		deleteChunks:    map[string]seriesChunks{},
 		seriesToCleanup: map[string]struct{}{},
 	}
 }
@@ -318,9 +326,10 @@ func (c *compactedIndex) ForEachSeries(ctx context.Context, callback retention.S
 		UserID: c.userID,
 	}
 	series := retention.NewSeries()
-	for seriesID, stream := range c.builder.streams {
+	for stream := range c.builder.allStreams() {
+		// the series ID is persisted by the deletion manager to track progress, so it must stay labels.String().
 		series.Reset(
-			getUnsafeBytes(seriesID),
+			getUnsafeBytes(stream.labels.String()),
 			getUnsafeBytes(c.userID),
 			withoutTenantLabel(stream.labels),
 		)
@@ -362,9 +371,12 @@ func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labe
 	// TSDB doesnt need the __name__="log" convention the old chunk store index used.
 	b := labels.NewBuilder(lbls)
 	b.Del(model.MetricNameLabel)
-	ls := b.Labels().String()
+	ls := b.Labels()
+	seriesID := ls.String()
 
-	c.indexChunks[ls] = append(c.indexChunks[ls], tsdbindex.ChunkMeta{
+	sc := c.indexChunks[seriesID]
+	sc.lbls = ls
+	sc.chunks = append(sc.chunks, tsdbindex.ChunkMeta{
 		Checksum:   chunkRef.Checksum,
 		MinTime:    int64(chunkRef.From),
 		MaxTime:    int64(chunkRef.Through),
@@ -372,35 +384,33 @@ func (c *compactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labe
 		KB:         sizeInKB,
 		Entries:    logEntriesCount,
 	})
+	c.indexChunks[seriesID] = sc
 
 	return true, nil
 }
 
 // CleanupSeries removes the series from the builder(including its chunks) and deletes the list of chunks lined up for deletion.
 func (c *compactedIndex) CleanupSeries(_ []byte, lbls labels.Labels) error {
-	seriesID := lbls.String()
-	if _, ok := c.builder.streams[seriesID]; !ok {
-		return fmt.Errorf("series cleanup not allowed on non-existing series %s", seriesID)
+	if !c.builder.deleteStream(lbls) {
+		return fmt.Errorf("series cleanup not allowed on non-existing series %s", lbls.String())
 	}
-	delete(c.builder.streams, seriesID)
-	delete(c.deleteChunks, seriesID)
+	delete(c.deleteChunks, lbls.String())
 	return nil
 }
 
 // RemoveChunk notes details of the chunk to remove. Returns true/false for existence of the chunk.
-func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error) {
+func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, lbls labels.Labels, chunkID string) (bool, error) {
 	chk, err := chunk.ParseExternalKey(string(userID), chunkID)
 	if err != nil {
 		return false, err
 	}
 
-	seriesID := labels.String()
 	chunkMeta := tsdbindex.ChunkMeta{
 		Checksum: chk.Checksum,
 		MinTime:  int64(from),
 		MaxTime:  int64(through),
 	}
-	hasChunk, err := c.builder.HasChunk(seriesID, chunkMeta)
+	hasChunk, err := c.builder.HasChunk(lbls, chunkMeta)
 	if err != nil {
 		return false, err
 	}
@@ -408,23 +418,22 @@ func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, la
 		return false, nil
 	}
 
-	c.deleteChunks[seriesID] = append(c.deleteChunks[seriesID], tsdbindex.ChunkMeta{
-		Checksum: chk.Checksum,
-		MinTime:  int64(from),
-		MaxTime:  int64(through),
-	})
+	seriesID := lbls.String()
+	sc := c.deleteChunks[seriesID]
+	sc.lbls = lbls
+	sc.chunks = append(sc.chunks, chunkMeta)
+	c.deleteChunks[seriesID] = sc
 
 	return true, nil
 }
 
 func (c *compactedIndex) ChunkExists(_ []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
-	seriesID := lbls.String()
 	chunkMeta := tsdbindex.ChunkMeta{
 		Checksum: chunkRef.Checksum,
 		MinTime:  int64(chunkRef.From),
 		MaxTime:  int64(chunkRef.Through),
 	}
-	hasChunk, err := c.builder.HasChunk(seriesID, chunkMeta)
+	hasChunk, err := c.builder.HasChunk(lbls, chunkMeta)
 	if err != nil {
 		return false, err
 	}
@@ -437,42 +446,127 @@ func (c *compactedIndex) Cleanup() {}
 // ToIndexFile creates an indexFile from the chunksmetas stored in the builder.
 // Before building the index, it takes care of the lined up updates i.e deletes and adding of new chunks.
 func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
-	for seriesID, chks := range c.deleteChunks {
-		for _, chk := range chks {
-			chunkFound, err := c.builder.DropChunk(seriesID, chk)
+	idxs, err := c.ToShardedIndexFiles(1)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(idxs) < 1 {
+		return nil, errors.New("failed to build index file")
+
+	}
+
+	return idxs[0], err
+}
+
+// ToShardedIndexFiles is like ToIndexFile, but with a shardFactor greater than 1 the series are
+// partitioned by the top bits of their fingerprint into that many files, one per non-empty shard,
+// each named with its `<x>_of_<K>` range.
+func (c *compactedIndex) ToShardedIndexFiles(shardFactor int) ([]shipperindex.Index, error) {
+	if err := c.applyUpdates(); err != nil {
+		return nil, err
+	}
+
+	if shardFactor <= 1 || c.builder.numStreams() == 0 {
+		idx, err := c.buildFile(c.builder, tsdbindex.ShardAnnotation{})
+		if err != nil {
+			return nil, err
+		}
+		return []shipperindex.Index{idx}, nil
+	}
+
+	k := uint32(shardFactor)
+	builders := partitionBuilder(c.builder, k)
+
+	files := make([]shipperindex.Index, 0, len(builders))
+	for x, b := range builders {
+		if b == nil {
+			continue
+		}
+		idx, err := c.buildFile(b, tsdbindex.NewShard(uint32(x), k))
+		if err != nil {
+			for _, f := range files {
+				if closeErr := f.Close(); closeErr != nil {
+					level.Error(util_log.Logger).Log("msg", "failed to close index file after build error", "path", f.Path(), "err", closeErr)
+				}
+				if removeErr := os.Remove(f.Path()); removeErr != nil {
+					level.Error(util_log.Logger).Log("msg", "failed to remove index file after build error", "path", f.Path(), "err", removeErr)
+				}
+			}
+			return nil, err
+		}
+		files = append(files, idx)
+	}
+	return files, nil
+}
+
+// applyUpdates applies the lined up deletes and additions of chunks to the
+// builder. It is idempotent and safe to call multiple times.
+func (c *compactedIndex) applyUpdates() error {
+	for seriesID, sc := range c.deleteChunks {
+		for _, chk := range sc.chunks {
+			chunkFound, err := c.builder.DropChunk(sc.lbls, chk)
 			if err != nil {
-				return nil, err
+				return err
 			}
 			if !chunkFound {
-				return nil, fmt.Errorf("could not drop non-existent chunk %x from series %s", chk, seriesID)
+				return fmt.Errorf("could not drop non-existent chunk %x from series %s", chk, seriesID)
 			}
 		}
 	}
 	c.deleteChunks = nil
 
-	for ls, metas := range c.indexChunks {
-		for i := range metas {
-			err := c.builder.InsertChunk(ls, metas[i])
+	for _, sc := range c.indexChunks {
+		for i := range sc.chunks {
+			err := c.builder.InsertChunk(sc.lbls, sc.chunks[i])
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
 	c.indexChunks = nil
 
 	// cleanup any empty streams due to chunk removals above
-	for seriesID, stream := range c.builder.streams {
-		if len(stream.chunks) == 0 {
-			delete(c.builder.streams, seriesID)
+	c.builder.dropEmptyStreams()
+	return nil
+}
+
+// partitionBuilder splits the streams of b into k builders by the top bits of
+// their fingerprint, so that builders[x] holds exactly the series matched by
+// index.ShardAnnotation{Shard: x, Of: k}. Shards with no series are nil.
+func partitionBuilder(b *Builder, k uint32) []*Builder {
+	builders := make([]*Builder, k)
+	requiredBits := tsdbindex.NewShard(0, k).RequiredBits()
+	put := func(h uint64, s *stream) {
+		x := uint64(s.fp) >> (64 - requiredBits)
+		if builders[x] == nil {
+			builders[x] = NewBuilder(b.version)
+			builders[x].hash = b.hash
+			builders[x].chunksFinalized = b.chunksFinalized
+		}
+		builders[x].putStream(h, s)
+	}
+	for h, s := range b.streams {
+		put(h, s)
+	}
+	for h, cs := range b.collisions {
+		for _, s := range cs {
+			put(h, s)
 		}
 	}
+	return builders
+}
 
-	id, err := c.builder.Build(c.ctx, c.workingDir, func(from, through model.Time, checksum uint32) Identifier {
+// buildFile writes the builder to a compacted TSDB file in the working dir,
+// named for the given shard (the zero value names an unsplit file).
+func (c *compactedIndex) buildFile(b *Builder, shard tsdbindex.ShardAnnotation) (shipperindex.Index, error) {
+	id, err := b.Build(c.ctx, c.workingDir, func(from, through model.Time, checksum uint32) Identifier {
 		id := SingleTenantTSDBIdentifier{
 			TS:       time.Now(),
 			From:     from,
 			Through:  through,
 			Checksum: checksum,
+			Shard:    shard,
 		}
 		return NewPrefixedIdentifier(id, c.workingDir, "")
 	})

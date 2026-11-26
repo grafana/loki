@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/prometheus/procfs/internal/fs"
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // CPUStat shows how much time the cpu spend in various stages.
@@ -135,7 +135,6 @@ func parseSoftIRQStat(line string) (SoftIRQStat, uint64, error) {
 		&softIRQStat.Block, &softIRQStat.BlockIoPoll,
 		&softIRQStat.Tasklet, &softIRQStat.Sched,
 		&softIRQStat.Hrtimer, &softIRQStat.Rcu)
-
 	if err != nil {
 		return SoftIRQStat{}, 0, fmt.Errorf("%w: couldn't parse %q (softirq): %w", ErrFileParse, line, err)
 	}
@@ -167,7 +166,7 @@ func (fs FS) NewStat() (Stat, error) {
 // See: https://www.kernel.org/doc/Documentation/filesystems/proc.txt
 func (fs FS) Stat() (Stat, error) {
 	fileName := fs.proc.Path("stat")
-	data, err := util.ReadFileNoStat(fileName)
+	data, err := parsers.ReadFileNoStat(fileName)
 	if err != nil {
 		return Stat{}, err
 	}
@@ -178,7 +177,7 @@ func (fs FS) Stat() (Stat, error) {
 	return procStat, nil
 }
 
-// parseStat parses the metrics from /proc/[pid]/stat.
+// parseStat parses the metrics from /proc/stat.
 func parseStat(r io.Reader, fileName string) (Stat, error) {
 	var (
 		scanner = bufio.NewScanner(r)
@@ -194,7 +193,7 @@ func parseStat(r io.Reader, fileName string) (Stat, error) {
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		parts := strings.Fields(scanner.Text())
+		parts := strings.Fields(line)
 		// require at least <key> <value>
 		if len(parts) < 2 {
 			continue

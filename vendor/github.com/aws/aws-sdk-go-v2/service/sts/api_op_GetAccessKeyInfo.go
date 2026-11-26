@@ -4,8 +4,9 @@ package sts
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/sts/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Returns the account identifier for the specified access key ID.
@@ -61,6 +62,18 @@ type GetAccessKeyInfoInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetAccessKeyInfoInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetAccessKeyInfoRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetAccessKeyInfoInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AccessKeyId != nil {
+		s.WriteString(schemas.GetAccessKeyInfoRequest_AccessKeyId, *v.AccessKeyId)
+	}
+}
+
 type GetAccessKeyInfoOutput struct {
 
 	// The number used to identify the Amazon Web Services account.
@@ -72,22 +85,35 @@ type GetAccessKeyInfoOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetAccessKeyInfoOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetAccessKeyInfoResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetAccessKeyInfoOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Account != nil {
+		s.WriteString(schemas.GetAccessKeyInfoResponse_Account, *v.Account)
+	}
+}
+func (v *GetAccessKeyInfoOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.GetAccessKeyInfoResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.GetAccessKeyInfoResponse_Account:
+			v.Account = new(string)
+			return d.ReadString(schemas.GetAccessKeyInfoResponse_Account, v.Account)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationGetAccessKeyInfoMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsquery_serializeOpGetAccessKeyInfo{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetAccessKeyInfo, schemas.GetAccessKeyInfoRequest, schemas.GetAccessKeyInfoResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsquery_deserializeOpGetAccessKeyInfo{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetAccessKeyInfo, schemas.GetAccessKeyInfoRequest, schemas.GetAccessKeyInfoResponse), output: &GetAccessKeyInfoOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -97,19 +123,10 @@ func (c *Client) addOperationGetAccessKeyInfoMiddlewares(stack *middleware.Stack
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetAccessKeyInfoValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "GetAccessKeyInfo"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

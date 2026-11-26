@@ -118,6 +118,11 @@ func BucketQuantile(q float64, buckets Buckets) (
 		quantile = math.Inf(+1)
 		return quantile, forcedMonotonic, fixedPrecision, minBucket, maxBucket, maxDiff
 	}
+	if len(buckets) == 0 {
+		quantile = math.NaN()
+		return quantile, forcedMonotonic, fixedPrecision, minBucket, maxBucket, maxDiff
+	}
+
 	slices.SortFunc(buckets, func(a, b Bucket) int {
 		// We don't expect the bucket boundary to be a NaN.
 		if a.UpperBound < b.UpperBound {
@@ -216,6 +221,9 @@ func BucketQuantile(q float64, buckets Buckets) (
 //
 // HistogramQuantile is for calculating the histogram_quantile() of native
 // histograms. See also: BucketQuantile for classic histograms.
+//
+// The returned annotations are all about the histogram h, so pos must be the
+// position of the expression that h was derived from, not the position of q.
 //
 // HistogramQuantile is exported as it may be used by other PromQL engine
 // implementations.
@@ -319,9 +327,9 @@ func HistogramQuantile(q float64, h *histogram.FloatHistogram, metricName string
 	// and +Inf at some point, which made the Sum == NaN.
 	if math.IsNaN(h.Sum) {
 		// Detect if h.Count is greater than sum of buckets.
+		// Preserve the selected bucket for interpolation below.
 		for it.Next() {
-			bucket = it.At()
-			count += bucket.Count
+			count += it.At().Count
 		}
 		if count < h.Count {
 			annos.Add(annotations.NewNativeHistogramQuantileNaNSkewInfo(metricName, pos))
@@ -389,6 +397,9 @@ func HistogramQuantile(q float64, h *histogram.FloatHistogram, metricName string
 // thus histogram_fraction(-Inf, +Inf, v) might be less than 1.0. The function
 // returns an info level annotation in this case.
 //
+// The returned annotation is about the histogram h, so pos must be the position
+// of the expression that h was derived from, not the position of lower or upper.
+//
 // HistogramFraction is exported as it may be used by other PromQL engine
 // implementations.
 func HistogramFraction(lower, upper float64, h *histogram.FloatHistogram, metricName string, pos posrange.PositionRange) (float64, annotations.Annotations) {
@@ -435,7 +446,15 @@ func HistogramFraction(lower, upper float64, h *histogram.FloatHistogram, metric
 			return rank + b.Count*b.FractionBelow(v, false)
 		}
 
-		if b.Lower <= 0 && b.Upper >= 0 {
+		if h.UsesCustomBuckets() {
+			// Custom buckets have no zero bucket. Only the first bucket has a
+			// lower bound of -Inf, and 0 is its lower bound if its upper bound
+			// is positive, as done for classic histograms and in
+			// HistogramQuantile above.
+			if b.Lower == math.Inf(-1) && b.Upper > 0 {
+				b.Lower = 0
+			}
+		} else if b.Lower <= 0 && b.Upper >= 0 {
 			zeroBucket = true
 			switch {
 			case len(h.NegativeBuckets) == 0 && len(h.PositiveBuckets) > 0:
@@ -512,6 +531,10 @@ func HistogramFraction(lower, upper float64, h *histogram.FloatHistogram, metric
 
 // BucketFraction is a version of HistogramFraction for classic histograms.
 func BucketFraction(lower, upper float64, buckets Buckets) float64 {
+	if len(buckets) == 0 {
+		return math.NaN()
+	}
+
 	slices.SortFunc(buckets, func(a, b Bucket) int {
 		// We don't expect the bucket boundary to be a NaN.
 		if a.UpperBound < b.UpperBound {
@@ -729,5 +752,8 @@ func quantile(q float64, values vectorByValueHeap) float64 {
 	upperIndex := math.Min(n-1, lowerIndex+1)
 
 	weight := rank - math.Floor(rank)
+	if weight == 0 {
+		return values[int(lowerIndex)].F
+	}
 	return values[int(lowerIndex)].F*(1-weight) + values[int(upperIndex)].F*weight
 }

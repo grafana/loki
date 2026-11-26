@@ -13,9 +13,8 @@ import (
 // remaining compute seconds (total - comm) to the slot_phase metric.
 //
 // Only the main runJob goroutine mutates a tracker, so it needs no locking.
-// Communication that runs on other goroutines (Merge prefetch reads, the async
-// bind enqueue on a handler goroutine) is intentionally not counted: while it
-// runs, the main goroutine is genuinely computing.
+// Communication that runs on other goroutines is intentionally not counted:
+// while it runs, the main goroutine is genuinely computing.
 type slotPhaseTracker struct {
 	metrics  *metrics
 	taskType taskType

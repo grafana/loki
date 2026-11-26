@@ -42,7 +42,8 @@ func newObjectRetention(mode *RetentionMode, date *time.Time) (*objectRetention,
 	objectRetention := &objectRetention{}
 
 	if date != nil && !date.IsZero() {
-		objectRetention.RetainUntilDate = date
+		utc := date.UTC()
+		objectRetention.RetainUntilDate = &utc
 	}
 	if mode != nil {
 		if !mode.IsValid() {

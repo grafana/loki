@@ -2,14 +2,18 @@ package uploads
 
 import (
 	"context"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -107,4 +111,72 @@ func TestTableManager(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTableManager_ConcurrentUploadTables covers /flush/tenant and the periodic
+// upload loop calling UploadTables at the same time. Overlapping uploads of the
+// same index used to share a temp file, so one of them could upload 0 bytes.
+func TestTableManager_ConcurrentUploadTables(t *testing.T) {
+	const (
+		tableName = "table-1"
+		userID    = "user-1"
+	)
+
+	testDir := t.TempDir()
+	client := &concurrencyDetector{Client: buildTestStorageClient(t, testDir)}
+
+	tm, err := NewTableManager(Config{UploadInterval: time.Hour, DBRetainPeriod: time.Hour}, client, nil, log.NewNopLogger())
+	require.NoError(t, err)
+	defer tm.Stop()
+
+	userIndexPath := filepath.Join(testDir, tableName, userID)
+	require.NoError(t, os.MkdirAll(userIndexPath, 0o755))
+	for _, idx := range buildTestIndexes(t, userIndexPath, 1) {
+		require.NoError(t, tm.AddIndex(tableName, userID, idx))
+	}
+
+	require.NoError(t, runConcurrently(func() error { return tm.UploadTables(context.Background()) }))
+
+	require.False(t, client.concurrent.Load(), "uploads ran concurrently")
+	require.Equal(t, int32(1), client.uploads.Load(), "index should be uploaded exactly once")
+}
+
+// concurrencyDetector is a storage.Client that records whether two uploads
+// ever run at the same time. Each upload holds for a moment so that an
+// overlapping upload has time to arrive.
+type concurrencyDetector struct {
+	storage.Client
+
+	mtx        sync.Mutex // held while an upload is in flight
+	concurrent atomic.Bool
+	uploads    atomic.Int32
+}
+
+func (d *concurrencyDetector) PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.Reader) error {
+	d.uploads.Add(1)
+
+	if !d.mtx.TryLock() {
+		d.concurrent.Store(true)
+		return d.Client.PutUserFile(ctx, tableName, userID, fileName, file)
+	}
+	defer d.mtx.Unlock()
+
+	// Uploads to the local test store finish almost instantly, so without a
+	// pause a second upload would rarely arrive while this one is in flight,
+	// even when nothing stops them from overlapping.
+	time.Sleep(100 * time.Millisecond)
+	return d.Client.PutUserFile(ctx, tableName, userID, fileName, file)
+}
+
+// runConcurrently calls upload twice at the same time and returns any errors.
+func runConcurrently(upload func() error) error {
+	var (
+		wg   sync.WaitGroup
+		errs [2]error
+	)
+	for i := range errs {
+		wg.Go(func() { errs[i] = upload() })
+	}
+	wg.Wait()
+	return errors.Join(errs[:]...)
 }

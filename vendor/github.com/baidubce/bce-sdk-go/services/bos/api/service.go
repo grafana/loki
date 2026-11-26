@@ -74,6 +74,7 @@ func GetUserQuota(cli bce.Client, ctx *BosContext, options ...Option) (*UserQuot
 		return nil, resp.ServiceError()
 	}
 	result := &UserQuotaArgs{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}

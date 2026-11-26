@@ -14,7 +14,21 @@ func connCheck(_ net.Conn) error {
 	return nil
 }
 
-// since we can't check for data on the socket, we just assume there is some
+// There is no portable non-consuming readiness check on this platform.
+// Returning true would force every idle CSC connection through a timed read on
+// every drainer tick. The CSC drainer uses needsCscPeriodicProbe instead.
 func maybeHasData(_ net.Conn) bool {
+	return false
+}
+
+func checkForData(_ net.Conn) (bool, error) {
+	return false, nil
+}
+
+func needsCscReadProbe(_ net.Conn) bool {
+	return true
+}
+
+func needsCscPeriodicProbe(_ net.Conn) bool {
 	return true
 }

@@ -6,8 +6,6 @@ package sqlite3
 
 const EOPNOTSUPP = 45
 
-const FP_ILOGBNAN = 2147483647
-
 const HUGE = "MAXFLOAT"
 
 const INT_FAST8_MAX = 2147483647
@@ -21,6 +19,8 @@ const P_tmpdir = "/tmp/"
 const SF_SETTABLE = 4294901760
 
 const TIMER_RELTIME = 0
+
+const TIOCGSID = 1074033763
 
 type Tdaddr_t = int64
 
@@ -44,11 +44,11 @@ const _POSIX_RAW_SOCKETS = 200112
 
 const _POSIX_SPIN_LOCKS = 200112
 
-const st_atimespec = 0
+const st_atimespec = "st_atim"
 
-const st_ctimespec = 0
+const st_ctimespec = "st_ctim"
 
-const st_mtimespec = 0
+const st_mtimespec = "st_mtim"
 
 type t__fsblkcnt_t = uint64
 

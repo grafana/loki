@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -43,7 +43,7 @@ var (
 		Namespace: constants.Loki,
 		Subsystem: "chunk_fetcher",
 		Name:      "storage_errors_total",
-		Help:      "Storage errors suppressed by the chunk fetcher.",
+		Help:      "Storage errors encountered by the chunk fetcher.",
 	}, []string{"reason"})
 )
 
@@ -212,9 +212,6 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		level.Warn(log).Log("msg", "error process response from cache", "err", cacheDecodeErr)
 	}
 
-	// Fetch missing from storage. Keep this error apart from the cache errors above.
-	// A later change that returns an error must return only this one. A cache decode
-	// failure is not fatal, because storage still holds the chunk.
 	var (
 		fromStorage []chunk.Chunk
 		storageErr  error
@@ -237,21 +234,27 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	st.AddCacheEntriesStored(stats.ChunkCache, len(fromStorage))
 	st.AddCacheBytesSent(stats.ChunkCache, bytes)
 
-	// Always cache any chunks we did get
+	if storageErr != nil {
+		// Only treat this as an expected, benign cancellation if the query itself was canceled
+		// or timed out: storageErr can also be (or wrap) context.Canceled/DeadlineExceeded from
+		// a per-request sub-timeout that object storage clients apply internally, which is a
+		// genuine storage failure rather than an expected query cancellation.
+		if ctx.Err() == nil {
+			storageErrors.WithLabelValues(c.storageErrorReason(storageErr)).Inc()
+			if failures := len(missing) - len(fromStorage); failures > 0 {
+				st.AddChunkFetchFailures(int64(failures))
+			}
+			level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
+		}
+
+		return nil, storageErr
+	}
 
 	if cacheErr := c.WriteBackCache(ctx, fromStorage); cacheErr != nil {
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
-	if storageErr != nil {
-		if !errors.Is(storageErr, context.Canceled) && !errors.Is(storageErr, context.DeadlineExceeded) {
-			storageErrors.WithLabelValues(c.storageErrorReason(storageErr)).Inc()
-		}
-		level.Error(log).Log("msg", "failed downloading chunks", "err", storageErr)
-	}
-
-	allChunks := append(fromCache, fromStorage...)
-	return allChunks, nil
+	return append(fromCache, fromStorage...), nil
 }
 
 func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) error {

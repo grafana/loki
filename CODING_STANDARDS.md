@@ -77,3 +77,8 @@ The linter enforces the following import restrictions:
 | Forbidden | Use instead |
 |---|---|
 | `github.com/go-kit/kit/log` | `github.com/go-kit/log` |
+| `sync/atomic` | `go.uber.org/atomic` |
+| `github.com/grafana/dskit/spanlogger` | `github.com/grafana/loki/v3/pkg/util/spanlogger` |
+| `github.com/opentracing/opentracing-go` | OpenTelemetry tracing already used in Loki |
+| `github.com/uber/jaeger-client-go` | OpenTelemetry tracing already used in Loki |
+| `github.com/opentracing-contrib/go-stdlib/nethttp` | OpenTelemetry tracing already used in Loki |

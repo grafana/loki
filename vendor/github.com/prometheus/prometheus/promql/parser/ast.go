@@ -94,6 +94,9 @@ type AggregateExpr struct {
 	Param    Expr     // Parameter used by some aggregators.
 	Grouping []string // The labels by which to group the Vector.
 	Without  bool     // Whether to drop the given labels rather than keep them.
+
+	unquotedUTF8Names bool // Whether the printer can emit unquoted Unicode letters and dots in names.
+
 	PosRange posrange.PositionRange
 }
 
@@ -108,6 +111,8 @@ type BinaryExpr struct {
 
 	// If a comparison operator, return 0/1 rather than filtering.
 	ReturnBool bool
+
+	unquotedUTF8Names bool // Whether the printer can emit unquoted Unicode letters and dots in names.
 }
 
 // DurationExpr represents a binary expression between two duration expressions.
@@ -116,8 +121,8 @@ type DurationExpr struct {
 	LHS, RHS Expr     // The operands on the respective sides of the operator.
 	Wrapped  bool     // Set when the duration is wrapped in parentheses.
 
-	StartPos posrange.Pos // For unary operations, step(), and range(), the start position of the operator.
-	EndPos   posrange.Pos // For step() and range(), the end position of the operator.
+	StartPos posrange.Pos // The start position of unary operations and duration function calls.
+	EndPos   posrange.Pos // The end position of duration function calls, including the closing parenthesis.
 }
 
 // Call represents a function call.
@@ -230,6 +235,8 @@ type VectorSelector struct {
 	Anchored bool
 	// Smoothed is true when the VectorSelector is smoothed.
 	Smoothed bool
+
+	unquotedUTF8Names bool // Whether the printer can emit unquoted Unicode letters and dots in names.
 
 	PosRange posrange.PositionRange
 }
@@ -487,7 +494,7 @@ func (e *BinaryExpr) PositionRange() posrange.PositionRange {
 }
 
 func (e *DurationExpr) PositionRange() posrange.PositionRange {
-	if e.RHS == nil && e.LHS == nil {
+	if e.Op == MIN_OF || e.Op == MAX_OF || (e.RHS == nil && e.LHS == nil) {
 		return posrange.PositionRange{
 			Start: e.StartPos,
 			End:   e.EndPos,

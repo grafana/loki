@@ -59,7 +59,7 @@ func marshalerHookFunc(orig any) mapstructure.DecodeHookFuncValue {
 		if from.Type() == origType && reflect.DeepEqual(from.Interface(), orig) {
 			return from.Interface(), nil
 		}
-		marshaler, ok := from.Interface().(Marshaler)
+		marshaler, ok := reflect.TypeAssert[Marshaler](from)
 		if !ok {
 			return from.Interface(), nil
 		}

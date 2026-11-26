@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/twmb/franz-go/pkg/kgo"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/prometheus/model/labels"
@@ -150,14 +151,13 @@ func NewDecoder() (*Decoder, error) {
 
 // Decode converts a Kafka record's byte data back into a logproto.Stream and labels.Labels.
 // The decoding process works as follows:
-// 1. Unmarshal the data into a logproto.Stream.
+// 1. Unmarshal the data into a logproto.Stream, in either encoding the record may carry.
 // 2. Parse and cache the labels for efficiency in future decodes.
 //
 // Returns the decoded logproto.Stream, parsed labels, and any error encountered.
 func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
-	d.stream.Entries = d.stream.Entries[:0]
-	if err := d.stream.Unmarshal(data); err != nil {
-		return logproto.Stream{}, labels.EmptyLabels(), fmt.Errorf("failed to unmarshal stream: %w", err)
+	if err := decodeStream(data, d.stream); err != nil {
+		return logproto.Stream{}, labels.EmptyLabels(), err
 	}
 
 	var ls labels.Labels
@@ -182,11 +182,59 @@ func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 	}
 
 	stream := logproto.Stream{}
-	if err := stream.Unmarshal(data); err != nil {
-		return logproto.Stream{}, fmt.Errorf("failed to unmarshal stream: %w", err)
+	if err := decodeStream(data, &stream); err != nil {
+		return logproto.Stream{}, err
 	}
 
 	return stream, nil
+}
+
+// StreamLabels returns the labels of the stream a record carries, without decoding its entries.
+// Both encodings hold the labels in field 1, so this works on either. The returned slice aliases
+// data.
+func StreamLabels(data []byte) ([]byte, error) {
+	for len(data) > 0 {
+		num, typ, n := protowire.ConsumeTag(data)
+		if n < 0 {
+			return nil, protowire.ParseError(n)
+		}
+		data = data[n:]
+		if num == 1 && typ == protowire.BytesType {
+			labels, n := protowire.ConsumeBytes(data)
+			if n < 0 {
+				return nil, protowire.ParseError(n)
+			}
+			return labels, nil
+		}
+		n = protowire.ConsumeFieldValue(num, typ, data)
+		if n < 0 {
+			return nil, protowire.ParseError(n)
+		}
+		data = data[n:]
+	}
+	return nil, errors.New("record has no stream labels")
+}
+
+// decodeStream unmarshals a record into `into`, in whichever of the two encodings it carries.
+func decodeStream(data []byte, into *logproto.Stream) error {
+	var nested logproto.InternalStreamAdapter
+	nestedErr := nested.Unmarshal(data)
+	if nestedErr == nil {
+		nested.ToStream(into)
+		return nil
+	}
+
+	// Unmarshal leaves fields absent from the wire untouched and `into` may be reused between
+	// calls, so reset it here rather than leaving either path to overwrite everything. The
+	// Entries capacity is kept.
+	into.Labels = ""
+	into.Hash = 0
+	into.Entries = into.Entries[:0]
+
+	if flatErr := into.Unmarshal(data); flatErr != nil {
+		return fmt.Errorf("failed to unmarshal stream in either encoding: nested: %w; flat: %w", nestedErr, flatErr)
+	}
+	return nil
 }
 
 // sovPush calculates the size of varint-encoded uint64.

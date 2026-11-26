@@ -5,20 +5,15 @@ package loads
 
 import (
 	"bytes"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"maps"
 
 	"github.com/go-openapi/analysis"
 	"github.com/go-openapi/spec"
+	"github.com/go-openapi/swag/jsonutils"
 	"github.com/go-openapi/swag/yamlutils"
 )
-
-func init() {
-	gob.Register(map[string]any{})
-	gob.Register([]any{})
-}
 
 // Document represents a swagger spec document.
 type Document struct {
@@ -276,14 +271,16 @@ func (d *Document) SpecFilePath() string {
 	return d.specFilePath
 }
 
+// cloneSpec deep-copies a specification through its JSON representation.
+//
+// It used to go through gob, which omits a field holding the zero value for its type and
+// flattens a pointer to what it points at, so an optional number that was present and zero came
+// back nil: "minimum": 0, "maximum": 0, "maxLength": 0, "maxItems": 0 and "maxProperties": 0 were
+// dropped from the copy, at any depth and with no error. That copy is what OrigSpec returns and
+// what ResetDefinitions writes back over the live definitions.
 func cloneSpec(src *spec.Swagger) (*spec.Swagger, error) {
-	var b bytes.Buffer
-	if err := gob.NewEncoder(&b).Encode(src); err != nil {
-		return nil, err
-	}
-
 	var dst spec.Swagger
-	if err := gob.NewDecoder(&b).Decode(&dst); err != nil {
+	if err := jsonutils.FromDynamicJSON(src, &dst); err != nil {
 		return nil, err
 	}
 

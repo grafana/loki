@@ -8,10 +8,9 @@ import (
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-//	We recommend that you delete your S3 Metadata configurations by using the V2 [DeleteBucketMetadataTableConfiguration]
+//	We recommend that you delete your S3 Metadata configurations by using the V2 [DeleteBucketMetadataConfiguration]
 //
 // API operation. We no longer recommend using the V1
 // DeleteBucketMetadataTableConfiguration API operation.
@@ -52,7 +51,7 @@ import (
 // [CreateBucketMetadataConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucketMetadataConfiguration.html
 // [Accelerating data discovery with S3 Metadata]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/metadata-tables-overview.html
 //
-// [DeleteBucketMetadataTableConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketMetadataTableConfiguration.html
+// [DeleteBucketMetadataConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketMetadataConfiguration.html
 func (c *Client) DeleteBucketMetadataTableConfiguration(ctx context.Context, params *DeleteBucketMetadataTableConfigurationInput, optFns ...func(*Options)) (*DeleteBucketMetadataTableConfigurationOutput, error) {
 	if params == nil {
 		params = &DeleteBucketMetadataTableConfigurationInput{}
@@ -106,12 +105,6 @@ func (c *Client) addOperationDeleteBucketMetadataTableConfigurationMiddlewares(s
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -119,12 +112,6 @@ func (c *Client) addOperationDeleteBucketMetadataTableConfigurationMiddlewares(s
 		return err
 	}
 	if err = addRecordResponseTiming(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
@@ -137,9 +124,6 @@ func (c *Client) addOperationDeleteBucketMetadataTableConfigurationMiddlewares(s
 		return err
 	}
 	if err = addOpDeleteBucketMetadataTableConfigurationValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DeleteBucketMetadataTableConfiguration"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {

@@ -3,21 +3,17 @@ package stages
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/sha3"
 	"encoding/hex"
 	"errors"
-	"reflect"
 	"regexp"
 	"strings"
 	"text/template"
 	"time"
 
 	"github.com/Masterminds/sprig/v3"
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
-
-	"golang.org/x/crypto/sha3"
 )
 
 // Config Errors
@@ -81,7 +77,7 @@ func validateTemplateConfig(cfg *TemplateConfig) (*template.Template, error) {
 }
 
 // newTemplateStage creates a new templateStage
-func newTemplateStage(logger log.Logger, config interface{}) (Stage, error) {
+func newTemplateStage(config interface{}) (Stage, error) {
 	cfg := &TemplateConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -94,7 +90,6 @@ func newTemplateStage(logger log.Logger, config interface{}) (Stage, error) {
 
 	return toStage(&templateStage{
 		cfgs:     cfg,
-		logger:   logger,
 		template: t,
 	}), nil
 }
@@ -102,7 +97,6 @@ func newTemplateStage(logger log.Logger, config interface{}) (Stage, error) {
 // templateStage will mutate the incoming entry and set it from extracted data
 type templateStage struct {
 	cfgs     *TemplateConfig
-	logger   log.Logger
 	template *template.Template
 }
 
@@ -115,9 +109,6 @@ func (o *templateStage) Process(_ model.LabelSet, extracted map[string]interface
 	for k, v := range extracted {
 		s, err := getString(v)
 		if err != nil {
-			if Debug {
-				level.Debug(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
-			}
 			continue
 		}
 		td[k] = s
@@ -130,9 +121,6 @@ func (o *templateStage) Process(_ model.LabelSet, extracted map[string]interface
 	buf := &bytes.Buffer{}
 	err := o.template.Execute(buf, td)
 	if err != nil {
-		if Debug {
-			level.Debug(o.logger).Log("msg", "failed to execute template on extracted value", "err", err)
-		}
 		return
 	}
 	st := buf.String()

@@ -20,15 +20,13 @@ func Test_multilineStage_Process(t *testing.T) {
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
 	util_log.InitLogger(cfg, nil, false)
-	Debug = true
 
 	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString("3s")}
 	err := validateMultilineConfig(mcfg)
 	require.NoError(t, err)
 
 	stage := &multilineStage{
-		cfg:    mcfg,
-		logger: util_log.Logger,
+		cfg: mcfg,
 	}
 
 	out := processEntries(stage,
@@ -52,15 +50,13 @@ func Test_multilineStage_MultiStreams(t *testing.T) {
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
 	util_log.InitLogger(cfg, nil, false)
-	Debug = true
 
 	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString("3s")}
 	err := validateMultilineConfig(mcfg)
 	require.NoError(t, err)
 
 	stage := &multilineStage{
-		cfg:    mcfg,
-		logger: util_log.Logger,
+		cfg: mcfg,
 	}
 
 	out := processEntries(stage,
@@ -97,7 +93,6 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
 	util_log.InitLogger(cfg, nil, false)
-	Debug = true
 
 	maxWait := 2 * time.Second
 	mcfg := &MultilineConfig{Expression: ptrFromString("^START"), MaxWaitTime: ptrFromString(maxWait.String())}
@@ -105,8 +100,7 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 	require.NoError(t, err)
 
 	stage := &multilineStage{
-		cfg:    mcfg,
-		logger: util_log.Logger,
+		cfg: mcfg,
 	}
 
 	in := make(chan Entry, 2)

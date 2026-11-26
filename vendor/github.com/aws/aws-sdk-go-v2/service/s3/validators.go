@@ -2966,6 +2966,11 @@ func validateDestination(v *types.Destination) error {
 			invalidParams.AddNested("AccessControlTranslation", err.(smithy.InvalidParamsError))
 		}
 	}
+	if v.EncryptionConfiguration != nil {
+		if err := validateEncryptionConfiguration(v.EncryptionConfiguration); err != nil {
+			invalidParams.AddNested("EncryptionConfiguration", err.(smithy.InvalidParamsError))
+		}
+	}
 	if v.ReplicationTime != nil {
 		if err := validateReplicationTime(v.ReplicationTime); err != nil {
 			invalidParams.AddNested("ReplicationTime", err.(smithy.InvalidParamsError))
@@ -2990,6 +2995,23 @@ func validateEncryption(v *types.Encryption) error {
 	invalidParams := smithy.InvalidParamsError{Context: "Encryption"}
 	if len(v.EncryptionType) == 0 {
 		invalidParams.Add(smithy.NewErrParamRequired("EncryptionType"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateEncryptionConfiguration(v *types.EncryptionConfiguration) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "EncryptionConfiguration"}
+	if v.UseSourceMultiRegionKey != nil {
+		if err := validateUseSourceMultiRegionKey(v.UseSourceMultiRegionKey); err != nil {
+			invalidParams.AddNested("UseSourceMultiRegionKey", err.(smithy.InvalidParamsError))
+		}
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -3956,6 +3978,11 @@ func validateReplicationRuleAndOperator(v *types.ReplicationRuleAndOperator) err
 			invalidParams.AddNested("Tags", err.(smithy.InvalidParamsError))
 		}
 	}
+	if v.Not != nil {
+		if err := validateReplicationRuleNotOperator(v.Not); err != nil {
+			invalidParams.AddNested("Not", err.(smithy.InvalidParamsError))
+		}
+	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
 	} else {
@@ -3976,6 +4003,50 @@ func validateReplicationRuleFilter(v *types.ReplicationRuleFilter) error {
 	if v.And != nil {
 		if err := validateReplicationRuleAndOperator(v.And); err != nil {
 			invalidParams.AddNested("And", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.Not != nil {
+		if err := validateReplicationRuleNotOperator(v.Not); err != nil {
+			invalidParams.AddNested("Not", err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateReplicationRuleNotOperator(v *types.ReplicationRuleNotOperator) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "ReplicationRuleNotOperator"}
+	if v.Tag != nil {
+		if err := validateTag(v.Tag); err != nil {
+			invalidParams.AddNested("Tag", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.Or != nil {
+		if err := validateReplicationRuleOrOperator(v.Or); err != nil {
+			invalidParams.AddNested("Or", err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateReplicationRuleOrOperator(v *types.ReplicationRuleOrOperator) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "ReplicationRuleOrOperator"}
+	if v.Tags != nil {
+		if err := validateTagSet(v.Tags); err != nil {
+			invalidParams.AddNested("Tags", err.(smithy.InvalidParamsError))
 		}
 	}
 	if invalidParams.Len() > 0 {
@@ -4493,6 +4564,21 @@ func validateTopicConfigurationList(v []types.TopicConfiguration) error {
 		if err := validateTopicConfiguration(&v[i]); err != nil {
 			invalidParams.AddNested(fmt.Sprintf("[%d]", i), err.(smithy.InvalidParamsError))
 		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateUseSourceMultiRegionKey(v *types.UseSourceMultiRegionKey) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "UseSourceMultiRegionKey"}
+	if len(v.Status) == 0 {
+		invalidParams.Add(smithy.NewErrParamRequired("Status"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams

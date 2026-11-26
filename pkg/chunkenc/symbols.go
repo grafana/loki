@@ -104,6 +104,76 @@ func (s *symbolizer) add(lbl string) uint32 {
 	return idx
 }
 
+// clone returns a writable copy that keeps every symbol at its position, so a
+// chunk reusing an already encoded block still resolves it correctly.
+func (s *symbolizer) clone() *symbolizer {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	c := &symbolizer{
+		symbolsMap:      make(map[string]uint32, len(s.labels)),
+		labels:          make([]string, len(s.labels)),
+		size:            s.size,
+		normalizedNames: make(map[uint32]string, len(s.labels)/2),
+	}
+	copy(c.labels, s.labels)
+
+	for i, lbl := range c.labels {
+		if _, ok := c.symbolsMap[lbl]; !ok {
+			c.symbolsMap[lbl] = uint32(i)
+		}
+	}
+
+	return c
+}
+
+// positionOf returns the position add() would resolve lbl to, without filing it
+// as a side effect of asking.
+func (s *symbolizer) positionOf(lbl string) (uint32, bool) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	pos, ok := s.symbolsMap[lbl]
+	return pos, ok
+}
+
+// retainOnly every unused symbol to an empty string, leaving the rest at
+// their positions. used is indexed by position and must cover the whole table,
+// so a caller filing a symbol without accounting for it fails loudly instead of
+// having it blanked out from under whatever cites it.
+func (s *symbolizer) retainOnly(used []bool) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if s.readOnly {
+		return errSymbolizerReadOnly
+	}
+	if len(used) != len(s.labels) {
+		return fmt.Errorf("symbolizer: used covers %d symbols, table holds %d", len(used), len(s.labels))
+	}
+
+	size := 0
+	for i, lbl := range s.labels {
+		if lbl == "" {
+			continue
+		}
+		if used[i] {
+			size += len(lbl)
+			continue
+		}
+
+		delete(s.symbolsMap, lbl)
+		s.labels[i] = ""
+	}
+
+	s.size = size
+	// Nothing has looked a name up on this symbolizer yet, but a blanked position
+	// must never keep serving a name normalized from the string it used to hold.
+	clear(s.normalizedNames)
+
+	return nil
+}
+
 // Lookup coverts and returns labels pairs for the given symbols
 func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) (labels.Labels, error) {
 	if len(syms) == 0 {

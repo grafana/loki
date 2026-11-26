@@ -72,6 +72,7 @@ func TestFusedQuerier(t *testing.T) {
 	require.False(t, itr.Next())
 	block := NewBlock(reader, NewMetrics(nil))
 	querier := NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize)
+	defer querier.blooms.Reset() // return the borrowed page buffer to the pool
 
 	n := 500 // series per request
 	nReqs := numSeries / n
@@ -190,6 +191,7 @@ func TestFusedQuerier_MultiPage(t *testing.T) {
 	block := NewBlock(reader, NewMetrics(nil))
 
 	querier := NewBlockQuerier(block, BloomPagePool, 100<<20) // 100MB too large to interfere
+	defer querier.blooms.Reset()                              // return the borrowed page buffer to the pool
 
 	keys := [][]byte{
 		key1,          // found in the first bloom
@@ -303,6 +305,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	block := NewBlock(reader, NewMetrics(nil))
 
 	querier := NewBlockQuerier(block, BloomPagePool, 1000)
+	defer querier.blooms.Reset() // return the borrowed page buffer to the pool
 
 	for fp := model.Fingerprint(0); fp < model.Fingerprint(numSeries); fp++ {
 		err := querier.Seek(fp)
@@ -381,7 +384,9 @@ func TestFusedQuerier_SkipsEmptyBlooms(t *testing.T) {
 		Response: ch,
 		Recorder: NewBloomRecorder(context.Background(), "unknown"),
 	}
-	err = NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize).Fuse(
+	querier := NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize)
+	defer querier.blooms.Reset() // return the borrowed page buffer to the pool
+	err = querier.Fuse(
 		[]v2.PeekIterator[Request]{
 			v2.NewPeekIter(v2.NewSliceIter([]Request{req})),
 		},
@@ -414,6 +419,7 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 	require.Nil(b, err)
 	block := NewBlock(reader, NewMetrics(nil))
 	querier := NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize)
+	b.Cleanup(func() { querier.blooms.Reset() }) // return the borrowed page buffer to the pool
 
 	numRequestChains := 100
 	seriesPerRequest := 100

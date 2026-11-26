@@ -138,8 +138,30 @@ only what they can't show, and prefer a trailing `# …` on the relevant line ov
   needs it — not per scenario.
 - Never restate the query; no line-by-line narration.
 
+## Log-selection scenarios
+
+A log-selection query (e.g. `{app="foo"} |= "bar"`) uses `eval select`, not `eval range`/`eval
+instant`, and returns streams, not series — see README.md "Streams" expected results. The
+instant/range cross-check in the checklist above doesn't apply to log selection.
+
+Every `eval select` states a `forward` or `backward` direction, and expected lines within one
+stream are compared **in that order** — oldest first under `forward`, newest first under
+`backward`.
+
+**A log-selection result keeps the three label categories apart.** `{labels}` is the stream labels
+alone; structured metadata and parsed labels go in the `[metadata …]` and `[parsed …]` clauses.
+Each clause is the complete set for its category, so a line without one asserts the entry carries
+nothing there. Write both whenever the query or the loaded streams produce them:
+
+```
+# lvl was metadata; label_format makes `level` a parsed label, so only trace_id stays metadata.
+eval select from 0 to 30s forward {app="a"} | label_format level=lvl
+  {app="a"} "boom" @ 10s [metadata trace_id="abc"] [parsed level="error"]
+```
+
 ## Files
 
 One feature per file: `range_aggregations`, `vector_aggregations`, `binary_operations`,
-`functions` (`label_replace`, `vector`), `conversions`, … add more as coverage grows
-(`line_filters`, `label_filters`, `parsers`, `formatters`, …).
+`functions` (`label_replace`, `vector`), `conversions`, `log_selection` (stream selectors, line
+filters, as opposed to a metric aggregation), … add more as coverage grows (`line_filters`,
+`label_filters`, `parsers`, `formatters`, …).

@@ -52,6 +52,7 @@ func ListBuckets(cli bce.Client, ctx *BosContext, options ...Option) (*ListBucke
 		return nil, resp.ServiceError()
 	}
 	result := &ListBucketsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -108,6 +109,7 @@ func ListObjects(cli bce.Client, bucket string, args *ListObjectsArgs,
 		return nil, resp.ServiceError()
 	}
 	result := &ListObjectsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -159,6 +161,7 @@ func ListObjectsVersions(cli bce.Client, bucket string, args *ListObjectsArgs,
 		return nil, resp.ServiceError()
 	}
 	result := &ListObjectsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -389,6 +392,7 @@ func GetBucketAcl(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketAclResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -465,6 +469,7 @@ func GetBucketLogging(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketLoggingResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -569,6 +574,7 @@ func GetBucketLifecycle(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketLifecycleResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -763,6 +769,7 @@ func GetBucketReplication(cli bce.Client, bucket string, replicationRuleId strin
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketReplicationResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -801,6 +808,7 @@ func ListBucketReplication(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &ListBucketReplicationResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -879,6 +887,7 @@ func GetBucketReplicationProgress(cli bce.Client, bucket string, replicationRule
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketReplicationProgressResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1066,6 +1075,7 @@ func GetBucketStaticWebsite(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketStaticWebsiteResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1172,6 +1182,7 @@ func GetBucketCors(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketCorsResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1220,6 +1231,22 @@ func DeleteBucketCors(cli bce.Client, bucket string, ctx *BosContext, options ..
 // RETURNS:
 //   - error: nil if success otherwise the specific error
 func PutBucketCopyrightProtection(cli bce.Client, ctx *BosContext, bucket string, resources ...string) error {
+	return PutBucketCopyrightProtectionWithOptions(cli, ctx, bucket, resources)
+}
+
+// PutBucketCopyrightProtectionWithOptions - the same as PutBucketCopyrightProtection, but
+// taking the resources as a slice so that the options can be passed as well.
+//
+// PARAMS:
+//   - cli: the client agent which can perform sending request
+//   - bucket: the bucket name
+//   - resources: the resource items in the bucket to be protected
+//   - options: the function set to set HTTP headers/params
+//
+// RETURNS:
+//   - error: nil if success otherwise the specific error
+func PutBucketCopyrightProtectionWithOptions(cli bce.Client, ctx *BosContext, bucket string,
+	resources []string, options ...Option) error {
 	req := &BosRequest{}
 	req.SetUri(getBucketUri(bucket))
 	req.SetMethod(http.PUT)
@@ -1230,6 +1257,9 @@ func PutBucketCopyrightProtection(cli bce.Client, ctx *BosContext, bucket string
 	}
 	if len(resources) == 0 {
 		return bce.NewBceClientError("the resource to set copyright protection is empty")
+	}
+	if err := handleOptions(req, options); err != nil {
+		return bce.NewBceClientError(fmt.Sprintf("Handle options occur error: %s", err))
 	}
 	arg := &CopyrightProtectionType{resources}
 	jsonBytes, jsonErr := json.Marshal(arg)
@@ -1385,6 +1415,7 @@ func GetBucketTrash(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketTrashResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1468,6 +1499,7 @@ func GetBucketNotification(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &PutBucketNotificationReq{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1551,6 +1583,7 @@ func GetBucketMirror(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &PutBucketMirrorArgs{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1633,6 +1666,7 @@ func GetBucketTag(cli bce.Client, bucket string, ctx *BosContext, options ...Opt
 		return nil, resp.ServiceError()
 	}
 	result := &GetBucketTagResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1770,6 +1804,7 @@ func GetBucketVersioning(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &BucketVersioningArgs{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -1854,6 +1889,7 @@ func GetBucketInventory(cli bce.Client, bucket, id string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &PutBucketInventoryArgs{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(&result.Rule); err != nil {
 		return nil, err
 	}
@@ -1893,6 +1929,7 @@ func ListBucketInventory(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &ListBucketInventoryResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -2010,6 +2047,7 @@ func GetBucketQuota(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &BucketQuotaArgs{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -2126,6 +2164,7 @@ func GetBucketRequestPayment(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &RequestPaymentArgs{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}
@@ -2207,6 +2246,7 @@ func GetBucketObjectLock(cli bce.Client, bucket string, ctx *BosContext,
 		return nil, resp.ServiceError()
 	}
 	result := &BucketObjectLockResult{}
+	retrieveResponseFields(result, resp)
 	if err := resp.ParseJsonBody(result); err != nil {
 		return nil, err
 	}

@@ -215,14 +215,36 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 		s += "\n"
 	}
 
+	if e.Buckets != nil {
+		s += e.Buckets.Pretty(level+1) + ",\n"
+	}
+
 	s += e.Left.Pretty(level + 1)
 
 	s += "\n" + Indent(level) + ")"
 
-	if e.Grouping != nil {
-		s += e.Grouping.Pretty(level)
+	s += prettyExplicitGrouping(e.Grouping, level)
+
+	return s
+}
+
+// e.g: buckets(0.005, 0.05, 0.5, 5)
+//
+// A list that does not fit in a line has one bound per line.
+func (b *BucketSpec) Pretty(level int) string {
+	s := Indent(level)
+	if len(b.String()) <= MaxCharsPerLine {
+		return s + b.String()
 	}
 
+	bounds := make([]string, 0, len(b.Bounds))
+	for _, v := range b.Bounds {
+		bounds = append(bounds, Indent(level+1)+formatHistogramParam(v))
+	}
+
+	s += OpBuckets + "(\n"
+	s += strings.Join(bounds, ",\n")
+	s += "\n" + Indent(level) + ")"
 	return s
 }
 
@@ -237,9 +259,7 @@ func (e *LabelAggregationExpr) Pretty(level int) string {
 	s += Indent(level+1) + e.Label + ",\n"
 	s += e.Left.Pretty(level+1) + "\n"
 	s += Indent(level) + ")"
-	if e.Grouping != nil {
-		s += e.Grouping.Pretty(level)
-	}
+	s += prettyExplicitGrouping(e.Grouping, level)
 	return s
 }
 
@@ -254,10 +274,23 @@ func (e *CountDistinctSketchExpr) Pretty(level int) string {
 	s += Indent(level+1) + e.Label + ",\n"
 	s += e.Left.Pretty(level+1) + "\n"
 	s += Indent(level) + ")"
-	if e.Grouping != nil {
-		s += e.Grouping.Pretty(level)
-	}
+	s += prettyExplicitGrouping(e.Grouping, level)
 	return s
+}
+
+// prettyExplicitGrouping keeps `by ()` visible. Grouping.Pretty omits
+// empty by-clauses because vector aggregations always have a Grouping and
+// `sum(x)` must not pretty-print as `sum by ()(x)`. Range aggregations and label
+// aggregations treat omitted by and `by ()` as different grouping modes: without a
+// grouping they keep every label, and with `by ()` they reduce to a single series.
+func prettyExplicitGrouping(g *Grouping, level int) string {
+	if g == nil {
+		return ""
+	}
+	if g.Singleton() {
+		return " by ()"
+	}
+	return g.Pretty(level)
 }
 
 // e.g:
@@ -372,6 +405,35 @@ func (e *LabelReplaceExpr) Pretty(level int) string {
 	return s
 }
 
+// Pretty returns the expression on one line if it fits, and with one argument per line if it does not.
+// e.g: histogram_quantile(0.99, sum by (path) (histogram_over_time({app="api"} | json | unwrap duration_seconds(duration) [5m])))
+func (e *HistogramFuncExpr) Pretty(level int) string {
+	s := Indent(level)
+
+	if !NeedSplit(e) {
+		return s + e.String()
+	}
+
+	before, after := e.args()
+
+	s += e.Operation
+	s += "(\n"
+
+	params := make([]string, 0, len(before)+1+len(after))
+	for _, arg := range before {
+		params = append(params, Indent(level+1)+arg)
+	}
+	params = append(params, e.Left.Pretty(level+1))
+	for _, arg := range after {
+		params = append(params, Indent(level+1)+arg)
+	}
+
+	s += strings.Join(params, ",\n")
+	s += "\n" + Indent(level) + ")"
+
+	return s
+}
+
 // e.g: vector(5)
 func (e *VectorExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
@@ -392,7 +454,9 @@ func (g *Grouping) Pretty(_ int) string {
 		s += " by"
 	}
 
-	if len(g.Groups) > 0 {
+	// Without a label list, by is left out because it is the same as no grouping on a vector
+	// aggregation. without is not: it keeps every label, and it does not parse without its list.
+	if g.Without || len(g.Groups) > 0 {
 		s += " ("
 		s += strings.Join(g.Groups, ", ")
 		s += ")"
@@ -443,13 +507,18 @@ func formatBinaryOp(op string, opts *BinOpOptions) string {
 			group = fmt.Sprintf("%s (%s)", group, strings.Join(opts.VectorMatching.Include, ", "))
 		}
 
-		if len(opts.VectorMatching.MatchingLabels) > 0 {
+		// on () matches on no labels, which is not the same as no clause. group_left and
+		// group_right are only valid after on or ignoring, so they keep an empty ignoring ().
+		if opts.VectorMatching.On || len(opts.VectorMatching.MatchingLabels) > 0 || opts.VectorMatching.Card != CardOneToOne {
 			on := OpOn
 			if !opts.VectorMatching.On {
 				on = OpIgnoring
 			}
 			// e.g: * on (cluster, namespace) group_left
-			op = fmt.Sprintf("%s %s (%s) %s", op, on, strings.Join(opts.VectorMatching.MatchingLabels, ", "), group)
+			op = fmt.Sprintf("%s %s (%s)", op, on, strings.Join(opts.VectorMatching.MatchingLabels, ", "))
+			if group != "" {
+				op += " " + group
+			}
 		}
 	}
 	return op

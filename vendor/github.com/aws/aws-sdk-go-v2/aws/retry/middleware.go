@@ -93,6 +93,9 @@ func (r Attempt) logf(logger logging.Logger, classification logging.Classificati
 func (r *Attempt) HandleFinalize(ctx context.Context, in smithymiddle.FinalizeInput, next smithymiddle.FinalizeHandler) (
 	out smithymiddle.FinalizeOutput, metadata smithymiddle.Metadata, err error,
 ) {
+	ctx, span := tracing.StartSpan(ctx, "RetryLoop")
+	defer span.End()
+
 	var attemptClockSkew time.Duration
 	if !r.DisableClockSkewCorrection && r.ClientSkew != nil {
 		attemptClockSkew = time.Duration(r.ClientSkew.Load())
@@ -226,6 +229,11 @@ func (r *Attempt) handleAttempt(
 			service, operation, attemptNum)
 	}
 
+	// Not an error for other transports: they have no header to set.
+	if req, ok := in.Request.(*http.Request); ok {
+		setRetryMetricsHeader(ctx, req)
+	}
+
 	var metadata smithymiddle.Metadata
 	out, metadata, err = next.HandleFinalize(ctx, in)
 	attemptResult.ResponseMetadata = metadata
@@ -239,11 +247,9 @@ func (r *Attempt) handleAttempt(
 			"failed to release retry token after request error, %w", err)
 	}
 	// Release the attempt token based on the state of the attempt's error (if any).
-	if !newRetries2026() || attemptNum == 1 {
-		if releaseError := releaseAttemptToken(err); releaseError != nil && err != nil {
-			return out, attemptResult, nopRelease, fmt.Errorf(
-				"failed to release initial token after request error, %w", err)
-		}
+	if releaseError := releaseAttemptToken(err); releaseError != nil && err != nil {
+		return out, attemptResult, nopRelease, fmt.Errorf(
+			"failed to release initial token after request error, %w", err)
 	}
 	// If there was no error making the attempt, nothing further to do. There
 	// will be nothing to retry.
@@ -288,8 +294,8 @@ func (r *Attempt) handleAttempt(
 	releaseRetryToken, retryTokenErr := r.retryer.GetRetryToken(ctx, err)
 	if retryTokenErr != nil {
 		// Long-polling operations must still back off when quota is exceeded.
-		if newRetries2026() && internalcontext.GetIsLongPolling(ctx) {
-			if retryDelay, delayErr := r.retryer.RetryDelay(attemptNum-1, err); delayErr == nil {
+		if internalcontext.GetIsLongPolling(ctx) {
+			if retryDelay, delayErr := r.retryer.RetryDelay(attemptNum, err); delayErr == nil {
 				retryDelay = adjustForRetryAfterHeader(retryDelay, err, logger, r.LogAttempts)
 				_ = sdk.SleepWithContext(ctx, retryDelay)
 			}
@@ -303,17 +309,11 @@ func (r *Attempt) handleAttempt(
 	// Get the retry delay before another attempt can be made, and sleep for
 	// that time. Potentially early exist if the sleep is canceled via the
 	// context.
-	attempt := attemptNum
-	if newRetries2026() {
-		attempt = attemptNum - 1
-	}
-	retryDelay, reqErr := r.retryer.RetryDelay(attempt, err)
+	retryDelay, reqErr := r.retryer.RetryDelay(attemptNum, err)
 	if reqErr != nil {
 		return out, attemptResult, releaseRetryToken, reqErr
 	}
-	if newRetries2026() {
-		retryDelay = adjustForRetryAfterHeader(retryDelay, err, logger, r.LogAttempts)
-	}
+	retryDelay = adjustForRetryAfterHeader(retryDelay, err, logger, r.LogAttempts)
 	if reqErr = sdk.SleepWithContext(ctx, retryDelay); reqErr != nil {
 		err = &aws.RequestCanceledError{Err: reqErr}
 		return out, attemptResult, releaseRetryToken, err
@@ -386,14 +386,22 @@ func absDuration(d time.Duration) time.Duration {
 }
 
 // MetricsHeader attaches SDK request metric header for retries to the transport
+//
+// Deprecated: AWS service clients no longer use this middleware. The
+// Amz-Sdk-Request header is set by the Attempt middleware, which already holds
+// the retry metadata the header describes.
 type MetricsHeader struct{}
 
 // ID returns the middleware identifier
+//
+// Deprecated: MetricsHeader is deprecated.
 func (r *MetricsHeader) ID() string {
 	return "RetryMetricsHeader"
 }
 
 // HandleFinalize attaches the SDK request metric header to the transport layer
+//
+// Deprecated: MetricsHeader is deprecated.
 func (r MetricsHeader) HandleFinalize(ctx context.Context, in smithymiddle.FinalizeInput, next smithymiddle.FinalizeHandler) (
 	out smithymiddle.FinalizeOutput, metadata smithymiddle.Metadata, err error,
 ) {
@@ -427,6 +435,34 @@ func (r MetricsHeader) HandleFinalize(ctx context.Context, in smithymiddle.Final
 	}
 
 	return next.HandleFinalize(ctx, in)
+}
+
+// setRetryMetricsHeader sets the Amz-Sdk-Request header from the retry metadata
+// on the context.
+func setRetryMetricsHeader(ctx context.Context, req *http.Request) {
+	retryMetadata, _ := getRetryMetadata(ctx)
+
+	const retryMetricHeader = "Amz-Sdk-Request"
+	var parts []string
+
+	parts = append(parts, "attempt="+strconv.Itoa(retryMetadata.AttemptNum))
+	if retryMetadata.MaxAttempts != 0 {
+		parts = append(parts, "max="+strconv.Itoa(retryMetadata.MaxAttempts))
+	}
+
+	var ttl time.Time
+	if deadline, ok := ctx.Deadline(); ok {
+		ttl = deadline
+	}
+
+	// Only append the TTL if it can be determined.
+	if !ttl.IsZero() && retryMetadata.AttemptClockSkew > 0 {
+		const unixTimeFormat = "20060102T150405Z"
+		ttl = ttl.Add(retryMetadata.AttemptClockSkew)
+		parts = append(parts, "ttl="+ttl.Format(unixTimeFormat))
+	}
+
+	req.Header[retryMetricHeader] = append(req.Header[retryMetricHeader][:0], strings.Join(parts, "; "))
 }
 
 type retryMetadataKey struct{}
@@ -471,9 +507,6 @@ func AddRetryMiddlewares(stack *smithymiddle.Stack, options AddRetryMiddlewaresO
 		return err
 	}
 
-	if err := stack.Finalize.Insert(&MetricsHeader{}, attempt.ID(), smithymiddle.After); err != nil {
-		return err
-	}
 	return nil
 }
 

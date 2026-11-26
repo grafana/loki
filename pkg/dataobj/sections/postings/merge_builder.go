@@ -8,16 +8,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 )
 
-// MergeBuilder accumulates posting entries from pre-aggregated rows (e.g., from
-// existing postings sections) and merges them. Unlike Builder, which aggregates
-// per-observation, MergeBuilder accepts already-aggregated entries.
+// MergeBuilder writes already-aggregated posting entries, such as the rows of
+// existing postings sections, to postings sections. Unlike Builder, which
+// aggregates observations, MergeBuilder does not aggregate or sort.
 // Call [MergeBuilder.Flush] to encode all accumulated data and write a postings
 // section to the provided [dataobj.SectionWriter].
+//
+// The caller must append the entries of each kind in strictly increasing
+// [CompareRows] order. MergeBuilder writes them in that order.
 type MergeBuilder struct {
 	metrics       *Metrics
 	tenant        string
-	labels        map[labelPostingKey]LabelEntry
-	blooms        map[bloomPostingKey]BloomEntry
+	labels        []LabelEntry
+	blooms        []BloomEntry
 	estimatedSize int
 
 	encoder *postingsEncoder
@@ -33,8 +36,6 @@ type MergeBuilder struct {
 func NewMergeBuilder(metrics *Metrics, pageSizeHint, pageMaxRowCount, targetSectionSizeBytes int) *MergeBuilder {
 	return &MergeBuilder{
 		metrics: metrics,
-		labels:  make(map[labelPostingKey]LabelEntry),
-		blooms:  make(map[bloomPostingKey]BloomEntry),
 		encoder: newPostingsEncoder(pageSizeHint, pageMaxRowCount, targetSectionSizeBytes),
 	}
 }
@@ -49,44 +50,64 @@ func (b *MergeBuilder) Tenant() string { return b.tenant }
 func (b *MergeBuilder) Type() dataobj.SectionType { return sectionType }
 
 // AppendLabelEntry appends a label posting entry directly to the builder.
-// Returns an error if an entry with the same (ObjectPath, SectionIndex,
-// ColumnName, LabelValue) key already exists.
+//
+// It returns an error if entry does not sort after the previous label entry in
+// [CompareRows] order.
+//
+// It does not find two entries for one logs section and posting key when
+// their time ranges differ. [CompareRows] does not put such entries next to
+// each other, so the caller must remove them.
 func (b *MergeBuilder) AppendLabelEntry(entry LabelEntry) error {
-	key := labelPostingKey{
-		objectPath:   entry.ObjectPath,
-		sectionIndex: entry.SectionIndex,
-		columnName:   entry.ColumnName,
-		labelValue:   entry.LabelValue,
+	if n := len(b.labels); n > 0 {
+		if err := checkAppendOrder(b.labels[n-1].Row(), entry.Row()); err != nil {
+			return err
+		}
 	}
 
-	if _, ok := b.labels[key]; ok {
-		return fmt.Errorf("label posting entry with key (%q, %d, %q, %q) already exists", entry.ObjectPath, entry.SectionIndex, entry.ColumnName, entry.LabelValue)
-	}
-
-	b.labels[key] = entry
+	b.labels = append(b.labels, entry)
 	b.estimatedSize += labelEntrySize(entry)
 
 	return nil
 }
 
 // AppendBloomEntry appends a bloom posting entry directly to the builder.
-// Returns an error if an entry with the same (ObjectPath, SectionIndex,
-// ColumnName) key already exists.
+//
+// It returns an error if entry does not sort after the previous bloom entry in
+// [CompareRows] order.
+//
+// It does not find two entries for one logs section and posting key when
+// their time ranges differ. [CompareRows] does not put such entries next to
+// each other, so the caller must remove them.
 func (b *MergeBuilder) AppendBloomEntry(entry BloomEntry) error {
-	key := bloomPostingKey{
-		objectPath:   entry.ObjectPath,
-		sectionIndex: entry.SectionIndex,
-		columnName:   entry.ColumnName,
+	if n := len(b.blooms); n > 0 {
+		if err := checkAppendOrder(b.blooms[n-1].Row(), entry.Row()); err != nil {
+			return err
+		}
 	}
 
-	if _, ok := b.blooms[key]; ok {
-		return fmt.Errorf("bloom posting entry with key (%q, %d, %q) already exists", entry.ObjectPath, entry.SectionIndex, entry.ColumnName)
-	}
-
-	b.blooms[key] = entry
+	b.blooms = append(b.blooms, entry)
 	b.estimatedSize += bloomEntrySize(entry)
 
 	return nil
+}
+
+// checkAppendOrder returns an error if next does not sort after prev in
+// [CompareRows] order.
+func checkAppendOrder(prev, next Row) error {
+	switch c := CompareRows(prev, next); {
+	case c == 0:
+		return fmt.Errorf("duplicate posting entry %s", describeRowOrder(next))
+	case c > 0:
+		return fmt.Errorf("posting entry %s sorts before the previous entry %s", describeRowOrder(next), describeRowOrder(prev))
+	default:
+		return nil
+	}
+}
+
+// describeRowOrder formats the fields of row that [CompareRows] uses.
+func describeRowOrder(row Row) string {
+	return fmt.Sprintf("(kind %d, column %q, value %q, time [%d, %d], object %q, section %d)",
+		row.Kind, row.ColumnName, row.LabelValue, row.MinTimestamp, row.MaxTimestamp, row.ObjectPath, row.SectionIndex)
 }
 
 // EstimatedSize returns an estimate of the encoded size of the accumulated
@@ -96,9 +117,14 @@ func (b *MergeBuilder) EstimatedSize() int {
 }
 
 // Reset clears all accumulated data and resets the builder to a fresh state.
+// The builder keeps the capacity of its buffers for the next section.
 func (b *MergeBuilder) Reset() {
-	b.labels = make(map[labelPostingKey]LabelEntry)
-	b.blooms = make(map[bloomPostingKey]BloomEntry)
+	// Clear before truncating, so the reused buffers do not keep the bitmaps
+	// and bloom filters of the flushed entries reachable.
+	clear(b.labels)
+	clear(b.blooms)
+	b.labels = b.labels[:0]
+	b.blooms = b.blooms[:0]
 	b.estimatedSize = 0
 }
 
@@ -107,18 +133,7 @@ func (b *MergeBuilder) Reset() {
 //
 // After a successful flush, the builder is reset.
 func (b *MergeBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
-	// Convert maps to slices.
-	labelEntries := make([]LabelEntry, 0, len(b.labels))
-	for _, entry := range b.labels {
-		labelEntries = append(labelEntries, entry)
-	}
-
-	bloomEntries := make([]BloomEntry, 0, len(b.blooms))
-	for _, entry := range b.blooms {
-		bloomEntries = append(bloomEntries, entry)
-	}
-
-	if len(labelEntries) == 0 && len(bloomEntries) == 0 {
+	if len(b.labels) == 0 && len(b.blooms) == 0 {
 		return 0, nil
 	}
 
@@ -127,14 +142,11 @@ func (b *MergeBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
 		defer timer.ObserveDuration()
 	}
 
-	sortLabelEntries(labelEntries)
-	sortBloomEntries(bloomEntries)
-
-	nBloom, err := b.encoder.encodeBloomEntries(w, b.tenant, bloomEntries)
+	nBloom, err := b.encoder.encodeBloomEntries(w, b.tenant, b.blooms)
 	if err != nil {
 		return 0, err
 	}
-	nLabel, err := b.encoder.encodeLabelEntries(w, b.tenant, labelEntries)
+	nLabel, err := b.encoder.encodeLabelEntries(w, b.tenant, b.labels)
 	if err != nil {
 		return 0, err
 	}

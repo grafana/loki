@@ -8,7 +8,6 @@ import (
 	s3cust "github.com/aws/aws-sdk-go-v2/service/s3/internal/customizations"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"time"
 )
 
@@ -29,11 +28,17 @@ import (
 // the multipart upload request. For more information about multipart uploads, see [Multipart Upload Overview]
 // in the Amazon S3 User Guide.
 //
-// After you initiate a multipart upload and upload one or more parts, to stop
-// being charged for storing the uploaded parts, you must either complete or abort
-// the multipart upload. Amazon S3 frees up the space used to store the parts and
-// stops charging you for storing them only after you either complete or abort a
-// multipart upload.
+//   - After you initiate a multipart upload and upload one or more parts, to stop
+//     being charged for storing the uploaded parts, you must either complete or abort
+//     the multipart upload. Amazon S3 frees up the space used to store the parts and
+//     stops charging you for storing them only after you either complete or abort a
+//     multipart upload.
+//
+//   - When you initiate a multipart upload, Amazon S3 records the bucket
+//     configuration in place at that time and uses it for the rest of the upload.
+//     Changes that you make to the bucket configuration after you initiate the upload
+//     don't apply to that upload. To apply new bucket configuration to uploads in
+//     progress, use [ListMultipartUploads]to find them and [AbortMultipartUpload]to stop them. Then start the uploads again.
 //
 // If you have configured a lifecycle rule to abort incomplete multipart uploads,
 // the created multipart upload must be completed within the number of days
@@ -228,8 +233,8 @@ import (
 // [Authenticating Requests (Amazon Web Services Signature Version 4)]: https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html
 // [AbortMultipartUpload]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_AbortMultipartUpload.html
 // [Multipart Upload Overview]: https://docs.aws.amazon.com/AmazonS3/latest/dev/mpuoverview.html
-// [Protecting data using server-side encryption with Amazon Web Services KMS]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html
 // [ListMultipartUploads]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html
+// [Protecting data using server-side encryption with Amazon Web Services KMS]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html
 // [Regional and Zonal endpoints for directory buckets in Availability Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/endpoint-directory-buckets-AZ.html
 //
 // [Specifying server-side encryption with KMS for new object uploads]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-specifying-kms-encryption.html
@@ -601,6 +606,24 @@ type CreateMultipartUploadInput struct {
 	// A map of metadata to store with the object in S3.
 	Metadata map[string]string
 
+	// Specifies the event hold status to apply to the uploaded object. Set to ON to
+	// enable or OFF to disable.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHold types.ObjectLockEventHold
+
+	// Specifies the event hold duration in days to apply to the uploaded object. You
+	// cannot specify a duration in both days and years.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHoldDurationDays *int32
+
+	// Specifies the event hold duration in years to apply to the uploaded object. You
+	// cannot specify a duration in both days and years.
+	//
+	// This functionality is not supported for directory buckets.
+	ObjectLockEventHoldDurationYears *int32
+
 	// Specifies whether you want to apply a legal hold to the uploaded object.
 	//
 	// This functionality is not supported for directory buckets.
@@ -853,6 +876,14 @@ type CreateMultipartUploadOutput struct {
 	// ID for the initiated multipart upload.
 	UploadId *string
 
+	// Version ID of the object.
+	//
+	// Returns the Version ID of the object for the initiated multipart upload, if
+	// bucket versioning is enabled.
+	//
+	// This functionality is not supported for directory buckets.
+	VersionId *string
+
 	// Metadata pertaining to the operation's result.
 	ResultMetadata middleware.Metadata
 
@@ -869,12 +900,6 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -882,12 +907,6 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addRecordResponseTiming(stack, options); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
 	if err = addPutBucketContextMiddleware(stack); err != nil {
@@ -900,9 +919,6 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addOpCreateMultipartUploadValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "CreateMultipartUpload"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addMetadataRetrieverMiddleware(stack); err != nil {
@@ -918,6 +934,9 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 		return err
 	}
 	if err = disableAcceptEncodingGzip(stack); err != nil {
+		return err
+	}
+	if err = s3cust.HandleResponseErrorWith200Status(stack); err != nil {
 		return err
 	}
 	if err = addRequestResponseLogging(stack, options); err != nil {

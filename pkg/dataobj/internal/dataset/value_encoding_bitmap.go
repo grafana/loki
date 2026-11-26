@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/bits"
@@ -575,7 +576,8 @@ func (dec *bitmapDecoder) EncodingType() datasetmd.EncodingType {
 
 // Decode decodes up to count values and returns them as a bitmap. The number
 // of decoded values is bm.Len(). At the end of the stream, Decode returns
-// any decoded values along with [io.EOF].
+// any decoded values along with [io.EOF]. If a run is truncated or malformed,
+// Decode returns the values before the run along with an error.
 func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.Array, error) {
 	bm := memory.NewBitmap(alloc, count)
 	bm.Grow(count)
@@ -584,6 +586,15 @@ func (dec *bitmapDecoder) Decode(alloc *memory.Allocator, count int) (columnar.A
 	return columnar.NewBool(bm, memory.Bitmap{}), err
 }
 
+// Skip implements [valueDecoder]. It always returns an error. bitmapDecoder
+// reads presence data with DecodeTo, and nothing skips presence data.
+func (dec *bitmapDecoder) Skip(_ int) (int, error) {
+	return 0, errors.New("dataset.bitmapDecoder: Skip is not implemented")
+}
+
+// DecodeTo decodes up to count values into bm, which it resets first. It returns
+// [io.EOF] when the data ends between two runs, and an error when a run is
+// truncated, malformed or unsupported.
 func (dec *bitmapDecoder) DecodeTo(bm *memory.Bitmap, count int) error {
 	var (
 		runLength    = dec.runLength
@@ -616,7 +627,7 @@ func (dec *bitmapDecoder) DecodeTo(bm *memory.Bitmap, count int) error {
 			}
 			header, uvarintSize := binary.Uvarint(data[off:])
 			if uvarintSize <= 0 {
-				return io.EOF
+				return bitmapUvarintError("run header", off, uvarintSize)
 			}
 			off += uvarintSize
 
@@ -634,12 +645,9 @@ func (dec *bitmapDecoder) DecodeTo(bm *memory.Bitmap, count int) error {
 				// RLE run.
 				runLength = header >> 1
 
-				if off >= len(data) {
-					return io.EOF
-				}
 				val, uvarintSize := binary.Uvarint(data[off:])
 				if uvarintSize <= 0 {
-					return io.EOF
+					return bitmapUvarintError("RLE value", off, uvarintSize)
 				}
 				off += uvarintSize
 				// only support bool values encoded as ints
@@ -659,7 +667,7 @@ func (dec *bitmapDecoder) DecodeTo(bm *memory.Bitmap, count int) error {
 
 		case sets > 0 && setSize == 0: // BITPACK-READY
 			if off >= len(dec.data) {
-				return io.EOF
+				return fmt.Errorf("bitmap: truncated bitpacked set at offset %d", off)
 			}
 			set = data[off]
 			off++
@@ -682,6 +690,14 @@ func (dec *bitmapDecoder) DecodeTo(bm *memory.Bitmap, count int) error {
 	return nil
 }
 
+// Exhausted reports whether dec has no values left to decode.
+func (dec *bitmapDecoder) Exhausted() bool {
+	// Every bitpacked set holds eight values, because the encoder writes a
+	// partial last set as RLE runs. So setSize above 0 always means that values
+	// are left.
+	return dec.runLength == 0 && dec.sets == 0 && dec.setSize == 0 && dec.off >= len(dec.data)
+}
+
 // Reset resets dec to read from data.
 func (dec *bitmapDecoder) Reset(data []byte) {
 	dec.data = data
@@ -691,4 +707,13 @@ func (dec *bitmapDecoder) Reset(data []byte) {
 	dec.setSize = 0
 	dec.set = 0
 	dec.off = 0
+}
+
+// bitmapUvarintError returns the error for the uvarint at off that holds the
+// given part of a run. uvarintSize is the size that [binary.Uvarint] reported.
+func bitmapUvarintError(part string, off, uvarintSize int) error {
+	if uvarintSize < 0 {
+		return fmt.Errorf("bitmap: malformed %s at offset %d", part, off)
+	}
+	return fmt.Errorf("bitmap: truncated %s at offset %d", part, off)
 }

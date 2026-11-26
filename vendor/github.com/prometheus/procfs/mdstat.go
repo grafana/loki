@@ -27,7 +27,7 @@ var (
 	recoveryLinePctRE    = regexp.MustCompile(`= (.+)%`)
 	recoveryLineFinishRE = regexp.MustCompile(`finish=(.+)min`)
 	recoveryLineSpeedRE  = regexp.MustCompile(`speed=(.+)[A-Z]`)
-	componentDeviceRE    = regexp.MustCompile(`(.*)\[(\d+)\](\([SF]+\))?`)
+	componentDeviceRE    = regexp.MustCompile(`(.*)\[(\d+)\]((?:\([FJRSW]\))+)?`)
 	personalitiesPrefix  = "Personalities : "
 )
 
@@ -114,8 +114,7 @@ func parseMDStat(mdStatData []byte) ([]MDStat, error) {
 		}
 		// Personalities : [linear] [multipath] [raid0] [raid1] [raid6] [raid5] [raid4] [raid10]
 		if len(knownRaidTypes) == 0 && strings.HasPrefix(line, personalitiesPrefix) {
-			personalities := strings.Fields(line[len(personalitiesPrefix):])
-			for _, word := range personalities {
+			for word := range strings.FieldsSeq(line[len(personalitiesPrefix):]) {
 				word := word[1 : len(word)-1]
 				knownRaidTypes[word] = true
 			}
@@ -150,7 +149,6 @@ func parseMDStat(mdStatData []byte) ([]MDStat, error) {
 		fail := int64(strings.Count(line, "(F)"))
 		spare := int64(strings.Count(line, "(S)"))
 		active, total, down, size, err := evalStatusLine(lines[i], lines[i+1])
-
 		if err != nil {
 			return nil, fmt.Errorf("%w: Cannot parse md device lines: %v: %w", ErrFileParse, active, err)
 		}
@@ -275,7 +273,7 @@ func evalStatusLine(deviceLine, statusLine string) (active, total, down, size in
 	return active, total, down, size, nil
 }
 
-func evalRecoveryLine(recoveryLine string) (blocksSynced int64, blocksToBeSynced int64, pct float64, finish float64, speed float64, err error) {
+func evalRecoveryLine(recoveryLine string) (blocksSynced, blocksToBeSynced int64, pct, finish, speed float64, err error) {
 	matches := recoveryLineBlocksRE.FindStringSubmatch(recoveryLine)
 	if len(matches) != 2 {
 		return 0, 0, 0, 0, 0, fmt.Errorf("%w: Unexpected recoveryLine blocks %s: %w", ErrFileParse, recoveryLine, err)

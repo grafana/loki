@@ -35,7 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	clientutil "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
-	storageawscommon "github.com/grafana/loki/v3/pkg/storage/common/aws"
+	commonaws "github.com/grafana/loki/v3/pkg/storage/common/aws"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
@@ -123,7 +123,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
-	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
+	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection. This does not affect TLS certificate verification for HTTPS connections; use s3.http.insecure-skip-verify (or s3.http.ca-file) for that.")
 	f.StringVar(&cfg.ChunkDelimiter, prefix+"s3.chunk-delimiter", "", "Delimiter used to replace the default delimiter ':' in chunk IDs when storing chunks. This is mainly intended when you run a MinIO instance on a Windows machine. You must not change this value during operations, otherwise you may not be able to read existing chunks from object storage.")
 	f.BoolVar(&cfg.DisableDualstack, prefix+"s3.disable-dualstack", false, "Disable forcing S3 dualstack endpoint usage.")
 
@@ -135,7 +135,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")
 	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"s3.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the S3 endpoint.")
 	f.StringVar(&cfg.SignatureVersion, prefix+"s3.signature-version", SignatureVersionV4, fmt.Sprintf("The signature version to use for authenticating against S3. Supported values are: %s.", strings.Join(supportedSignatureVersions, ", ")))
-	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", storageawscommon.StorageClassStandard, fmt.Sprintf("The S3 storage class which objects will use. Supported values are: %s.", strings.Join(storageawscommon.SupportedStorageClasses, ", ")))
+	f.StringVar(&cfg.StorageClass, prefix+"s3.storage-class", string(types.StorageClassStandard), "The S3 storage class which objects will use. "+commonaws.StorageClassUsage())
 
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
@@ -148,7 +148,7 @@ func (cfg *S3Config) Validate() error {
 		return errUnsupportedSignatureVersion
 	}
 
-	return storageawscommon.ValidateStorageClass(cfg.StorageClass)
+	return commonaws.ValidateStorageClass(cfg.StorageClass)
 }
 
 type s3Deleter interface {
@@ -237,13 +237,17 @@ func mountS3HTTPClient(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*
 	// to maintain backwards compatibility with previous versions of Cortex while providing
 	// more flexible configuration of the http client
 	// https://github.com/weaveworks/common/blob/4b1847531bc94f54ce5cf210a771b2a86cd34118/aws/config.go#L23
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	// A negative FallbackDelay disables Fast Fallback, which replaced DualStack.
+	if cfg.DisableDualstack {
+		dialer.FallbackDelay = -1
+	}
 	transport := http.RoundTripper(&http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-			DualStack: !cfg.DisableDualstack,
-		}).DialContext,
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
 		MaxIdleConns:          200,
 		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
 		MaxIdleConnsPerHost:   200,

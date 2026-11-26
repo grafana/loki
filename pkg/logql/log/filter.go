@@ -12,7 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
-	"github.com/grafana/loki/v3/pkg/util"
+	syntaxutil "github.com/grafana/loki/v3/pkg/util/syntax"
 )
 
 // LineMatchType is an enum for line matching types.
@@ -86,6 +86,9 @@ func (w wrapper) IsFilterer() bool {
 }
 
 func WrapFilterer(f Filterer) MatcherFilterer {
+	if w, ok := f.(wrapper); ok {
+		return w
+	}
 	return wrapper{Filterer: f}
 }
 
@@ -135,6 +138,16 @@ func isTrueFilter(f MatcherFilterer) bool {
 	return false
 }
 
+// lineFilterHints returns new hints for a stage that filters on the line.
+func lineFilterHints() StageHints {
+	return StageHints{
+		CanModifyLabels:      false,
+		CanModifyLine:        false,
+		ReadsLine:            true,
+		ReadsArbitraryLabels: false,
+	}
+}
+
 type existsFilter struct{}
 
 func (e existsFilter) Filter(line []byte) bool {
@@ -142,11 +155,9 @@ func (e existsFilter) Filter(line []byte) bool {
 }
 
 func (e existsFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, e.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, e.Filter(line)
+	})
 }
 
 // Matches implements Matcher
@@ -164,11 +175,9 @@ func (n notFilter) Filter(line []byte) bool {
 }
 
 func (n notFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, n.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, n.Filter(line)
+	})
 }
 
 func (n notFilter) Matches(test Checker) bool {
@@ -212,11 +221,9 @@ func (a andFilter) Filter(line []byte) bool {
 }
 
 func (a andFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, a.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, a.Filter(line)
+	})
 }
 
 func (a andFilter) Matches(test Checker) bool {
@@ -293,11 +300,9 @@ func (a andFilters) Filter(line []byte) bool {
 }
 
 func (a andFilters) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, a.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, a.Filter(line)
+	}).withLineFilter(a)
 }
 
 type orFilter struct {
@@ -306,6 +311,9 @@ type orFilter struct {
 }
 
 // newOrFilter creates a new filter which matches only if left or right matches.
+// A TrueFilter side is dropped rather than making the result match every line,
+// so `|= "" or "foo"` keeps the same lines as `|= "foo"`. Existing line filter
+// queries rely on this.
 func newOrFilter(left MatcherFilterer, right MatcherFilterer) MatcherFilterer {
 	if left == nil || isTrueFilter(left) {
 		return right
@@ -339,11 +347,9 @@ func (a orFilter) Filter(line []byte) bool {
 }
 
 func (a orFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, a.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, a.Filter(line)
+	})
 }
 
 // Matches implements Matcher
@@ -376,11 +382,9 @@ func (r regexpFilter) Filter(line []byte) bool {
 }
 
 func (r regexpFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, r.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, r.Filter(line)
+	})
 }
 
 func (r regexpFilter) Matches(test Checker) bool {
@@ -405,11 +409,9 @@ func (l equalFilter) Filter(line []byte) bool {
 }
 
 func (l equalFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, l.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, l.Filter(line)
+	})
 }
 
 func (l equalFilter) Matches(test Checker) bool {
@@ -536,11 +538,9 @@ func containsLower(line, substr []byte) bool {
 }
 
 func (l containsFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, l.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, l.Filter(line)
+	}).withLineFilter(&l)
 }
 
 // Matches implements Matcher
@@ -588,11 +588,9 @@ func (f containsAllFilter) Filter(line []byte) bool {
 }
 
 func (f containsAllFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, f.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, f.Filter(line)
+	}).withLineFilter(&f)
 }
 
 func (f containsAllFilter) Matches(test Checker) bool {
@@ -652,7 +650,7 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (MatcherFilterer, er
 	// attempt to improve regex with tricks
 	filter, ok := defaultRegexSimplifier.Simplify(reg, isLabel)
 	if !ok {
-		util.AllNonGreedy(reg)
+		syntaxutil.AllNonGreedy(reg)
 		regex := reg.String()
 		if isLabel {
 			// label regexes are anchored to
@@ -700,13 +698,13 @@ func (s *RegexSimplifier) Simplify(reg *syntax.Regexp, isLabel bool) (MatcherFil
 	case syntax.OpConcat:
 		return s.simplifyConcat(reg, nil)
 	case syntax.OpCapture:
-		util.ClearCapture(reg)
+		syntaxutil.ClearCapture(reg)
 		return s.Simplify(reg, isLabel)
 	case syntax.OpLiteral:
 		if isLabel {
-			return s.newEqualFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
+			return s.newEqualFilter([]byte(string(reg.Rune)), syntaxutil.IsCaseInsensitive(reg)), true
 		}
-		return s.newContainsFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
+		return s.newContainsFilter([]byte(string(reg.Rune)), syntaxutil.IsCaseInsensitive(reg)), true
 	case syntax.OpStar:
 		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
 			return TrueFilter, true
@@ -724,7 +722,7 @@ func (s *RegexSimplifier) Simplify(reg *syntax.Regexp, isLabel bool) (MatcherFil
 // simplifyAlternate simplifies, when possible, alternate regexp expressions such as:
 // (foo|bar) or (foo|(bar|buzz)).
 func (s *RegexSimplifier) simplifyAlternate(reg *syntax.Regexp, isLabel bool) (MatcherFilterer, bool) {
-	util.ClearCapture(reg.Sub...)
+	syntaxutil.ClearCapture(reg.Sub...)
 	// attempt to simplify the first leg
 	f, ok := s.Simplify(reg.Sub[0], isLabel)
 	if !ok {
@@ -747,7 +745,7 @@ func (s *RegexSimplifier) simplifyAlternate(reg *syntax.Regexp, isLabel bool) (M
 // Or a literal and alternates operation (see simplifyConcatAlternate), which represent a multiplication of alternates.
 // Anything else is rejected.
 func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (MatcherFilterer, bool) {
-	util.ClearCapture(reg.Sub...)
+	syntaxutil.ClearCapture(reg.Sub...)
 	// remove empty match as we don't need them for filtering
 	i := 0
 	for _, r := range reg.Sub {
@@ -776,7 +774,7 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 			}
 			literals++
 			baseLiteral = append(baseLiteral, []byte(string(sub.Rune))...)
-			baseLiteralIsCaseInsensitive = util.IsCaseInsensitive(sub)
+			baseLiteralIsCaseInsensitive = syntaxutil.IsCaseInsensitive(sub)
 			continue
 		}
 		// if we have an alternate we must also have a base literal to apply the concatenation with.
@@ -787,6 +785,10 @@ func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte)
 			continue
 		}
 		if sub.Op == syntax.OpStar && sub.Sub[0].Op == syntax.OpAnyCharNotNL {
+			// anything after .* is no longer adjacent to the base literal.
+			if baseLiteral != nil && sub != reg.Sub[len(reg.Sub)-1] {
+				return nil, false
+			}
 			continue
 		}
 		return nil, false
@@ -815,7 +817,7 @@ func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []
 		// and alternate expression is marked as case insensitive. For example, for the original expression
 		// f|f(?i)oo the extracted expression would be "f (?:)|(?i:OO)" i.e. f with empty match
 		// and fOO. For fOO, we can't initialize containsFilter with caseInsensitve variable as either true or false
-		isAltCaseInsensitive := util.IsCaseInsensitive(alt)
+		isAltCaseInsensitive := syntaxutil.IsCaseInsensitive(alt)
 		if !baseLiteralIsCaseInsensitive && isAltCaseInsensitive {
 			return nil, false
 		}
@@ -877,9 +879,7 @@ func (f *patternFilter) Matches(test Checker) bool {
 }
 
 func (f *patternFilter) ToStage() Stage {
-	return StageFunc{
-		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-			return line, f.Filter(line)
-		},
-	}
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+		return line, f.Filter(line)
+	})
 }

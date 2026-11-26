@@ -4,9 +4,10 @@ package sso
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/sso/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/sso/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Returns the STS short-term credentials for a given role name that is assigned
@@ -49,6 +50,24 @@ type GetRoleCredentialsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetRoleCredentialsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetRoleCredentialsRequest)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetRoleCredentialsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AccessToken != nil {
+		s.WriteString(schemas.GetRoleCredentialsRequest_accessToken, *v.AccessToken)
+	}
+	if v.AccountId != nil {
+		s.WriteString(schemas.GetRoleCredentialsRequest_accountId, *v.AccountId)
+	}
+	if v.RoleName != nil {
+		s.WriteString(schemas.GetRoleCredentialsRequest_roleName, *v.RoleName)
+	}
+}
+
 type GetRoleCredentialsOutput struct {
 
 	// The credentials for the role that is assigned to the user.
@@ -60,41 +79,47 @@ type GetRoleCredentialsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetRoleCredentialsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetRoleCredentialsResponse)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetRoleCredentialsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.RoleCredentials != nil {
+		s.WriteStruct(schemas.GetRoleCredentialsResponse_roleCredentials)
+		v.RoleCredentials.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *GetRoleCredentialsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.GetRoleCredentialsResponse, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.GetRoleCredentialsResponse_roleCredentials:
+			v.RoleCredentials = &types.RoleCredentials{}
+			return v.RoleCredentials.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationGetRoleCredentialsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsRestjson1_serializeOpGetRoleCredentials{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetRoleCredentials, schemas.GetRoleCredentialsRequest, schemas.GetRoleCredentialsResponse)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsRestjson1_deserializeOpGetRoleCredentials{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetRoleCredentials, schemas.GetRoleCredentialsRequest, schemas.GetRoleCredentialsResponse), output: &GetRoleCredentialsOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetRoleCredentialsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "GetRoleCredentials"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

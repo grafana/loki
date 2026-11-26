@@ -62,7 +62,7 @@ type ManagedInstance interface {
 	Run(ctx context.Context) error
 	Update(c Config) error
 	StorageDirectory() string
-	Appender(ctx context.Context) storage.Appender
+	AppenderV2(ctx context.Context) storage.AppenderV2
 	Stop() error
 	Tenant() string
 }

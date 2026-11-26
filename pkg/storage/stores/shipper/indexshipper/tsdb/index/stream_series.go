@@ -53,17 +53,7 @@ func (sc *seriesScan) Close() error {
 }
 
 // seek positions the scan's reader at the given absolute file offset.
-//
-// A short forward step is served by discarding bytes, which will often come
-// straight out of the read-ahead buffer and cost nothing; anything else falls
-// back to repositioning the file.
-// Backwards steps are always a reposition, so out-of-order refs stay correct
-// and merely incur the cost of ResetAt.
 func (sc *seriesScan) seek(offset int) {
-	if distance := offset - sc.decbuf.Offset(); distance >= 0 && distance <= streamenc.ReaderBufferSize {
-		sc.decbuf.Skip(distance)
-		return
-	}
 	sc.decbuf.ResetAt(offset)
 }
 
@@ -172,13 +162,13 @@ func (sc *seriesScan) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) 
 	return names, nil
 }
 
-func (sc *seriesScan) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+func (sc *seriesScan) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (uint64, error) {
 	content, err := sc.readSeriesRecord(seriesOffset(id))
 	if err != nil {
 		return 0, err
 	}
 
-	fingerprint, err := sc.reader.decoder.Series(sc.reader.version, content, id, from, through, lbls, chks)
+	fingerprint, err := sc.reader.decoder.Series(sc.reader.version, content, id, from, through, lbls, chks, by)
 	if err != nil {
 		return 0, fmt.Errorf("decode series: %w", err)
 	}

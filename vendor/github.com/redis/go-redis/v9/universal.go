@@ -70,8 +70,26 @@ type UniversalOptions struct {
 	// default: 100 milliseconds
 	DialerRetryTimeout time.Duration
 
-	ReadTimeout           time.Duration
-	WriteTimeout          time.Duration
+	// ReadTimeout for socket reads. If reached, commands will fail
+	// with a timeout instead of blocking. Supported values:
+	//
+	//	- `-1` - no timeout (block indefinitely).
+	//	- `-2` - disables SetReadDeadline calls completely.
+	//
+	// default: 5 seconds
+	ReadTimeout time.Duration
+
+	// WriteTimeout for socket writes. If reached, commands will fail
+	// with a timeout instead of blocking. Supported values:
+	//
+	//	- `-1` - no timeout (block indefinitely).
+	//	- `-2` - disables SetWriteDeadline calls completely.
+	//
+	// default: 5 seconds (same as ReadTimeout, which it follows when unset)
+	WriteTimeout time.Duration
+
+	// ContextTimeoutEnabled controls whether the client respects context timeouts and deadlines.
+	// See https://redis.io/docs/latest/develop/clients/go/produsage/#timeouts
 	ContextTimeoutEnabled bool
 
 	// ReadBufferSize is the size of the bufio.Reader buffer for each connection.
@@ -87,6 +105,14 @@ type UniversalOptions struct {
 	//
 	// default: 32KiB (32768 bytes)
 	WriteBufferSize int
+
+	// PipelineReadBufferSize / PipelineWriteBufferSize size the dedicated pipeline
+	// pool's per-connection buffers. PipelinePoolSize sizes that pool; a negative
+	// value opts out of the dedicated pipeline pool. See the same fields on
+	// Options for details.
+	PipelineReadBufferSize  int
+	PipelineWriteBufferSize int
+	PipelinePoolSize        int
 
 	// PoolFIFO uses FIFO mode for each node connection pool GET/PUT (default LIFO).
 	PoolFIFO bool
@@ -112,7 +138,10 @@ type UniversalOptions struct {
 	MaxRedirects   int
 	ReadOnly       bool
 	RouteByLatency bool
-	RouteRandomly  bool
+	// RouteByLatencyTolerance is passed through to ClusterOptions and FailoverOptions;
+	// see ClusterOptions.RouteByLatencyTolerance.
+	RouteByLatencyTolerance time.Duration
+	RouteRandomly           bool
 
 	// MasterName is the sentinel master name.
 	// Only for failover clients.
@@ -149,8 +178,50 @@ type UniversalOptions struct {
 	// IsClusterMode can be used when only one Addrs is provided (e.g. Elasticache supports setting up cluster mode with configuration endpoint).
 	IsClusterMode bool
 
+	// AutoPipelineOptions is the default config for the client's
+	// autopipeliner faces (AutoPipeline / AsyncAutoPipeline), applied when
+	// they are called without explicit options. See Options.AutoPipelineOptions.
+	AutoPipelineOptions *AutoPipelineOptions
+
 	// MaintNotificationsConfig provides configuration for maintnotifications upgrades.
 	MaintNotificationsConfig *maintnotifications.Config
+
+	// ClientSideCacheConfig enables client-side caching when NewUniversalClient
+	// selects a standalone Client. See Options.ClientSideCacheConfig.
+	//
+	// Experimental: this API may change in a minor release.
+	ClientSideCacheConfig *ClientSideCacheConfig
+
+	// ClientSideCache supplies an explicit cache when NewUniversalClient selects
+	// a standalone Client. See Options.ClientSideCache.
+	//
+	// Experimental: this API may change in a minor release.
+	ClientSideCache Cache
+
+	// ClientSideCacheStrategy selects the standalone client's invalidation
+	// strategy. See Options.ClientSideCacheStrategy.
+	//
+	// Experimental: this API may change in a minor release.
+	ClientSideCacheStrategy CSCStrategy
+
+	// ClientSideCacheRefreshOnInvalidate re-fetches every cached entry of an
+	// invalidated key as soon as its invalidation arrives, whether or not it was
+	// read recently. See Options.ClientSideCacheRefreshOnInvalidate.
+	//
+	// Experimental: this API may change in a minor release.
+	ClientSideCacheRefreshOnInvalidate bool
+
+	// ClientSideCacheCoalesceMisses coalesces concurrent cache misses onto a held
+	// full-duplex connection. See Options.ClientSideCacheCoalesceMisses.
+	//
+	// Experimental: this API may change in a minor release.
+	ClientSideCacheCoalesceMisses bool
+
+	// ClientSideCacheInvalidationBatchWindow batches invalidation-driven deletes.
+	// See Options.ClientSideCacheInvalidationBatchWindow.
+	//
+	// Experimental: this API may change in a minor release.
+	ClientSideCacheInvalidationBatchWindow time.Duration
 }
 
 // Cluster returns cluster options created from the universal options.
@@ -172,10 +243,11 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 		CredentialsProviderContext:   o.CredentialsProviderContext,
 		StreamingCredentialsProvider: o.StreamingCredentialsProvider,
 
-		MaxRedirects:   o.MaxRedirects,
-		ReadOnly:       o.ReadOnly,
-		RouteByLatency: o.RouteByLatency,
-		RouteRandomly:  o.RouteRandomly,
+		MaxRedirects:            o.MaxRedirects,
+		ReadOnly:                o.ReadOnly,
+		RouteByLatency:          o.RouteByLatency,
+		RouteByLatencyTolerance: o.RouteByLatencyTolerance,
+		RouteRandomly:           o.RouteRandomly,
 
 		MaxRetries:      o.MaxRetries,
 		MinRetryBackoff: o.MinRetryBackoff,
@@ -191,6 +263,10 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 
 		ReadBufferSize:  o.ReadBufferSize,
 		WriteBufferSize: o.WriteBufferSize,
+
+		PipelineReadBufferSize:  o.PipelineReadBufferSize,
+		PipelineWriteBufferSize: o.PipelineWriteBufferSize,
+		PipelinePoolSize:        o.PipelinePoolSize,
 
 		PoolFIFO:              o.PoolFIFO,
 		PoolSize:              o.PoolSize,
@@ -208,6 +284,7 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 		DisableIdentity:           o.DisableIdentity,
 		DisableIndentity:          o.DisableIndentity,
 		IdentitySuffix:            o.IdentitySuffix,
+		AutoPipelineOptions:       o.AutoPipelineOptions,
 		FailingTimeoutSeconds:     o.FailingTimeoutSeconds,
 		UnstableResp3:             o.UnstableResp3,
 		PushNotificationProcessor: o.PushNotificationProcessor,
@@ -240,8 +317,9 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 		SentinelUsername: o.SentinelUsername,
 		SentinelPassword: o.SentinelPassword,
 
-		RouteByLatency: o.RouteByLatency,
-		RouteRandomly:  o.RouteRandomly,
+		RouteByLatency:          o.RouteByLatency,
+		RouteByLatencyTolerance: o.RouteByLatencyTolerance,
+		RouteRandomly:           o.RouteRandomly,
 
 		MaxRetries:      o.MaxRetries,
 		MinRetryBackoff: o.MinRetryBackoff,
@@ -257,6 +335,10 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 
 		ReadBufferSize:  o.ReadBufferSize,
 		WriteBufferSize: o.WriteBufferSize,
+
+		PipelineReadBufferSize:  o.PipelineReadBufferSize,
+		PipelineWriteBufferSize: o.PipelineWriteBufferSize,
+		PipelinePoolSize:        o.PipelinePoolSize,
 
 		PoolFIFO:              o.PoolFIFO,
 		PoolSize:              o.PoolSize,
@@ -276,6 +358,7 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 		DisableIdentity:           o.DisableIdentity,
 		DisableIndentity:          o.DisableIndentity,
 		IdentitySuffix:            o.IdentitySuffix,
+		AutoPipelineOptions:       o.AutoPipelineOptions,
 		UnstableResp3:             o.UnstableResp3,
 		PushNotificationProcessor: o.PushNotificationProcessor,
 		// Note: MaintNotificationsConfig not supported for FailoverOptions
@@ -318,6 +401,10 @@ func (o *UniversalOptions) Simple() *Options {
 		ReadBufferSize:  o.ReadBufferSize,
 		WriteBufferSize: o.WriteBufferSize,
 
+		PipelineReadBufferSize:  o.PipelineReadBufferSize,
+		PipelineWriteBufferSize: o.PipelineWriteBufferSize,
+		PipelinePoolSize:        o.PipelinePoolSize,
+
 		PoolFIFO:              o.PoolFIFO,
 		PoolSize:              o.PoolSize,
 		MaxConcurrentDials:    o.MaxConcurrentDials,
@@ -334,9 +421,17 @@ func (o *UniversalOptions) Simple() *Options {
 		DisableIdentity:           o.DisableIdentity,
 		DisableIndentity:          o.DisableIndentity,
 		IdentitySuffix:            o.IdentitySuffix,
+		AutoPipelineOptions:       o.AutoPipelineOptions,
 		UnstableResp3:             o.UnstableResp3,
 		PushNotificationProcessor: o.PushNotificationProcessor,
 		MaintNotificationsConfig:  o.MaintNotificationsConfig,
+		ClientSideCacheConfig:     o.ClientSideCacheConfig,
+		ClientSideCache:           o.ClientSideCache,
+		ClientSideCacheStrategy:   o.ClientSideCacheStrategy,
+
+		ClientSideCacheRefreshOnInvalidate:     o.ClientSideCacheRefreshOnInvalidate,
+		ClientSideCacheCoalesceMisses:          o.ClientSideCacheCoalesceMisses,
+		ClientSideCacheInvalidationBatchWindow: o.ClientSideCacheInvalidationBatchWindow,
 	}
 }
 
@@ -352,6 +447,15 @@ type UniversalClient interface {
 	Watch(ctx context.Context, fn func(*Tx) error, keys ...string) error
 	Do(ctx context.Context, args ...interface{}) *Cmd
 	Process(ctx context.Context, cmd Cmder) error
+	// AutoPipeline / AsyncAutoPipeline return an AutoPipeliner for the concrete
+	// client. Supported on *Client (including sentinel-backed failover clients)
+	// and *ClusterClient; *Ring returns an error (not supported).
+	//
+	// EXPERIMENTAL: this API is subject to change, use with caution.
+	AutoPipeline() (*AutoPipeliner, error)
+	AutoPipelineWithOptions(config *AutoPipelineOptions) (*AutoPipeliner, error)
+	AsyncAutoPipeline() (*AutoPipeliner, error)
+	AsyncAutoPipelineWithOptions(config *AutoPipelineOptions) (*AutoPipeliner, error)
 	Subscribe(ctx context.Context, channels ...string) *PubSub
 	PSubscribe(ctx context.Context, channels ...string) *PubSub
 	SSubscribe(ctx context.Context, channels ...string) *PubSub
@@ -363,6 +467,9 @@ var (
 	_ UniversalClient = (*Client)(nil)
 	_ UniversalClient = (*ClusterClient)(nil)
 	_ UniversalClient = (*Ring)(nil)
+	// AutoPipeliner is a drop-in for the real clients; non-data operations
+	// delegate to the underlying client.
+	_ UniversalClient = (*AutoPipeliner)(nil)
 )
 
 // NewUniversalClient returns a new multi client. The type of the returned client depends

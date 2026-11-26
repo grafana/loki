@@ -5,6 +5,8 @@
 
 package fakecgo
 
+import "structs"
+
 type (
 	size_t uintptr
 	// Sources:
@@ -21,18 +23,14 @@ type (
 
 type sighow int32
 
-const (
-	SIG_BLOCK   sighow = 0
-	SIG_UNBLOCK sighow = 1
-	SIG_SETMASK sighow = 2
-)
-
 type G struct {
+	_       structs.HostLayout
 	stacklo uintptr
 	stackhi uintptr
 }
 
 type ThreadStart struct {
+	_   structs.HostLayout
 	g   *G
 	tls *uintptr
 	fn  uintptr

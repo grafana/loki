@@ -365,7 +365,7 @@ type remoteIPMatcher struct {
 func newRemoteIPMatcher(cidrRange *v3corepb.CidrRange) (*remoteIPMatcher, error) {
 	// Convert configuration to a cidrRangeString, as Go standard library has
 	// methods that parse cidr string.
-	cidrRangeString := fmt.Sprintf("%s/%d", cidrRange.AddressPrefix, cidrRange.PrefixLen.Value)
+	cidrRangeString := fmt.Sprintf("%s/%d", cidrRange.GetAddressPrefix(), cidrRange.GetPrefixLen().GetValue())
 	ipNet, err := netip.ParsePrefix(cidrRangeString)
 	if err != nil {
 		return nil, err
@@ -391,7 +391,7 @@ type localIPMatcher struct {
 }
 
 func newLocalIPMatcher(cidrRange *v3corepb.CidrRange) (*localIPMatcher, error) {
-	cidrRangeString := fmt.Sprintf("%s/%d", cidrRange.AddressPrefix, cidrRange.PrefixLen.Value)
+	cidrRangeString := fmt.Sprintf("%s/%d", cidrRange.GetAddressPrefix(), cidrRange.GetPrefixLen().GetValue())
 	ipNet, err := netip.ParsePrefix(cidrRangeString)
 	if err != nil {
 		return nil, err

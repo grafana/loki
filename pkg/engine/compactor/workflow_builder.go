@@ -7,10 +7,10 @@ import (
 	"io"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -18,21 +18,20 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
-// buildIndexMergePlan returns a single-root physical.Plan holding exactly one
-// IndexMerge node. Each coordinator cycle runs ⌈P/K⌉ such plans
-// concurrently — one per sorted pile of index sections.
+// buildIndexMergePlan returns a single-root physical.Plan with one IndexMerge
+// node for task.
 func buildIndexMergePlan(
 	tenant string,
 	window time.Time,
-	task *compactionv2pb.TaskSpec,
+	task indexMergeTask,
 ) *physical.Plan {
 	node := &physical.IndexMerge{
-		// Each call mints a fresh NodeID so racing builds don't collide on the
-		// scheduler's manifest registry.
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
-		Runs:           task.Runs,
+		Runs:           task.spec.Runs,
+		KeySpan:        task.keySpan,
+		StatsSources:   task.statsSources,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
@@ -45,12 +44,43 @@ func buildLogMergePlan(
 	task *compactionv2pb.TaskSpec,
 ) *physical.Plan {
 	node := &physical.LogMerge{
-		// Each call mints a fresh NodeID so racing builds don't collide
 		NodeID:         ulid.Make(),
 		Tenant:         tenant,
 		ToCWindowStart: window.UnixNano(),
 		Runs:           task.Runs,
-		SortSchema:     task.SortSchema,
+		KeyRange:       task.KeyRange,
+		InputBytes:     task.InputBytes,
+		OutputLevel:    task.OutputLevel,
+	}
+	var g dag.Graph[physical.Node]
+	g.Add(node)
+	return physical.FromGraph(g)
+}
+
+// buildIndexFilterPlan returns a single-root physical.Plan holding one
+// IndexFilter node that keeps the rows of objectPaths from the index objects
+// at sourceIndexPaths. sourceIndexPaths must be in posting key order.
+func buildIndexFilterPlan(tenant string, sourceIndexPaths, objectPaths []string) *physical.Plan {
+	node := &physical.IndexFilter{
+		NodeID:            ulid.Make(),
+		Tenant:            tenant,
+		SourceIndexPaths:  sourceIndexPaths,
+		SourcesInKeyOrder: true,
+		ObjectPaths:       objectPaths,
+	}
+	var g dag.Graph[physical.Node]
+	g.Add(node)
+	return physical.FromGraph(g)
+}
+
+// buildDeletionSweepPlan returns a single-root physical.Plan holding one
+// DeletionSweep node for tenant. The sweep deletes its deletion candidates
+// only if deleteCandidates is true.
+func buildDeletionSweepPlan(tenant string, deleteCandidates bool) *physical.Plan {
+	node := &physical.DeletionSweep{
+		NodeID: ulid.Make(),
+		Tenant: tenant,
+		Delete: deleteCandidates,
 	}
 	var g dag.Graph[physical.Node]
 	g.Add(node)
@@ -58,16 +88,15 @@ func buildLogMergePlan(
 }
 
 // runPlan constructs a workflow.Workflow from a single-root plan, runs it,
-// and drains the pipeline. A compaction job emits exactly one record batch
-// reporting the artifacts it produced. Returns the record batch or nil,nil
-// if the pipeline was empty.
+// and drains the pipeline. Success requires exactly one result record
+// followed by successful pipeline completion.
 func runPlan(
 	ctx context.Context,
 	logger log.Logger,
 	runner workflow.Runner,
 	opts workflow.Options,
 	plan *physical.Plan,
-) (arrow.RecordBatch, error) {
+) ([]v2.ResultArtifact, error) {
 	wf, err := workflow.New(ctx, opts, logger, runner, plan)
 	if err != nil {
 		return nil, fmt.Errorf("workflow.New: %w", err)
@@ -78,6 +107,13 @@ func runPlan(
 	if err != nil {
 		return nil, fmt.Errorf("workflow.Run: %w", err)
 	}
+	return readCompactionResult(ctx, pipeline)
+}
+
+// readCompactionResult owns the pipeline and returned records. It decodes the
+// artifacts of the one result record before releasing it, but does not return
+// them until EOF.
+func readCompactionResult(ctx context.Context, pipeline executor.Pipeline) ([]v2.ResultArtifact, error) {
 	reader := executor.TranslateEOF(pipeline)
 	defer reader.Close()
 
@@ -85,18 +121,41 @@ func runPlan(
 		return nil, fmt.Errorf("pipeline.Open: %w", err)
 	}
 
-	var result arrow.RecordBatch
+	var result []v2.ResultArtifact
+	haveResult := false
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		rec, err := reader.Read(ctx)
+		if err != nil && rec != nil {
+			rec.Release()
+		}
 		if errors.Is(err, io.EOF) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if !haveResult {
+				return nil, fmt.Errorf("compaction job produced no result record")
+			}
 			return result, nil
 		}
 		if err != nil {
 			return nil, fmt.Errorf("pipeline.Read: %w", err)
 		}
-		if result != nil {
+		if haveResult {
+			if rec != nil {
+				rec.Release()
+			}
 			return nil, fmt.Errorf("compaction job produced more than one result record")
 		}
-		result = rec
+		result, err = v2.DecodeResultArtifacts(rec)
+		if rec != nil {
+			rec.Release()
+		}
+		if err != nil {
+			return nil, fmt.Errorf("decode compaction result: %w", err)
+		}
+		haveResult = true
 	}
 }

@@ -8,6 +8,15 @@ import (
 	"unicode/utf8"
 )
 
+// special marks the bytes that the key and unquoted value loops must check.
+// The loops skip all other bytes.
+var special = func() (t [256]bool) {
+	for c := range t {
+		t[c] = c <= ' ' || c == '=' || c == '"' || c >= utf8.RuneSelf
+	}
+	return t
+}()
+
 // A Decoder reads and decodes logfmt records from an input stream.
 type Decoder struct {
 	pos   int
@@ -26,9 +35,12 @@ func NewDecoder(line []byte) *Decoder {
 	return dec
 }
 
+// Reset makes the decoder read line from its start. It also clears the key, the value and the
+// error. The decoder retains line until the next Reset, so Reset(nil) makes it drop the line.
 func (dec *Decoder) Reset(line []byte) {
 	dec.pos = 0
 	dec.line = line
+	dec.key, dec.value = nil, nil
 	dec.err = nil
 }
 
@@ -60,6 +72,9 @@ key:
 
 	start, multibyte := dec.pos, false
 	for p, c := range line[dec.pos:] {
+		if !special[c] {
+			continue
+		}
 		switch {
 		case c == '=':
 			dec.pos += p
@@ -118,6 +133,9 @@ equal:
 	// value
 	start = dec.pos
 	for p, c := range line[dec.pos:] {
+		if !special[c] {
+			continue
+		}
 		switch {
 		case c == '=' || c == '"':
 			dec.pos += p
@@ -153,6 +171,18 @@ qvalue:
 		untermQuote  = "unterminated quoted value"
 		invalidQuote = "invalid quoted value"
 	)
+
+	// Most quoted values hold no escape. For those, bytes.IndexByte finds the closing quote
+	// faster than the loop below.
+	rest := line[dec.pos+1:]
+	if end := bytes.IndexByte(rest, '"'); end >= 0 && bytes.IndexByte(rest[:end], '\\') < 0 {
+		// Add 1 for the opening quote and 1 to move past the closing quote.
+		dec.pos += end + 2
+		if end > 0 {
+			dec.value = rest[:end]
+		}
+		return true
+	}
 
 	hasEsc, esc := false, false
 	start = dec.pos

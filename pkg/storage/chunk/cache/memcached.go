@@ -14,7 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
@@ -77,7 +77,10 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 					(500 * time.Millisecond).Seconds(),
 					(time.Second).Seconds(),
 				}...),
-				ConstLabels: prometheus.Labels{"name": name},
+				ConstLabels:                     prometheus.Labels{"name": name},
+				NativeHistogramBucketFactor:     1.1,
+				NativeHistogramMaxBucketNumber:  100,
+				NativeHistogramMinResetDuration: time.Hour,
 			}, []string{"method", "status_code"}),
 		),
 		closed: make(chan struct{}),
@@ -139,6 +142,10 @@ func memcacheStatusCode(err error) string {
 // Fetch gets keys from the cache. The keys that are found must be in the order
 // of the keys requested.
 //
+// When err is not nil, found and bufs can still hold partial results. This
+// happens when some servers answer and others fail. missed holds every key
+// that is not in found, including the keys of the failed servers.
+//
 // When BatchSize is non-zero, Fetch submits keys in batches to a worker pool.
 // If the context is cancelled before all batches complete, Fetch returns
 // whatever results have been collected so far together with ctx.Err(). Keys
@@ -162,10 +169,11 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 	)
 	items, err = c.memcache.GetMulti(ctx, keys)
 	c.requestDuration.After(ctx, "Memcache.GetMulti", memcacheStatusCode(err), start)
-	if err != nil {
-		return found, bufs, keys, err
-	}
 
+	// GetMulti can return the items of the servers that answered together
+	// with the error of a server that failed. The loop keeps those items. An
+	// early return on err would report every key as missed because of one
+	// failed server.
 	for _, key := range keys {
 		item, ok := items[key]
 		if ok {

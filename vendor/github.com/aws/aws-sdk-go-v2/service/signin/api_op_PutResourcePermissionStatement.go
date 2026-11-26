@@ -5,9 +5,10 @@ package signin
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/signin/schemas"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Create a permission statement in the account's SignIn resource-based policy
@@ -57,6 +58,38 @@ type PutResourcePermissionStatementInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *PutResourcePermissionStatementInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.PutResourcePermissionStatementInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *PutResourcePermissionStatementInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ClientToken != nil {
+		s.WriteString(schemas.PutResourcePermissionStatementInput_clientToken, *v.ClientToken)
+	}
+	if v.ConsoleSourceVpce != nil {
+		s.WriteString(schemas.PutResourcePermissionStatementInput_consoleSourceVpce, *v.ConsoleSourceVpce)
+	}
+	if v.ExcludedPrincipal != nil {
+		s.WriteString(schemas.PutResourcePermissionStatementInput_excludedPrincipal, *v.ExcludedPrincipal)
+	}
+	if v.RequestedRegion != nil {
+		s.WriteString(schemas.PutResourcePermissionStatementInput_requestedRegion, *v.RequestedRegion)
+	}
+	if v.SigninSourceVpce != nil {
+		s.WriteString(schemas.PutResourcePermissionStatementInput_signinSourceVpce, *v.SigninSourceVpce)
+	}
+	if v.SourceIp != nil {
+		s.WriteString(schemas.PutResourcePermissionStatementInput_sourceIp, *v.SourceIp)
+	}
+	if v.SourceVpc != nil {
+		s.WriteString(schemas.PutResourcePermissionStatementInput_sourceVpc, *v.SourceVpc)
+	}
+	if v.VpcSourceIp != nil {
+		s.WriteString(schemas.PutResourcePermissionStatementInput_vpcSourceIp, *v.VpcSourceIp)
+	}
+}
 func (in *PutResourcePermissionStatementInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.IsControlPlane = ptr.Bool(true)
@@ -76,22 +109,35 @@ type PutResourcePermissionStatementOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *PutResourcePermissionStatementOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.PutResourcePermissionStatementOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *PutResourcePermissionStatementOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.StatementId != nil {
+		s.WriteString(schemas.PutResourcePermissionStatementOutput_statementId, *v.StatementId)
+	}
+}
+func (v *PutResourcePermissionStatementOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.PutResourcePermissionStatementOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.PutResourcePermissionStatementOutput_statementId:
+			v.StatementId = new(string)
+			return d.ReadString(schemas.PutResourcePermissionStatementOutput_statementId, v.StatementId)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationPutResourcePermissionStatementMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsRestjson1_serializeOpPutResourcePermissionStatement{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.PutResourcePermissionStatement, schemas.PutResourcePermissionStatementInput, schemas.PutResourcePermissionStatementOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsRestjson1_deserializeOpPutResourcePermissionStatement{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.PutResourcePermissionStatement, schemas.PutResourcePermissionStatementInput, schemas.PutResourcePermissionStatementOutput), output: &PutResourcePermissionStatementOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
@@ -101,19 +147,10 @@ func (c *Client) addOperationPutResourcePermissionStatementMiddlewares(stack *mi
 	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
 	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addIdempotencyToken_opPutResourcePermissionStatementMiddleware(stack, options); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "PutResourcePermissionStatement"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

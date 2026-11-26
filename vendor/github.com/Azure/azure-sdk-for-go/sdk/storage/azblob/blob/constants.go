@@ -17,9 +17,18 @@ const (
 	// DefaultDownloadBlockSize is default block size
 	DefaultDownloadBlockSize = int64(4 * 1024 * 1024) // 4MB
 
-	// DefaultConcurrency is the default number of blocks downloaded or uploaded in parallel
-	DefaultConcurrency = shared.DefaultConcurrency
+	// DefaultConcurrency is the legacy default number of blocks downloaded or uploaded in parallel.
+	//
+	// Deprecated: Use DefaultConcurrencyValue() instead, which returns a value based on CPU core count.
+	DefaultConcurrency = shared.DefaultConcurrency //nolint:staticcheck // intentional re-export of deprecated const for backward compat
 )
+
+// DefaultConcurrencyValue returns the default concurrency for parallel uploads/downloads.
+// The value is based on CPU core count, clamped between 8 and 96.
+// Set AZURE_STORAGE_USE_LEGACY_DEFAULT_CONCURRENCY=true to revert to the previous default of 5.
+func DefaultConcurrencyValue() uint16 {
+	return shared.DefaultConcurrencyValue()
+}
 
 // BlobType defines values for BlobType
 type BlobType = generated.BlobType
@@ -201,6 +210,13 @@ func TransferValidationTypeComputeCRC64() TransferValidationType {
 
 // TransferValidationTypeMD5 is a TransferValidationType used to provide a precomputed MD5.
 type TransferValidationTypeMD5 = exported.TransferValidationTypeMD5
+
+// TransferValidationTypeComputeStructuredMessageCRC64 is a TransferValidationType that computes
+// per-segment CRC64 checksums using the structured message binary format.
+// segmentSize specifies the maximum segment size in bytes. Values <= 0 use the default (4 MB).
+func TransferValidationTypeComputeStructuredMessageCRC64(segmentSize int) TransferValidationType {
+	return exported.TransferValidationTypeComputeStructuredMessageCRC64(segmentSize)
+}
 
 // SourceContentValidationType abstracts the various mechanisms used to validate source content.
 // This interface is not publicly implementable.

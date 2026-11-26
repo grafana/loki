@@ -33,6 +33,9 @@ import (
 
 var _ IndexReader = &HeadAndOOOIndexReader{}
 
+// HeadAndOOOIndexReader reads the head index, returning both the in-order and
+// the out-of-order chunks of each series.
+// It is not safe for concurrent use from multiple goroutines.
 type HeadAndOOOIndexReader struct {
 	*headIndexReader            // A reference to the headIndexReader so we can reuse as many interface implementation as possible.
 	inoMint                     int64
@@ -125,8 +128,7 @@ func getOOOSeriesChunks(s *memSeries, useXOR2, useHistogramST bool, mint, maxt i
 			}
 		}
 	}
-	for i := len(s.ooo.oooMmappedChunks) - 1; i >= 0; i-- {
-		c := s.ooo.oooMmappedChunks[i]
+	for i, c := range slices.Backward(s.ooo.oooMmappedChunks) {
 		if c.OverlapsClosedInterval(mint, maxt) && (maxMmapRef == 0 || maxMmapRef.GreaterThanOrEqualTo(c.ref)) && (lastGarbageCollectedMmapRef == 0 || c.ref.GreaterThan(lastGarbageCollectedMmapRef)) {
 			ref := chunks.ChunkRef(chunks.NewHeadChunkRef(s.ref, s.oooHeadChunkID(i)))
 			addChunk(c.minTime, c.maxTime, ref, nil)
@@ -211,6 +213,9 @@ func lessByMinTimeAndMinRef(a, b chunks.Meta) int {
 	}
 }
 
+// HeadAndOOOChunkReader reads both the in-order and the out-of-order chunks of
+// the head.
+// It is not safe for concurrent use from multiple goroutines.
 type HeadAndOOOChunkReader struct {
 	head          *Head
 	mint, maxt    int64
@@ -564,6 +569,9 @@ func (*OOOCompactionHeadIndexReader) Close() error {
 }
 
 // HeadAndOOOQuerier queries both the head and the out-of-order head.
+// The querier is not safe for concurrent use from multiple goroutines, and
+// neither are the series sets and series obtained from it: different series
+// must not be iterated concurrently either.
 type HeadAndOOOQuerier struct {
 	mint, maxt int64
 	head       *Head
@@ -640,6 +648,9 @@ func (q *HeadAndOOOQuerier) Select(ctx context.Context, sortSeries bool, hints *
 }
 
 // HeadAndOOOChunkQuerier queries both the head and the out-of-order head.
+// The querier is not safe for concurrent use from multiple goroutines, and
+// neither are the series sets and series obtained from it: different series
+// must not be iterated concurrently either.
 type HeadAndOOOChunkQuerier struct {
 	mint, maxt int64
 	head       *Head

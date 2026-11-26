@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -71,9 +72,12 @@ func removeFastRegexMatcher(configs []validation.StreamRetention) []validation.S
 	return result
 }
 
-func Test_ValidateRules(t *testing.T) {
-	_, err := loadRuntimeConfig(strings.NewReader(
-		`
+func TestLoadRuntimeConfig_Validation(t *testing.T) {
+	setDefaultLimitsForYAML(t)
+
+	t.Run("rejects an override with an invalid stream retention selector", func(t *testing.T) {
+		_, err := loadRuntimeConfig(strings.NewReader(
+			`
 overrides:
     "29":
         retention_stream:
@@ -84,9 +88,13 @@ overrides:
               period: 24h
               priority: 10
 `))
-	require.Equal(t, "invalid override for tenant 29: invalid labels matchers: parse error at line 1, col 6: syntax error: unexpected IDENTIFIER, expecting STRING", err.Error())
-	_, err = loadRuntimeConfig(strings.NewReader(
-		`
+
+		require.EqualError(t, err, "invalid override for tenant 29: invalid labels matchers: parse error at line 1, col 6: syntax error: unexpected IDENTIFIER, expecting STRING")
+	})
+
+	t.Run("rejects an override with a stream retention period below the minimum", func(t *testing.T) {
+		_, err := loadRuntimeConfig(strings.NewReader(
+			`
 overrides:
     "29":
         retention_stream:
@@ -94,7 +102,43 @@ overrides:
               period: 5h
               priority: 10
 `))
-	require.Equal(t, "invalid override for tenant 29: retention period must be >= 24h was 5h", err.Error())
+
+		require.EqualError(t, err, "invalid override for tenant 29: retention period must be >= 24h was 5h")
+	})
+
+	t.Run("loads an override with a power-of-two shard factor and gives the tenant that layout", func(t *testing.T) {
+		overrides := newTestOverrides(t,
+			`
+overrides:
+    "29":
+        dataobj_shard_factor: 128
+`)
+
+		require.Equal(t, uint32(128), overrides.DataObjShardLayout("29").Buckets())
+		require.Equal(t, streams.DefaultShardLayout(), overrides.DataObjShardLayout("1"))
+	})
+
+	t.Run("rejects an override with a shard factor that is not a power of two", func(t *testing.T) {
+		_, err := loadRuntimeConfig(strings.NewReader(
+			`
+overrides:
+    "29":
+        dataobj_shard_factor: 24
+`))
+
+		require.EqualError(t, err, "invalid override for tenant 29: dataobj_shard_factor: shard bucket count 24 is not a power of two")
+	})
+
+	t.Run("rejects an override with a shard factor above the maximum", func(t *testing.T) {
+		_, err := loadRuntimeConfig(strings.NewReader(
+			`
+overrides:
+    "29":
+        dataobj_shard_factor: 512
+`))
+
+		require.EqualError(t, err, "invalid override for tenant 29: dataobj_shard_factor: shard factor 512 is more than the maximum 256")
+	})
 }
 
 func Test_DefaultConfig(t *testing.T) {
@@ -179,11 +223,7 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 		Loader:       loader,
 		LoadPath:     []string{path},
 	}
-	flagset := flag.NewFlagSet("", flag.PanicOnError)
-	var defaults validation.Limits
-	defaults.RegisterFlags(flagset)
-	require.NoError(t, flagset.Parse(nil))
-	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
+	defaults := setDefaultLimitsForYAML(t)
 
 	reg := prometheus.NewPedanticRegistry()
 	runtimeConfig, err := runtimeconfig.New(cfg, "test", prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
@@ -211,4 +251,18 @@ func Test_NoOverrides(t *testing.T) {
 	overrides, err := validation.NewOverrides(defaults, newtenantLimitsFromRuntimeConfig(nil))
 	require.NoError(t, err)
 	require.Equal(t, time.Duration(defaults.QuerySplitDuration), overrides.QuerySplitDuration("foo"))
+}
+
+// setDefaultLimitsForYAML sets the flag defaults as the base that the YAML
+// decoder gives every tenant override.
+//
+// It returns those defaults.
+func setDefaultLimitsForYAML(t *testing.T) validation.Limits {
+	t.Helper()
+	flagset := flag.NewFlagSet("", flag.PanicOnError)
+	var defaults validation.Limits
+	defaults.RegisterFlags(flagset)
+	require.NoError(t, flagset.Parse(nil))
+	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
+	return defaults
 }

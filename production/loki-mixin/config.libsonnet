@@ -43,11 +43,6 @@
       enabled: true,
     },
 
-    promtail: {
-      // Whether or not to include promtail specific dashboards
-      enabled: true,
-    },
-
     thanos: {
       // Whether or not to include thanos specific dashboards
       enabled: true,
@@ -57,7 +52,7 @@
       // Whether or not to include memcached in the operational dashboard
       memcached: true,
       // Whether or not to include consul in the operational dashboard
-      consul: true,
+      consul: false,
       // Whether or not to include gcs in the operational dashboard
       gcs: true,
       // Whether or not to include s3 in the operational dashboard
@@ -65,9 +60,6 @@
       // Whether or not to include azure blob in the operational dashboard
       azureBlob: true,
     },
-
-    // Enable TSDB specific dashboards
-    tsdb: true,
 
     // Tunes histogram recording rules to aggregate over this interval.
     // Set to at least twice the scrape interval; otherwise, recording rules will output no data.
@@ -82,19 +74,5 @@
     // Enable panels that depend on autoscaler metrics
     // (loki_autoscaler_min_replicas / loki_autoscaler_max_replicas).
     autoscaling_metrics: false,
-    // Per-component autoscaling status.
-    // Only consulted when autoscaling_metrics is true.
-    // If true, min and max replicas for the component are shown.
-    // If false, a panel that says "not autoscaled" is shown instead.
-    autoscaled: {
-      gateway: false,  // only when internal_components=true
-      query_frontend: false,
-      query_scheduler: false,
-      querier: false,
-      index_gateway: false,
-      bloom_gateway: false,
-      ingester: false,
-      ruler: false,
-    },
   },
 }

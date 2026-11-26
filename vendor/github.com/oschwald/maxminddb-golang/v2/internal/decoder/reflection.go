@@ -1,6 +1,7 @@
 package decoder
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -8,8 +9,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
+	"github.com/oschwald/maxminddb-golang/v2/internal/maxminddbtag"
 	"github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors"
 )
 
@@ -20,8 +23,11 @@ type Unmarshaler interface {
 }
 
 // CursorUnmarshaler is implemented by decoders that can decode directly from
-// an immutable cursor and return its proven successor without acquiring a
-// stateful Decoder.
+// an immutable cursor and return its successor without acquiring a stateful
+// Decoder. Implementations must consume and validate the complete value.
+// Successor checks verify decoder identity and recorded origin. A successor from
+// MapReader.End relies on the implementation having completed that reader's
+// counted traversal.
 type CursorUnmarshaler interface {
 	UnmarshalMaxMindDBCursor(cursor Cursor) (Cursor, error)
 }
@@ -33,8 +39,16 @@ var (
 )
 
 // ReflectionDecoder is a decoder for the MMDB data section.
-type ReflectionDecoder struct {
+type ReflectionDecoder struct { //nolint:govet // Keep the embedded decoder before regular fields.
 	DataDecoder
+
+	callbackDecoder *DataDecoder
+
+	// budgetRemaining uses 0 for inactive limits, 1 for exhausted child slots,
+	// and N for N-1 child slots remaining. Limits activate at the first map or
+	// slice, or at a dynamically typed entry point.
+	budgetRemaining  uint32
+	payloadRemaining uint32
 }
 
 // New creates a [ReflectionDecoder].
@@ -94,48 +108,349 @@ func (d *ReflectionDecoder) Decode(offset uint, v any) error {
 	switch unmarshaler := v.(type) {
 	case CursorUnmarshaler:
 		_, err := (Cursor{
-			decoder: &d.DataDecoder,
+			decoder: d.callbackDataDecoder(),
 			offset:  offset,
 		}).UnmarshalCursor(unmarshaler)
 		return err
 	case Unmarshaler:
-		decoder := acquireDecoder(&d.DataDecoder, offset)
+		decoder := acquireDecoder(d.callbackDataDecoder(), offset)
 		err := unmarshaler.UnmarshalMaxMindDB(decoder)
 		releaseDecoder(decoder)
 		return err
-	case *string, *[]byte, *bool, *int32, *uint, *uint16, *uint32, *uint64,
-		*float32, *float64:
+	case *any:
 		result := addressableValue{Value: rv.Elem()}
-		if _, ok := d.tryFastDecodeTyped(offset, result, result.Type()); ok {
+		err := d.decodeAnyWithBudget(offset, result, 0)
+		if err != nil {
+			return wrapRootDecodeError(err, offset)
+		}
+		return nil
+	case *string:
+		result := addressableValue{Value: rv.Elem()}
+		if d.tryFastDecodeUnbudgetedString(offset, result) {
+			return nil
+		}
+	case *[]byte:
+		result := addressableValue{Value: rv.Elem()}
+		if d.tryFastDecodeUnbudgetedBytes(offset, result) {
+			return nil
+		}
+	case *bool, *int32, *uint, *uint16, *uint32, *uint64, *float32, *float64:
+		result := addressableValue{Value: rv.Elem()}
+		if _, ok := d.tryFastDecodeTyped(offset, result, 0); ok {
 			return nil
 		}
 	default:
 	}
 
-	result := addressableValue{Value: rv.Elem()}
-	_, err := d.decodeValue(offset, result, 0)
-	if err == nil {
+	return d.decodeRootValue(offset, addressableValue{Value: rv.Elem()})
+}
+
+// DecodeWithBudget supplies a fresh expansion budget for destinations that use
+// reflection's bounded container or dynamic decoding paths. Exact scalar fast
+// paths remain unbudgeted. Reader metadata uses this cold-path entry point
+// because it is decoded without a string cache and may own copied payloads.
+func (d *ReflectionDecoder) DecodeWithBudget(offset uint, v any) error {
+	bounded := newBudgetedDecoder(d)
+	return bounded.Decode(offset, v)
+}
+
+// DecodePath decodes the data value at offset and stores the value associated
+// with the path in the value pointed at by v.
+func (d *ReflectionDecoder) DecodePath(
+	offset uint,
+	path []any,
+	v any,
+) error {
+	if len(path) != 0 && d.budgetRemaining == 0 {
+		bounded := newBudgetedDecoder(d)
+		return bounded.decodePath(offset, path, v)
+	}
+	return d.decodePath(offset, path, v)
+}
+
+// PrepareForConcurrentUse initializes immutable callback state after a decoder
+// reaches stable storage and before it is published for concurrent use.
+func (d *ReflectionDecoder) PrepareForConcurrentUse() {
+	d.callbackDecoder = &d.DataDecoder
+}
+
+func (d *ReflectionDecoder) decodeRootValue(offset uint, result addressableValue) error {
+	var (
+		ok  bool
+		err error
+	)
+	if result.Kind() == reflect.Struct && result.Type() != bigIntType {
+		if fields := cachedFields(result.Value); !fields.customUnmarshaler {
+			ok, err = d.tryDecodeRootStruct(offset, result, fields)
+		}
+	}
+	if !ok {
+		_, err = d.decodeValue(offset, result, 0)
+	}
+	if err != nil {
+		return wrapRootDecodeError(err, offset)
+	}
+	return nil
+}
+
+func (d *ReflectionDecoder) tryDecodeRootStruct(
+	offset uint,
+	result addressableValue,
+	fields *fieldsType,
+) (bool, error) {
+	if d.budgetRemaining == 0 {
+		bounded := newBudgetedDecoder(d)
+		_, ok, err := bounded.tryDecodeStructWithFields(offset, result, 0, fields)
+		return ok, err
+	}
+	_, ok, err := d.tryDecodeStructWithFields(offset, result, 0, fields)
+	return ok, err
+}
+
+func newBudgetedDecoder(d *ReflectionDecoder) ReflectionDecoder {
+	return ReflectionDecoder{
+		DataDecoder:      d.DataDecoder,
+		callbackDecoder:  d.callbackDecoder,
+		budgetRemaining:  (decodeExpansionBudgetBytes >> decodeBudgetUnitShift) + 1,
+		payloadRemaining: decodePayloadBudgetBytes,
+	}
+}
+
+func (d *ReflectionDecoder) decodeAnyWithBudget(
+	offset uint,
+	result addressableValue,
+	depth int,
+) error {
+	if d.budgetRemaining != 0 {
+		return d.decodeAny(offset, result, depth)
+	}
+	bounded := newBudgetedDecoder(d)
+	return bounded.decodeAny(offset, result, depth)
+}
+
+func (d *ReflectionDecoder) callbackDataDecoder() *DataDecoder {
+	// A callback may retain a cursor after its per-call ReflectionDecoder
+	// returns. Lazily allocate one stable descriptor for operation-local
+	// decoders. Reader initializes this field before publishing the decoder.
+	if d.callbackDecoder == nil {
+		d.callbackDecoder = new(DataDecoder)
+		*d.callbackDecoder = d.DataDecoder
+	}
+	return d.callbackDecoder
+}
+
+func (d *ReflectionDecoder) reserveActiveContainer(kind Kind, size uint) error {
+	if kind == KindMap {
+		if size >= uint((d.budgetRemaining+1)/2) {
+			return errDecodedRecordTooLarge
+		}
+		d.budgetRemaining -= uint32(size * 2)
 		return nil
 	}
+	if size >= uint(d.budgetRemaining) {
+		return errDecodedRecordTooLarge
+	}
+	d.budgetRemaining -= uint32(size)
+	return nil
+}
 
+func (d *ReflectionDecoder) reserveExactPayload(size uint) error {
+	if d.budgetRemaining == 0 {
+		return nil
+	}
+	if size > uint(d.payloadRemaining) {
+		return errDecodedRecordTooLarge
+	}
+	d.payloadRemaining -= uint32(size)
+	return nil
+}
+
+// nextValueOffsetBudgeted skips values without following pointer targets while
+// reserving every inline container it must traverse. Parent containers already
+// reserved the skipped values themselves; only containers discovered inside
+// those values add work here. Skipped scalar payload is never materialized and
+// therefore does not consume the payload allowance.
+func (d *ReflectionDecoder) nextValueOffsetBudgeted(
+	offset uint,
+	numberToSkip uint,
+) (uint, error) {
+	if numberToSkip == 1 && offset < uint(len(d.buffer)) {
+		ctrlByte := d.buffer[offset]
+		kind := Kind(ctrlByte >> 5)
+		size := uint(ctrlByte & 0x1f)
+		switch kind {
+		case KindPointer, KindString, KindBytes:
+			return d.nextValueOffset(offset, 1)
+		case KindFloat64:
+			if size == 8 {
+				return d.nextValueOffset(offset, 1)
+			}
+		case KindUint16:
+			if size <= 2 {
+				return d.nextValueOffset(offset, 1)
+			}
+		case KindUint32:
+			if size <= 4 {
+				return d.nextValueOffset(offset, 1)
+			}
+		default:
+		}
+	}
+	if d.budgetRemaining == 0 {
+		bounded := newBudgetedDecoder(d)
+		return bounded.nextValueOffsetBudgetedSlow(offset, numberToSkip)
+	}
+	return d.nextValueOffsetBudgetedSlow(offset, numberToSkip)
+}
+
+func (d *ReflectionDecoder) structFieldValueIsInlineContainer(offset uint) bool {
+	if offset < uint(len(d.buffer)) {
+		ctrlByte := d.buffer[offset]
+		if ctrlByte>>5 == byte(KindMap) ||
+			(ctrlByte>>5 == byte(KindExtended) && offset+1 < uint(len(d.buffer)) &&
+				// Extended type byte 0 is not a valid type, but the
+				// budgeted skip rejects it, while nextValueOffset would
+				// skip it as a scalar.
+				(d.buffer[offset+1] == 0 ||
+					d.buffer[offset+1] == byte(KindSlice-7))) {
+			return true
+		}
+	}
+	return false
+}
+
+//go:noinline
+//nolint:gocyclo // The kind switch keeps scalar validation and container charging in one pass.
+func (d *ReflectionDecoder) nextValueOffsetBudgetedSlow(
+	offset uint,
+	numberToSkip uint,
+) (uint, error) {
+	bufferLen := uint(len(d.buffer))
+	for numberToSkip > 0 {
+		if offset >= bufferLen {
+			return 0, mmdberrors.NewOffsetError()
+		}
+		// Read compact headers inline; extended kinds and sizes still use
+		// the general parser. Pointer size bits describe the token width.
+		ctrlByte := d.buffer[offset]
+		kind, size, newOffset := Kind(ctrlByte>>5), uint(ctrlByte&0x1f), offset+1
+		if kind == KindExtended || (kind != KindPointer && size >= 29) {
+			var err error
+			kind, size, newOffset, err = d.decodeCtrlData(offset)
+			if err != nil {
+				return 0, err
+			}
+		}
+
+		switch kind {
+		case KindPointer:
+			pointerSize := ((size >> 3) & 0x3) + 1
+			if !hasBufferRange(bufferLen, newOffset, pointerSize) {
+				return 0, mmdberrors.NewOffsetError()
+			}
+			newOffset += pointerSize
+		case KindMap:
+			if err := d.reserveActiveContainer(KindMap, size); err != nil {
+				return 0, err
+			}
+			if size > (^uint(0)-numberToSkip)/2 {
+				return 0, mmdberrors.NewInvalidDatabaseError("container size overflow")
+			}
+			numberToSkip += 2 * size
+		case KindSlice:
+			if err := d.reserveActiveContainer(KindSlice, size); err != nil {
+				return 0, err
+			}
+			if size > ^uint(0)-numberToSkip {
+				return 0, mmdberrors.NewInvalidDatabaseError("container size overflow")
+			}
+			numberToSkip += size
+		case KindBool:
+			if size > 1 {
+				return 0, mmdberrors.NewInvalidDatabaseError("invalid bool size: %d", size)
+			}
+		case KindFloat64:
+			if size != 8 {
+				return 0, mmdberrors.NewInvalidDatabaseError("invalid Float64 size: %d", size)
+			}
+			if !hasBufferRange(bufferLen, newOffset, size) {
+				return 0, mmdberrors.NewOffsetError()
+			}
+			newOffset += size
+		case KindFloat32:
+			if size != 4 {
+				return 0, mmdberrors.NewInvalidDatabaseError("invalid Float32 size: %d", size)
+			}
+			if !hasBufferRange(bufferLen, newOffset, size) {
+				return 0, mmdberrors.NewOffsetError()
+			}
+			newOffset += size
+		case KindInt32, KindUint32:
+			if size > 4 {
+				return 0, mmdberrors.NewInvalidDatabaseError("invalid %s size: %d", kind, size)
+			}
+			if !hasBufferRange(bufferLen, newOffset, size) {
+				return 0, mmdberrors.NewOffsetError()
+			}
+			newOffset += size
+		case KindUint16:
+			if size > 2 {
+				return 0, mmdberrors.NewInvalidDatabaseError("invalid Uint16 size: %d", size)
+			}
+			if !hasBufferRange(bufferLen, newOffset, size) {
+				return 0, mmdberrors.NewOffsetError()
+			}
+			newOffset += size
+		case KindUint64:
+			if size > 8 {
+				return 0, mmdberrors.NewInvalidDatabaseError("invalid Uint64 size: %d", size)
+			}
+			if !hasBufferRange(bufferLen, newOffset, size) {
+				return 0, mmdberrors.NewOffsetError()
+			}
+			newOffset += size
+		case KindUint128:
+			if size > 16 {
+				return 0, mmdberrors.NewInvalidDatabaseError("invalid Uint128 size: %d", size)
+			}
+			if !hasBufferRange(bufferLen, newOffset, size) {
+				return 0, mmdberrors.NewOffsetError()
+			}
+			newOffset += size
+		case KindString, KindBytes:
+			if !hasBufferRange(bufferLen, newOffset, size) {
+				return 0, mmdberrors.NewOffsetError()
+			}
+			newOffset += size
+		default:
+			return 0, mmdberrors.NewInvalidDatabaseError("unknown type: %d", kind)
+		}
+
+		offset = newOffset
+		numberToSkip--
+	}
+	return offset, nil
+}
+
+func wrapRootDecodeError(err error, offset uint) error {
 	// Check if error already has context (including path), if so just add offset if missing
-	var contextErr mmdberrors.ContextualError
-	if errors.As(err, &contextErr) {
-		// If the outermost error already has offset and path info, return as-is
-		if contextErr.Offset != 0 || contextErr.Path != "" {
+	if contextErr, ok := errors.AsType[mmdberrors.ContextualError](err); ok {
+		if contextErr.Offset != 0 || offset == 0 {
 			return err
 		}
-		// Otherwise, just add offset to root
-		return mmdberrors.WrapWithContext(contextErr.Err, offset, nil)
+		pathBuilder := mmdberrors.NewPathBuilder()
+		if contextErr.Path != "" && contextErr.Path != "/" {
+			pathBuilder.ParseAndExtend(contextErr.Path)
+		}
+		return mmdberrors.WrapWithContext(contextErr.Err, offset, pathBuilder)
 	}
 
 	// Plain error, add offset
 	return mmdberrors.WrapWithContext(err, offset, nil)
 }
 
-// DecodePath decodes the data value at offset and stores the value associated
-// with the path in the value pointed at by v.
-func (d *ReflectionDecoder) DecodePath(
+//nolint:gocyclo // Keep path navigation and final depth validation together.
+func (d *ReflectionDecoder) decodePath(
 	offset uint,
 	path []any,
 	v any,
@@ -176,6 +491,11 @@ PATH:
 				)
 			}
 		}
+		if typeNum.IsContainer() {
+			if err := d.reserveActiveContainer(typeNum, size); err != nil {
+				return d.wrapError(err, offset)
+			}
+		}
 
 		switch v := v.(type) {
 		case string:
@@ -185,14 +505,14 @@ PATH:
 			}
 			for range size {
 				var key []byte
-				key, offset, err = d.decodeKey(offset)
+				key, offset, err = d.decodePathKey(offset)
 				if err != nil {
 					return err
 				}
 				if string(key) == v {
 					continue PATH
 				}
-				offset, err = d.nextValueOffset(offset, 1)
+				offset, err = d.nextValueOffsetBudgeted(offset, 1)
 				if err != nil {
 					return err
 				}
@@ -218,7 +538,7 @@ PATH:
 				}
 				i = uint(v)
 			}
-			offset, err = d.nextValueOffset(offset, i)
+			offset, err = d.nextValueOffsetBudgeted(offset, i)
 			if err != nil {
 				return err
 			}
@@ -226,8 +546,62 @@ PATH:
 			return fmt.Errorf("unexpected path element at index %d (%v): %T", i, v, v)
 		}
 	}
-	_, err := d.decode(offset, result, len(path))
-	return d.wrapError(err, offset)
+	resultValue := addressableValue{Value: result.Elem()}
+	// Let decodeValue report excessive depth before any fast path can succeed.
+	if len(path) <= maximumDataStructureDepth {
+		switch v.(type) {
+		case *any:
+			err := d.decodeAnyWithBudget(offset, resultValue, len(path))
+			if err != nil {
+				return d.wrapError(err, offset)
+			}
+			return nil
+		case *string, *[]byte:
+			if d.tryFastDecodePathPayload(offset, resultValue, len(path)) {
+				return nil
+			}
+		case *bool, *int32, *uint, *uint16, *uint32, *uint64, *float32, *float64:
+			if _, ok := d.tryFastDecodeTyped(offset, resultValue, len(path)); ok {
+				return nil
+			}
+		default:
+		}
+	}
+	_, err := d.decodeValue(
+		offset,
+		resultValue,
+		len(path),
+	)
+	if err != nil {
+		return d.wrapError(err, offset)
+	}
+	return nil
+}
+
+func (d *ReflectionDecoder) tryFastDecodePathPayload(
+	offset uint,
+	result addressableValue,
+	depth int,
+) bool {
+	if d.budgetRemaining == 0 {
+		if result.Type() == stringType {
+			return d.tryFastDecodeUnbudgetedString(offset, result)
+		}
+		return d.tryFastDecodeUnbudgetedBytes(offset, result)
+	}
+	_, ok := d.tryFastDecodeTyped(offset, result, depth)
+	return ok
+}
+
+func (d *ReflectionDecoder) decodePathKey(offset uint) ([]byte, uint, error) {
+	key, nextOffset, err := d.decodeKey(offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := d.reserveExactPayload(uint(len(key))); err != nil {
+		return nil, 0, err
+	}
+	return key, nextOffset, nil
 }
 
 // wrapError wraps an error with context information when an error occurs.
@@ -261,8 +635,7 @@ func wrapErrorWithPath(err error, prepend func(*mmdberrors.PathBuilder)) error {
 		return nil
 	}
 
-	var contextErr mmdberrors.ContextualError
-	if errors.As(err, &contextErr) {
+	if contextErr, ok := errors.AsType[mmdberrors.ContextualError](err); ok {
 		pathBuilder := mmdberrors.NewPathBuilder()
 		if contextErr.Path != "" && contextErr.Path != "/" {
 			pathBuilder.ParseAndExtend(contextErr.Path)
@@ -276,7 +649,10 @@ func wrapErrorWithPath(err error, prepend func(*mmdberrors.PathBuilder)) error {
 	return mmdberrors.WrapWithContext(err, 0, pathBuilder)
 }
 
-func (d *ReflectionDecoder) decode(offset uint, result reflect.Value, depth int) (uint, error) {
+func (d *ReflectionDecoder) decode(
+	offset uint,
+	result reflect.Value,
+) (uint, error) {
 	// Skip makeAddressable's boxing copy whenever result is already addressable.
 	// The common Decode(&v) entry passes a non-addressable pointer, but its
 	// Elem() is addressable, so we can decode through it directly. Callers that
@@ -284,12 +660,12 @@ func (d *ReflectionDecoder) decode(offset uint, result reflect.Value, depth int)
 	// CanAddr branch. Only non-addressable, non-pointer values need
 	// makeAddressable, which allocates.
 	if result.Kind() == reflect.Pointer && !result.IsNil() {
-		return d.decodeValue(offset, addressableValue{Value: result.Elem()}, depth)
+		return d.decodeValue(offset, addressableValue{Value: result.Elem()}, 0)
 	}
 	if result.CanAddr() {
-		return d.decodeValue(offset, addressableValue{Value: result}, depth)
+		return d.decodeValue(offset, addressableValue{Value: result}, 0)
 	}
-	return d.decodeValue(offset, makeAddressable(result), depth)
+	return d.decodeValue(offset, makeAddressable(result), 0)
 }
 
 func (d *ReflectionDecoder) decodeValue(
@@ -401,7 +777,7 @@ func (d *ReflectionDecoder) decodeValueImpl(
 
 	if typeNum != KindPointer && result.Kind() == reflect.Uintptr {
 		result.Set(reflect.ValueOf(uintptr(offset)))
-		return d.nextValueOffset(offset, 1)
+		return d.nextValueOffsetBudgeted(offset, 1)
 	}
 	return d.decodeFromType(typeNum, size, newOffset, result, depth+1)
 }
@@ -412,7 +788,7 @@ func (d *ReflectionDecoder) tryCustomUnmarshal(
 ) (uint, bool, error) {
 	if unmarshaler, ok := reflect.TypeAssert[CursorUnmarshaler](result); ok {
 		next, err := (Cursor{
-			decoder: &d.DataDecoder,
+			decoder: d.callbackDataDecoder(),
 			offset:  offset,
 		}).UnmarshalCursor(unmarshaler)
 		if err != nil {
@@ -421,7 +797,7 @@ func (d *ReflectionDecoder) tryCustomUnmarshal(
 		return next.offset, true, nil
 	}
 	if unmarshaler, ok := reflect.TypeAssert[Unmarshaler](result); ok {
-		decoder := acquireDecoder(&d.DataDecoder, offset)
+		decoder := acquireDecoder(d.callbackDataDecoder(), offset)
 		err := unmarshaler.UnmarshalMaxMindDB(decoder)
 		releaseDecoder(decoder)
 		if err != nil {
@@ -503,6 +879,11 @@ func (d *ReflectionDecoder) unmarshalBytes(
 	size, offset uint,
 	result addressableValue,
 ) (uint, error) {
+	if d.budgetRemaining != 0 && hasBufferRange(uint(len(d.buffer)), offset, size) {
+		if err := d.reserveExactPayload(size); err != nil {
+			return 0, err
+		}
+	}
 	value, newOffset, err := d.decodeBytes(size, offset)
 	if err != nil {
 		return 0, err
@@ -621,6 +1002,16 @@ func (d *ReflectionDecoder) unmarshalMap(
 	result addressableValue,
 	depth int,
 ) (uint, error) {
+	// A scalar decoded by itself cannot fan out. The first container activates
+	// one operation-wide budget regardless of the destination's Go shape.
+	if d.budgetRemaining == 0 {
+		bounded := newBudgetedDecoder(d)
+		return bounded.unmarshalMap(size, offset, result, depth)
+	}
+	if err := d.reserveActiveContainer(KindMap, size); err != nil {
+		return 0, err
+	}
+
 	switch result.Kind() {
 	case reflect.Struct:
 		return d.decodeStruct(size, offset, result, depth)
@@ -656,21 +1047,34 @@ func (d *ReflectionDecoder) unmarshalPointer(
 	if err != nil {
 		return 0, err
 	}
+	if pointer >= uint(len(d.buffer)) {
+		_, err = d.decodeValue(pointer, result, depth)
+		return newOffset, err
+	}
 
 	// Check for pointer-to-pointer by looking at what we're about to decode
 	// This is done efficiently by checking the control byte at the pointer location
-	if pointer < uint(len(d.buffer)) {
-		controlByte := d.buffer[pointer]
-		kind := Kind(controlByte >> 5)
-		if kind == KindExtended && pointer+1 < uint(len(d.buffer)) {
-			kind = Kind(d.buffer[pointer+1] + 7)
+	// An extended type cannot encode a pointer, so only the control byte can.
+	controlByte := d.buffer[pointer]
+	if Kind(controlByte>>5) == KindPointer {
+		return 0, mmdberrors.NewInvalidDatabaseError(
+			"invalid pointer to pointer at offset %d",
+			pointer,
+		)
+	}
+	// The destination has already passed unmarshaler dispatch. Decode
+	// compact strings without repeating reflection on the pointer target,
+	// while preserving the target's depth and payload checks.
+	size = uint(controlByte & 0x1f)
+	dataOffset := pointer + 1
+	if Kind(controlByte>>5) == KindString && result.Kind() == reflect.String &&
+		depth <= maximumDataStructureDepth &&
+		size < 29 && size <= uint(len(d.buffer))-dataOffset {
+		if err := d.reserveExactPayload(size); err != nil {
+			return newOffset, err
 		}
-		if kind == KindPointer {
-			return 0, mmdberrors.NewInvalidDatabaseError(
-				"invalid pointer to pointer at offset %d",
-				pointer,
-			)
-		}
+		result.SetString(d.decodeCompactString(size, dataOffset))
+		return newOffset, nil
 	}
 
 	_, err = d.decodeValue(pointer, result, depth)
@@ -683,19 +1087,20 @@ func (d *ReflectionDecoder) unmarshalSlice(
 	result addressableValue,
 	depth int,
 ) (uint, error) {
+	// Reserve declared children before validation can expose an allocation hint.
+	if d.budgetRemaining == 0 {
+		bounded := newBudgetedDecoder(d)
+		return bounded.unmarshalSlice(size, offset, result, depth)
+	}
+	if err := d.reserveAndValidateSlice(size, offset, result, depth); err != nil {
+		return 0, err
+	}
+
 	switch result.Kind() {
 	case reflect.Slice:
-		if (result.IsNil() || result.Cap() < int(size)) && size > 0 {
-			if err := d.validateContainerSize(KindSlice, size, offset, depth); err != nil {
-				return 0, err
-			}
-		}
 		return d.decodeSlice(size, offset, result, depth)
 	case reflect.Interface:
 		if result.NumMethod() == 0 {
-			if err := d.validateContainerSize(KindSlice, size, offset, depth); err != nil {
-				return 0, err
-			}
 			a := []any{}
 			// Create slice directly without makeAddressable wrapper
 			sliceVal := reflect.ValueOf(&a).Elem()
@@ -710,8 +1115,50 @@ func (d *ReflectionDecoder) unmarshalSlice(
 	return 0, mmdberrors.NewUnmarshalTypeStrError("array", result.Type())
 }
 
-func (d *ReflectionDecoder) validateContainerSize(kind Kind, size, offset uint, depth int) error {
-	bufferLen := uint(len(d.buffer))
+func (d *ReflectionDecoder) reserveAndValidateSlice(
+	size uint,
+	offset uint,
+	result addressableValue,
+	depth int,
+) error {
+	if err := d.reserveActiveContainer(KindSlice, size); err != nil {
+		return err
+	}
+	if (result.Kind() != reflect.Slice || result.IsNil() || result.Cap() < int(size)) && size > 0 {
+		return d.validateContainerSize(KindSlice, size, offset, depth)
+	}
+	return nil
+}
+
+func (d *ReflectionDecoder) validateContainerSize(
+	kind Kind,
+	size, offset uint,
+	depth int,
+) error {
+	if err := d.validateContainerBounds(kind, size, offset); err != nil {
+		return err
+	}
+
+	valueCount := size
+	if kind == KindMap {
+		valueCount = size * 2
+	}
+
+	// Large allocations are uncommon in MMDB records. Validate their complete
+	// encoded structure first, while keeping ordinary records single-pass.
+	if valueCount >= containerPreflightValueCount {
+		validator := newAllocationValidator(&d.DataDecoder, kind, size)
+		_, err := validator.validateContainerContents(kind, size, offset, depth)
+		return err
+	}
+	return nil
+}
+
+func (d *ReflectionDecoder) validateContainerBounds(kind Kind, size, offset uint) error {
+	return validateContainerBounds(uint(len(d.buffer)), kind, size, offset)
+}
+
+func validateContainerBounds(bufferLen uint, kind Kind, size, offset uint) error {
 	if offset > bufferLen {
 		return mmdberrors.NewOffsetError()
 	}
@@ -729,24 +1176,70 @@ func (d *ReflectionDecoder) validateContainerSize(kind Kind, size, offset uint, 
 	if valueCount > bufferLen-offset {
 		return mmdberrors.NewOffsetError()
 	}
-
-	// Large allocations are uncommon in MMDB records. Validate their complete
-	// encoded structure first, while keeping ordinary records single-pass.
-	if valueCount >= containerPreflightValueCount {
-		_, err := d.validateContainerContents(kind, size, offset, depth)
-		return err
-	}
 	return nil
 }
 
+// structuralValidator bounds allocation-free validation work for large
+// allocation hints and cursor sizing. Pointer targets are visited every time
+// they are referenced, so compact fan-out and cycles cannot make this walk
+// effectively unbounded.
+type structuralValidator struct {
+	decoder   *DataDecoder
+	remaining uint32
+}
+
+func newStructuralValidator(d *DataDecoder) structuralValidator {
+	return structuralValidator{
+		decoder:   d,
+		remaining: decodeExpansionBudgetBytes >> decodeBudgetUnitShift,
+	}
+}
+
+// newAllocationValidator gives a large concrete destination's direct children
+// a free pass: the ordinary bounds check already proves that their count is no
+// larger than the input. The fixed allowance then bounds only recursively
+// expanded containers during the pre-allocation walk. Payloads are not charged
+// because this validator protects structural work rather than dynamic output.
+func newAllocationValidator(d *DataDecoder, kind Kind, size uint) structuralValidator {
+	validator := newStructuralValidator(d)
+	validator.remaining += containerCost(kind, size)
+	return validator
+}
+
+func (v *structuralValidator) reserve(cost uint32) error {
+	if cost > v.remaining {
+		return errDecodedRecordTooLarge
+	}
+	v.remaining -= cost
+	return nil
+}
+
+func (v *structuralValidator) reserveContainer(kind Kind, size uint) error {
+	return v.reserve(containerCost(kind, size))
+}
+
+func containerCost(kind Kind, size uint) uint32 {
+	cost := uint32(size)
+	if kind == KindMap {
+		cost *= 2
+	}
+	return cost
+}
+
 //nolint:nestif // Keeping compact values inline avoids a call for every entry.
-func (d *ReflectionDecoder) validateContainerContents(
+func (v *structuralValidator) validateContainerContents(
 	kind Kind,
 	size uint,
 	offset uint,
 	depth int,
 ) (uint, error) {
-	bufferLen := uint(len(d.buffer))
+	bufferLen := uint(len(v.decoder.buffer))
+	if err := validateContainerBounds(bufferLen, kind, size, offset); err != nil {
+		return 0, err
+	}
+	if err := v.reserveContainer(kind, size); err != nil {
+		return 0, err
+	}
 	for range size {
 		if kind == KindMap {
 			// Map keys are ordinarily directly encoded short strings. Validate
@@ -754,13 +1247,13 @@ func (d *ReflectionDecoder) validateContainerContents(
 			// complete validator below.
 			ctrlByte := byte(0)
 			if offset < bufferLen {
-				ctrlByte = d.buffer[offset]
+				ctrlByte = v.decoder.buffer[offset]
 			}
 			keySize := uint(ctrlByte & 0x1f)
 			if offset >= bufferLen || Kind(ctrlByte>>5) != KindString || keySize >= 29 ||
 				!hasBufferRange(bufferLen, offset+1, keySize) {
 				var err error
-				offset, err = d.validateValueForAllocation(offset, depth, true)
+				offset, err = v.validateValue(offset, depth, true)
 				if err != nil {
 					return 0, err
 				}
@@ -771,13 +1264,37 @@ func (d *ReflectionDecoder) validateContainerContents(
 
 		// Booleans have a fixed two-byte encoding and no payload. They are
 		// common in large generated containers.
-		if offset+1 < bufferLen && d.buffer[offset] <= 1 && d.buffer[offset+1] == 7 {
+		if offset+1 < bufferLen && v.decoder.buffer[offset] <= 1 &&
+			v.decoder.buffer[offset+1] == 7 {
 			offset += 2
 			continue
 		}
 
+		// Direct strings and compact integers can be validated without the
+		// full control-data dispatch. This is especially valuable at the large
+		// container threshold, where every child is preflighted before allocation.
+		if offset < bufferLen {
+			ctrlByte := v.decoder.buffer[offset]
+			valueSize := uint(ctrlByte & 0x1f)
+			valid := false
+			switch Kind(ctrlByte >> 5) {
+			case KindString:
+				valid = valueSize < 29
+			case KindUint16:
+				valid = valueSize <= 2
+			case KindUint32:
+				valid = valueSize <= 4
+			default:
+				// Use the complete validator below.
+			}
+			if valid && hasBufferRange(bufferLen, offset+1, valueSize) {
+				offset += 1 + valueSize
+				continue
+			}
+		}
+
 		var err error
-		offset, err = d.validateValueForAllocation(offset, depth, false)
+		offset, err = v.validateValue(offset, depth, false)
 		if err != nil {
 			return 0, err
 		}
@@ -785,7 +1302,7 @@ func (d *ReflectionDecoder) validateContainerContents(
 	return offset, nil
 }
 
-func (d *ReflectionDecoder) validateValueForAllocation(
+func (v *structuralValidator) validateValue(
 	offset uint,
 	depth int,
 	requireString bool,
@@ -796,16 +1313,16 @@ func (d *ReflectionDecoder) validateValueForAllocation(
 		)
 	}
 
-	kind, size, dataOffset, err := d.decodeCtrlData(offset)
+	kind, size, dataOffset, err := v.decoder.decodeCtrlData(offset)
 	if err != nil {
 		return 0, err
 	}
 	if kind == KindPointer {
-		pointer, nextOffset, err := d.decodePointer(size, dataOffset)
+		pointer, nextOffset, err := v.decoder.decodePointer(size, dataOffset)
 		if err != nil {
 			return 0, err
 		}
-		targetKind, _, _, err := d.decodeCtrlData(pointer)
+		targetKind, _, _, err := v.decoder.decodeCtrlData(pointer)
 		if err != nil {
 			return 0, err
 		}
@@ -815,7 +1332,7 @@ func (d *ReflectionDecoder) validateValueForAllocation(
 				pointer,
 			)
 		}
-		_, err = d.validateValueForAllocation(pointer, depth+1, requireString)
+		_, err = v.validateValue(pointer, depth+1, requireString)
 		return nextOffset, err
 	}
 
@@ -826,7 +1343,21 @@ func (d *ReflectionDecoder) validateValueForAllocation(
 		)
 	}
 
-	bufferLen := uint(len(d.buffer))
+	bufferLen := uint(len(v.decoder.buffer))
+	switch kind {
+	case KindMap, KindSlice:
+		return v.validateContainerContents(kind, size, dataOffset, depth+1)
+	default:
+		return v.validateScalar(kind, size, dataOffset, bufferLen)
+	}
+}
+
+func (*structuralValidator) validateScalar(
+	kind Kind,
+	size uint,
+	dataOffset uint,
+	bufferLen uint,
+) (uint, error) {
 	switch kind {
 	case KindString, KindBytes:
 		if !hasBufferRange(bufferLen, dataOffset, size) {
@@ -850,8 +1381,6 @@ func (d *ReflectionDecoder) validateValueForAllocation(
 			return 0, mmdberrors.NewInvalidDatabaseError("invalid bool size: %d", size)
 		}
 		return dataOffset, nil
-	case KindMap, KindSlice:
-		return d.validateContainerContents(kind, size, dataOffset, depth+1)
 	default:
 		return 0, mmdberrors.NewInvalidDatabaseError("unknown type: %d", kind)
 	}
@@ -882,13 +1411,31 @@ func validateMaximumSize(kind Kind, size, offset, bufferLen, maximum uint) (uint
 	return offset + size, nil
 }
 
+//nolint:nestif // Keep compact bounded decoding inline on this hot path.
 func (d *ReflectionDecoder) unmarshalString(
 	size, offset uint,
 	result addressableValue,
 ) (uint, error) {
-	value, newOffset, err := d.decodeString(size, offset)
-	if err != nil {
-		return 0, err
+	var value string
+	var newOffset uint
+	if d.budgetRemaining != 0 && size < 29 && offset > 0 &&
+		hasBufferRange(uint(len(d.buffer)), offset, size) {
+		if err := d.reserveExactPayload(size); err != nil {
+			return 0, err
+		}
+		value = d.decodeCompactString(size, offset)
+		newOffset = offset + size
+	} else {
+		if d.budgetRemaining != 0 && hasBufferRange(uint(len(d.buffer)), offset, size) {
+			if err := d.reserveExactPayload(size); err != nil {
+				return 0, err
+			}
+		}
+		var err error
+		value, newOffset, err = d.decodeString(size, offset)
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	switch result.Kind() {
@@ -927,7 +1474,8 @@ func (d *ReflectionDecoder) unmarshalUint(
 		value, newOffset, err = d.decodeUint64(size, offset)
 	default:
 		return 0, mmdberrors.NewInvalidDatabaseError(
-			"unsupported uint type: %d", uintType)
+			"unsupported uint type: %d", uintType,
+		)
 	}
 
 	if err != nil {
@@ -1032,10 +1580,6 @@ func (d *ReflectionDecoder) decodeMap(
 	result addressableValue,
 	depth int,
 ) (uint, error) {
-	if result.IsNil() {
-		result.Set(reflect.MakeMapWithSize(result.Type(), int(size)))
-	}
-
 	mapType := result.Type()
 	keyType := mapType.Key()
 	keyKind := keyType.Kind()
@@ -1043,11 +1587,13 @@ func (d *ReflectionDecoder) decodeMap(
 		reflect.PointerTo(keyType).NumMethod() != 0 &&
 		mayImplementUnmarshaler(keyType)
 	plainStringKey := keyKind == reflect.String && !customKey
-
+	elemType := mapType.Elem()
+	if result.IsNil() {
+		result.Set(reflect.MakeMapWithSize(mapType, int(size)))
+	}
 	// Pre-allocated values for efficient reuse
 	keyVal := reflect.New(keyType).Elem()
 	keyValue := addressableValue{Value: keyVal}
-	elemType := mapType.Elem()
 	elemMayUnmarshal := typeMayImplementUnmarshaler(elemType)
 	elemFast := !elemMayUnmarshal && isFastDecodeType(elemType)
 	var elemValue addressableValue
@@ -1062,7 +1608,11 @@ func (d *ReflectionDecoder) decodeMap(
 		keyOffset := offset
 		if plainStringKey {
 			var key string
-			key, offset, err = d.decodeStringKey(offset)
+			if d.budgetRemaining == 0 {
+				key, offset, err = d.decodeStringKey(offset)
+			} else {
+				key, offset, err = d.decodeBudgetedStringKey(offset)
+			}
 			if err != nil {
 				return 0, err
 			}
@@ -1072,6 +1622,12 @@ func (d *ReflectionDecoder) decodeMap(
 			key, offset, err = d.decodeKey(offset)
 			if err != nil {
 				return 0, err
+			}
+			// Custom callbacks bypass reflection's payload accounting.
+			if customKey && d.budgetRemaining != 0 {
+				if err := d.reserveExactPayload(uint(len(key))); err != nil {
+					return 0, err
+				}
 			}
 			if customKey {
 				err = d.unmarshalValidatedMapKey(keyOffset, keyValue.Addr())
@@ -1090,7 +1646,7 @@ func (d *ReflectionDecoder) decodeMap(
 
 		decoded := false
 		if elemFast {
-			if fastOffset, ok := d.tryFastDecodeTyped(offset, elemValue, elemType); ok {
+			if fastOffset, ok := d.tryFastDecodeTyped(offset, elemValue, depth); ok {
 				offset = fastOffset
 				decoded = true
 			}
@@ -1111,6 +1667,17 @@ func (d *ReflectionDecoder) decodeMap(
 	return offset, nil
 }
 
+func (d *ReflectionDecoder) decodeBudgetedStringKey(offset uint) (string, uint, error) {
+	key, cacheOffset, nextOffset, err := d.decodeKeyAt(offset)
+	if err != nil {
+		return "", 0, err
+	}
+	if err := d.reserveExactPayload(uint(len(key))); err != nil {
+		return "", 0, err
+	}
+	return d.decodeStringBytes(cacheOffset, key), nextOffset, nil
+}
+
 // unmarshalValidatedMapKey invokes a custom map-key decoder after decodeKey
 // has already validated the raw key and found the map value's offset. The
 // cursor callback must still return a valid successor, but neither callback's
@@ -1121,14 +1688,14 @@ func (d *ReflectionDecoder) unmarshalValidatedMapKey(
 ) error {
 	if unmarshaler, ok := reflect.TypeAssert[CursorUnmarshaler](result); ok {
 		_, err := (Cursor{
-			decoder: &d.DataDecoder,
+			decoder: d.callbackDataDecoder(),
 			offset:  offset,
 		}).UnmarshalCursor(unmarshaler)
 		return err
 	}
 
 	unmarshaler, _ := reflect.TypeAssert[Unmarshaler](result)
-	decoder := acquireDecoder(&d.DataDecoder, offset)
+	decoder := acquireDecoder(d.callbackDataDecoder(), offset)
 	err := unmarshaler.UnmarshalMaxMindDB(decoder)
 	releaseDecoder(decoder)
 	return err
@@ -1140,48 +1707,115 @@ func (d *ReflectionDecoder) decodeSlice(
 	result addressableValue,
 	depth int,
 ) (uint, error) {
-	elemType := result.Type().Elem()
-	elemMayUnmarshal := typeMayImplementUnmarshaler(elemType)
-	elemFast := !elemMayUnmarshal && isFastDecodeType(elemType)
-	sliceLen := int(size)
-	if result.IsNil() || result.Cap() < sliceLen {
-		result.Set(reflect.MakeSlice(result.Type(), sliceLen, sliceLen))
-	} else {
-		// Reuse the caller's backing array. Two clears are needed: the first
-		// zeroes [0:sliceLen] so element fields not present in the new data
-		// (e.g., omitted struct keys) don't carry forward; the second zeroes
-		// (sliceLen:oldLen] so the now-hidden tail drops any pointer-like
-		// references it held, letting the GC reclaim them.
-		oldLen := result.Len()
-		result.SetLen(sliceLen)
-		result.Clear()
-		if oldLen > sliceLen {
-			result.Slice(sliceLen, oldLen).Clear()
+	elemInfo := cachedSliceElemInfo(result.Type().Elem())
+	return d.decodeSliceElements(
+		size,
+		offset,
+		result,
+		depth,
+		elemInfo.dispatch,
+		elemInfo.structFields,
+	)
+}
+
+func (d *ReflectionDecoder) decodeSliceElements(
+	size uint,
+	dataOffset uint,
+	result addressableValue,
+	decodeDepth int,
+	elemDispatch fieldDispatch,
+	elemStructFields *fieldsType,
+) (uint, error) {
+	prepareSlice(result, int(size))
+
+	// Select scalar dispatch once to avoid a type switch for each element.
+	if elemDispatch == dispatchFast {
+		for i := range size {
+			elemValue := addressableValue{Value: result.Index(int(i))}
+			if fastOffset, ok := d.tryFastDecodeTyped(dataOffset, elemValue, decodeDepth); ok {
+				dataOffset = fastOffset
+				continue
+			}
+			var err error
+			dataOffset, err = d.decodeValueSkipUnmarshaler(dataOffset, elemValue, decodeDepth)
+			if err != nil {
+				return 0, d.wrapErrorWithSliceIndex(err, int(i))
+			}
 		}
+		return dataOffset, nil
 	}
 
 	for i := range size {
 		var err error
 		elemValue := addressableValue{Value: result.Index(int(i))}
-		decoded := false
-		if elemFast {
-			if fastOffset, ok := d.tryFastDecodeTyped(offset, elemValue, elemType); ok {
-				offset = fastOffset
-				decoded = true
+		switch elemDispatch {
+		case dispatchString:
+			if fastOffset, ok := d.tryFastDecodeString(dataOffset, elemValue, decodeDepth); ok {
+				dataOffset = fastOffset
+				continue
 			}
+			dataOffset, err = d.decodeValueSkipUnmarshaler(dataOffset, elemValue, decodeDepth)
+		case dispatchStruct:
+			var ok bool
+			if fastPathDepthOK(decodeDepth, true) {
+				dataOffset, ok, err = d.tryDecodeStructWithFields(
+					dataOffset,
+					elemValue,
+					decodeDepth,
+					elemStructFields,
+				)
+			}
+			if !ok {
+				dataOffset, err = d.decodeValueSkipUnmarshaler(dataOffset, elemValue, decodeDepth)
+			}
+		case dispatchPointerStruct:
+			var ok bool
+			if fastPathDepthOK(decodeDepth, true) {
+				dataOffset, ok, err = d.tryDecodePointerStructWithFields(
+					dataOffset,
+					elemValue,
+					decodeDepth,
+					elemStructFields,
+				)
+			}
+			if !ok {
+				dataOffset, err = d.decodeValueSkipUnmarshaler(dataOffset, elemValue, decodeDepth)
+			}
+		case dispatchUnmarshaler:
+			dataOffset, err = d.decodeValue(dataOffset, elemValue, decodeDepth)
+		default:
+			dataOffset, err = d.decodeValueSkipUnmarshaler(dataOffset, elemValue, decodeDepth)
 		}
-		if !decoded {
-			if elemMayUnmarshal {
-				offset, err = d.decodeValue(offset, elemValue, depth)
-			} else {
-				offset, err = d.decodeValueSkipUnmarshaler(offset, elemValue, depth)
-			}
-			if err != nil {
-				return 0, d.wrapErrorWithSliceIndex(err, int(i))
-			}
+		if err != nil {
+			return 0, d.wrapErrorWithSliceIndex(err, int(i))
 		}
 	}
-	return offset, nil
+	return dataOffset, nil
+}
+
+func prepareSlice(result addressableValue, sliceLen int) {
+	switch {
+	case result.IsNil() || result.Cap() < sliceLen:
+		if sliceLen == 0 {
+			result.Set(reflect.MakeSlice(result.Type(), 0, 0))
+			return
+		}
+		if !result.IsNil() {
+			result.SetZero()
+		}
+		result.Grow(sliceLen)
+		result.SetLen(sliceLen)
+		result.SetCap(sliceLen)
+	case result.Len() > sliceLen:
+		// Clear [0:oldLen] before shrinking so both the active prefix and the
+		// now-hidden tail (sliceLen:oldLen] are zeroed without allocating a
+		// temporary sub-slice Value.
+		result.Clear()
+		result.SetLen(sliceLen)
+	default:
+		result.SetLen(sliceLen)
+		result.Clear()
+	}
 }
 
 func (d *ReflectionDecoder) decodeStruct(
@@ -1204,6 +1838,9 @@ func (d *ReflectionDecoder) decodeStructWithFields(
 	if fields.validationErr != nil {
 		return 0, fields.validationErr
 	}
+	if len(fields.namedFields) == 0 {
+		return d.skipStructFields(size, offset)
+	}
 
 	// Single-phase processing: decode only the dominant fields
 	for range size {
@@ -1211,51 +1848,71 @@ func (d *ReflectionDecoder) decodeStructWithFields(
 			err error
 			key []byte
 		)
-		key, offset, err = d.decodeKey(offset)
+		var keyOffset uint
+		key, keyOffset, offset, err = d.decodeKeyAt(offset)
 		if err != nil {
 			return 0, err
 		}
 		// The string() does not create a copy due to this compiler
 		// optimization: https://github.com/golang/go/issues/3512
-		fingerprint := fieldKeyFingerprint(key)
-		fieldInfo, ok := fields.fieldForFingerprint(fingerprint)
-		if ok && (fieldInfo == nil || fieldInfo.name != string(key)) {
-			fieldInfo, ok = fields.namedFields[string(key)]
+		entry := &fields.offsetFields[keyOffset&(fieldOffsetCacheSlots-1)]
+		fieldInfo := entry.Load()
+		ok := fieldInfo != nil && fieldInfo.matchesKey(key)
+		if !ok {
+			fieldInfo, ok = fields.fieldForKey(key)
+			if ok && entry.Load() == nil {
+				entry.CompareAndSwap(nil, fieldInfo)
+			}
 		}
 		if !ok {
-			offset, err = d.nextValueOffset(offset, 1)
+			offset, err = d.skipStructFieldValue(offset)
 			if err != nil {
 				return 0, err
 			}
 			continue
 		}
 
-		// Use optimized field access with addressable value wrapper
-		fieldValue := result.fieldByIndex(fieldInfo.index0, fieldInfo.index, true)
-		if !fieldValue.IsValid() {
-			// Field access failed, skip this field
-			offset, err = d.nextValueOffset(offset, 1)
+		fieldValue := addressableValue{
+			Value:      result.Field(fieldInfo.index0),
+			forcedAddr: result.forcedAddr,
+		}
+		if len(fieldInfo.index) != 0 {
+			var skip bool
+			fieldValue, offset, skip, err = d.resolveEmbeddedStructField(
+				offset,
+				result,
+				fieldValue,
+				fieldInfo,
+				key,
+			)
 			if err != nil {
 				return 0, err
 			}
-			continue
+			if skip {
+				continue
+			}
 		}
 
-		// Dispatch on the precomputed strategy. The fast-path case has a
-		// runtime guard for embedded fields (len(index) > 0): the
-		// fast-path decoders bypass embedded-pointer initialization,
-		// which is the caller's responsibility on the slow path.
+		// Dispatch on the precomputed strategy. Embedded fields (len(index) > 0)
+		// have already had their pointer chain resolved above.
 		switch fieldInfo.dispatch {
-		case dispatchFast:
-			if len(fieldInfo.index) == 0 {
-				if fastOffset, ok := d.tryFastDecodeTyped(
-					offset,
-					fieldValue,
-					fieldInfo.fieldType,
-				); ok {
-					offset = fastOffset
+		case dispatchString:
+			// Inline string dispatch avoids a call for each string field.
+			// Keep this copy in sync with tryFastDecodeString.
+			if fastPathDepthOK(depth, true) {
+				if value, cacheOffset, nextOffset, keyErr := d.decodeKeyAt(offset); keyErr == nil &&
+					uint(len(value)) <= uint(d.payloadRemaining) {
+					d.payloadRemaining -= uint32(len(value))
+					fieldValue.SetString(d.decodeStringBytes(cacheOffset, value))
+					offset = nextOffset
 					continue
 				}
+			}
+			offset, err = d.decodeValueSkipUnmarshaler(offset, fieldValue, depth)
+		case dispatchFast:
+			if fastOffset, ok := d.tryFastDecodeTyped(offset, fieldValue, depth); ok {
+				offset = fastOffset
+				continue
 			}
 			offset, err = d.decodeValueSkipUnmarshaler(offset, fieldValue, depth)
 		case dispatchUnmarshaler:
@@ -1282,6 +1939,26 @@ func (d *ReflectionDecoder) decodeStructWithFields(
 			if !ok {
 				offset, err = d.decodeValueSkipUnmarshaler(offset, fieldValue, depth)
 			}
+		case dispatchSlice:
+			var ok bool
+			offset, ok, err = d.tryDecodeSliceWithInfo(
+				offset,
+				fieldValue,
+				depth,
+				fieldInfo,
+			)
+			if !ok {
+				offset, err = d.decodeValueSkipUnmarshaler(offset, fieldValue, depth)
+			}
+		case dispatchMaxSize:
+			offset, err = d.decodeValueMaxSize(
+				offset,
+				fieldValue,
+				depth,
+				fieldInfo.maxSizeKinds,
+				fieldInfo.maxSize,
+				fieldInfo.maxSizeCustom,
+			)
 		default: // dispatchPlain
 			offset, err = d.decodeValueSkipUnmarshaler(offset, fieldValue, depth)
 		}
@@ -1290,6 +1967,151 @@ func (d *ReflectionDecoder) decodeStructWithFields(
 		}
 	}
 	return offset, nil
+}
+
+func (d *ReflectionDecoder) resolveEmbeddedStructField(
+	offset uint,
+	result addressableValue,
+	fieldValue addressableValue,
+	fieldInfo *fieldInfo,
+	key []byte,
+) (addressableValue, uint, bool, error) {
+	// Defer uncommon embedded-pointer initialization until the field is
+	// actually needed. For maxsize fields, validate before that allocation.
+	fieldValue = fieldValue.fieldByIndexSlow(fieldInfo.index, false)
+	if !fieldValue.IsValid() {
+		if fieldInfo.dispatch == dispatchMaxSize {
+			err := (Cursor{
+				decoder: &d.DataDecoder,
+				offset:  offset,
+			}).CheckMaxSize(fieldInfo.maxSizeKinds, fieldInfo.maxSize)
+			if err != nil {
+				return addressableValue{}, 0, false, d.wrapErrorWithMapKey(err, string(key))
+			}
+		}
+		fieldValue = result.fieldByIndex(fieldInfo.index0, fieldInfo.index, true)
+	}
+	if !fieldValue.IsValid() {
+		// Field access failed, skip this field
+		var err error
+		offset, err = d.skipStructFieldValue(offset)
+		if err != nil {
+			return addressableValue{}, 0, false, err
+		}
+		return addressableValue{}, offset, true, nil
+	}
+	return fieldValue, offset, false, nil
+}
+
+func (d *ReflectionDecoder) skipStructFieldValue(offset uint) (uint, error) {
+	if d.structFieldValueIsInlineContainer(offset) {
+		return d.nextValueOffsetBudgetedSlow(offset, 1)
+	}
+	// Scalars consume work proportional to their inline encoding, and
+	// pointer tokens are skipped without expanding their targets.
+	return d.nextValueOffset(offset, 1)
+}
+
+func (d *ReflectionDecoder) skipStructFields(size, offset uint) (uint, error) {
+	for range size {
+		var err error
+		_, offset, err = d.decodeKey(offset)
+		if err != nil {
+			return 0, err
+		}
+		offset, err = d.skipStructFieldValue(offset)
+		if err != nil {
+			return 0, err
+		}
+	}
+	return offset, nil
+}
+
+//nolint:nestif // Fast string decoding and generic fallback deliberately share this dispatch.
+func (d *ReflectionDecoder) decodeValueMaxSize(
+	offset uint,
+	result addressableValue,
+	depth int,
+	expected KindSet,
+	maximum uint64,
+	customUnmarshaler bool,
+) (uint, error) {
+	if result.Kind() == reflect.Pointer ||
+		(result.CanAddr() && customUnmarshaler) {
+		return d.checkMaxSizeThenDecode(offset, result, depth, expected, maximum)
+	}
+	if depth > maximumDataStructureDepth {
+		return 0, mmdberrors.NewInvalidDatabaseError(
+			"exceeded maximum data structure depth; database is likely corrupt",
+		)
+	}
+	if result.Kind() == reflect.String && expected == NewKindSet(KindString) {
+		cursor := Cursor{
+			decoder: &d.DataDecoder,
+			offset:  offset,
+		}
+		if d.budgetRemaining != 0 && uint64(d.payloadRemaining) < maximum {
+			// Preserve maxsize error precedence when both the schema and
+			// operation limits reject the value. These checks only run after
+			// earlier payloads have brought the remaining allowance below the
+			// field limit, leaving the ordinary bounded-string path unchanged.
+			if err := cursor.CheckMaxSize(expected, maximum); err != nil {
+				return 0, err
+			}
+			if err := cursor.CheckMaxSize(expected, uint64(d.payloadRemaining)); err != nil {
+				return 0, errDecodedRecordTooLarge
+			}
+		}
+		value, next, err := cursor.ReadStringMaxSize(maximum)
+		if err != nil {
+			if _, ok := errors.AsType[UnexpectedKindError](err); ok {
+				return d.decodeValueSkipUnmarshaler(offset, result, depth)
+			}
+			return 0, err
+		}
+		if d.budgetRemaining != 0 {
+			size := uint(len(value))
+			if size > uint(d.payloadRemaining) {
+				return 0, errDecodedRecordTooLarge
+			}
+			d.payloadRemaining -= uint32(size)
+		}
+		result.SetString(value)
+		return next.offset, nil
+	}
+	typeNum, size, dataOffset, err := d.decodeCtrlData(offset)
+	if err != nil {
+		return 0, err
+	}
+	if typeNum == KindPointer {
+		return d.checkMaxSizeThenDecode(offset, result, depth, expected, maximum)
+	}
+	if expected.Contains(typeNum) && uint64(size) > maximum {
+		return 0, d.wrapError(mmdberrors.NewInvalidDatabaseError(
+			"%s size %d exceeds maxsize %d",
+			typeNum,
+			size,
+			maximum,
+		), offset)
+	}
+	return d.decodeFromType(typeNum, size, dataOffset, result, depth+1)
+}
+
+func (d *ReflectionDecoder) checkMaxSizeThenDecode(
+	offset uint,
+	result addressableValue,
+	depth int,
+	expected KindSet,
+	maximum uint64,
+) (uint, error) {
+	err := (Cursor{
+		decoder: &d.DataDecoder,
+		offset:  offset,
+	}).CheckMaxSize(expected, maximum)
+	if err != nil {
+		return 0, err
+	}
+	return d.decodeValue(offset, result, depth)
 }
 
 // tryDecodeStructWithFields returns the input offset when ok is false so its
@@ -1308,6 +2130,9 @@ func (d *ReflectionDecoder) tryDecodeStructWithFields(
 	switch typeNum {
 	case KindMap:
 		if err := checkNestedDepth(depth); err != nil {
+			return 0, true, err
+		}
+		if err := d.reserveActiveContainer(KindMap, size); err != nil {
 			return 0, true, err
 		}
 		newOffset, err = d.decodeStructWithFields(size, dataOffset, result, depth+1, fields)
@@ -1332,6 +2157,9 @@ func (d *ReflectionDecoder) tryDecodeStructWithFields(
 		}
 		if typeNum != KindMap {
 			return offset, false, nil
+		}
+		if err := d.reserveActiveContainer(KindMap, size); err != nil {
+			return 0, true, err
 		}
 		_, err = d.decodeStructWithFields(size, dataOffset, result, depth+2, fields)
 		return pointerEndOffset, true, err
@@ -1388,6 +2216,9 @@ func (d *ReflectionDecoder) tryDecodePointerStructWithFields(
 		return offset, false, nil
 	}
 
+	if err := d.reserveActiveContainer(KindMap, size); err != nil {
+		return 0, true, err
+	}
 	return d.decodePointerStructWithFields(
 		size,
 		dataOffset,
@@ -1395,15 +2226,6 @@ func (d *ReflectionDecoder) tryDecodePointerStructWithFields(
 		result,
 		decodeDepth,
 		fields,
-	)
-}
-
-func checkNestedDepth(depth int) error {
-	if depth < maximumDataStructureDepth {
-		return nil
-	}
-	return mmdberrors.NewInvalidDatabaseError(
-		"exceeded maximum data structure depth; database is likely corrupt",
 	)
 }
 
@@ -1438,7 +2260,6 @@ func (d *ReflectionDecoder) decodePointerStructWithFields(
 		cleanupAllocatedPointers(allocatedCount, allocated1, allocated2, allocatedMore)
 		return 0, false, nil
 	}
-
 	newOffset, err = d.decodeStructWithFields(size, dataOffset, result, decodeDepth, fields)
 	if err != nil {
 		cleanupAllocatedPointers(allocatedCount, allocated1, allocated2, allocatedMore)
@@ -1448,6 +2269,91 @@ func (d *ReflectionDecoder) decodePointerStructWithFields(
 		return pointerEndOffset, true, nil
 	}
 	return newOffset, true, nil
+}
+
+// tryDecodeSliceWithInfo returns the input offset when ok is false so its
+// caller can retry the field with the general decoder.
+func (d *ReflectionDecoder) tryDecodeSliceWithInfo(
+	offset uint,
+	result addressableValue,
+	depth int,
+	info *fieldInfo,
+) (newOffset uint, ok bool, err error) {
+	if !fastPathDepthOK(depth, true) {
+		return offset, false, nil
+	}
+	if d.budgetRemaining == 0 {
+		bounded := newBudgetedDecoder(d)
+		return bounded.tryDecodeSliceWithInfo(offset, result, depth, info)
+	}
+	typeNum, size, dataOffset, err := d.decodeCtrlData(offset)
+	if err != nil {
+		return 0, true, err
+	}
+
+	var pointerEndOffset uint
+	decodeDepth := depth + 1
+	switch typeNum {
+	case KindSlice:
+		// Use the slice control record we already decoded.
+	case KindPointer:
+		var pointer uint
+		pointer, pointerEndOffset, err = d.decodePointer(size, dataOffset)
+		if err != nil {
+			return 0, true, err
+		}
+		typeNum, size, dataOffset, err = d.decodeCtrlData(pointer)
+		if err != nil {
+			return 0, true, err
+		}
+		if typeNum == KindPointer {
+			return 0, true, mmdberrors.NewInvalidDatabaseError(
+				"invalid pointer to pointer at offset %d",
+				pointer,
+			)
+		}
+		if typeNum != KindSlice {
+			return offset, false, nil
+		}
+		decodeDepth = depth + 2
+	default:
+		return offset, false, nil
+	}
+
+	if err := d.reserveAndValidateSlice(size, dataOffset, result, decodeDepth); err != nil {
+		return 0, true, err
+	}
+	dataOffset, err = d.decodeSliceElements(
+		size,
+		dataOffset,
+		result,
+		decodeDepth,
+		info.elemDispatch,
+		info.structFields,
+	)
+	if err != nil {
+		return 0, true, err
+	}
+	if pointerEndOffset != 0 {
+		return pointerEndOffset, true, nil
+	}
+	return dataOffset, true, nil
+}
+
+func checkNestedDepth(depth int) error {
+	if fastPathDepthOK(depth, true) {
+		return nil
+	}
+	return mmdberrors.NewInvalidDatabaseError(
+		"exceeded maximum data structure depth; database is likely corrupt",
+	)
+}
+
+func fastPathDepthOK(depth int, viaPointer bool) bool {
+	if viaPointer {
+		return depth < maximumDataStructureDepth
+	}
+	return depth <= maximumDataStructureDepth
 }
 
 func cleanupAllocatedPointers(
@@ -1485,6 +2391,9 @@ const (
 	// decodeValueSkipUnmarshaler (which is sound: the field type cannot
 	// implement either custom interface by construction).
 	dispatchFast fieldDispatch = iota
+	// dispatchString decodes strings, including database pointers, without
+	// repeating destination-type dispatch. Custom unmarshalers take precedence.
+	dispatchString
 	// dispatchUnmarshaler: field's unwrapped type is an interface, or its pointer
 	// type implements CursorUnmarshaler or Unmarshaler through methods declared
 	// on either a value or pointer receiver. Goes through decodeValue, which
@@ -1496,6 +2405,13 @@ const (
 	// dispatchPointerStruct: field is a pointer to a nested struct whose
 	// field set is precomputed and whose pointer chain may need allocation.
 	dispatchPointerStruct
+	// dispatchSlice: field is a non-[]byte slice whose element dispatch and
+	// optional struct fields are precomputed.
+	dispatchSlice
+	// dispatchMaxSize checks a field's schema limit before invoking the general
+	// decoder. It is kept out of every unconstrained dispatch path so maxsize
+	// support adds no per-field branch to existing schemas.
+	dispatchMaxSize
 	// dispatchPlain: fallback for fields not selected for custom-unmarshaler,
 	// primitive fast, or cached nested-struct dispatch. Uses
 	// decodeValueSkipUnmarshaler.
@@ -1503,25 +2419,83 @@ const (
 )
 
 type fieldInfo struct {
-	fieldType    reflect.Type
 	structFields *fieldsType
 	name         string
 	index        []int
+	nameFirst    uint64
+	nameLast     uint64
+	nameMid      uint64
 	index0       int
 	depth        int
-	hasTag       bool
+	maxSize      uint64
+	maxSizeKinds KindSet
 	dispatch     fieldDispatch
+	elemDispatch fieldDispatch
+	nameLen      int8
+	hasTag       bool
+	// maxSizeCustom caches whether maxsize must precede custom unmarshaler
+	// dispatch. Computing this from reflect.Type consults a sync.Map, so doing
+	// it while decoding every tagged field would turn a schema property into a
+	// recurring runtime cost.
+	maxSizeCustom bool
 }
 
+func (f *fieldInfo) initKeyMatcher() {
+	b := []byte(f.name)
+	n := len(b)
+	switch {
+	case n >= 8 && n <= 24:
+		f.nameLen = int8(n)
+		f.nameFirst = binary.LittleEndian.Uint64(b)
+		f.nameLast = binary.LittleEndian.Uint64(b[n-8:])
+		f.nameMid = binary.LittleEndian.Uint64(b[n>>1-4:])
+	case n >= 4 && n < 8:
+		f.nameLen = int8(n)
+		f.nameFirst = uint64(binary.LittleEndian.Uint32(b))
+		f.nameLast = uint64(binary.LittleEndian.Uint32(b[n-4:]))
+	default:
+		f.nameLen = 0
+	}
+}
+
+func (f *fieldInfo) matchesKey(key []byte) bool {
+	n := len(key)
+	if n < 4 || n != int(f.nameLen) {
+		return string(key) == f.name
+	}
+	if n >= 8 {
+		return binary.LittleEndian.Uint64(key) == f.nameFirst &&
+			binary.LittleEndian.Uint64(key[n-8:]) == f.nameLast &&
+			binary.LittleEndian.Uint64(key[n>>1-4:]) == f.nameMid
+	}
+	return binary.LittleEndian.Uint32(key) == uint32(f.nameFirst) &&
+		binary.LittleEndian.Uint32(key[n-4:]) == uint32(f.nameLast)
+}
+
+const fieldOffsetCacheSlots = 64
+
 type fieldsType struct {
-	validationErr     error
-	namedFields       map[string]*fieldInfo // Map from field name to field info
+	validationErr error
+	namedFields   map[string]*fieldInfo // Map from field name to field info
+	// These fill-once hints avoid fingerprint lookup for recurring key offsets
+	// without writes on collisions. Schemas are shared across databases, so
+	// callers must compare the complete key with the cached field's name.
+	offsetFields      [fieldOffsetCacheSlots]atomic.Pointer[fieldInfo]
 	fingerprintFields []fingerprintField
+	customUnmarshaler bool
 }
 
 type fingerprintField struct {
 	field       *fieldInfo
 	fingerprint uint64
+}
+
+func (fs *fieldsType) fieldForKey(key []byte) (*fieldInfo, bool) {
+	field, ok := fs.fieldForFingerprint(fieldKeyFingerprint(key))
+	if ok && (field == nil || !field.matchesKey(key)) {
+		field, ok = fs.namedFields[string(key)]
+	}
+	return field, ok
 }
 
 func (fs *fieldsType) fieldForFingerprint(fingerprint uint64) (*fieldInfo, bool) {
@@ -1543,7 +2517,9 @@ func fieldKeyFingerprint(key []byte) uint64 {
 	// Length plus the first and last two bytes distinguish ordinary MMDB
 	// field names cheaply. Collisions fall back to the full string map.
 	n := len(key)
-	fingerprint := uint64(n) << 32
+	// Add one to the length so the explicitly supported empty name does not
+	// collide with the zero value used to mark an unoccupied table entry.
+	fingerprint := uint64(n+1) << 32
 	if n > 0 {
 		fingerprint |= uint64(key[0]) << 24
 		fingerprint |= uint64(key[n-1]) << 16
@@ -1591,10 +2567,13 @@ func validateTag(field reflect.StructField, tag string) error {
 		return nil
 	}
 
-	if !utf8.ValidString(tag) {
-		return invalidMaxMindDBTagError(field.Name)
+	_, err := maxminddbtag.Parse(tag)
+	if err != nil {
+		if !utf8.ValidString(tag) {
+			return invalidMaxMindDBTagError(field.Name)
+		}
+		return fmt.Errorf("invalid maxminddb struct tag on field %q: %w", field.Name, err)
 	}
-
 	return nil
 }
 
@@ -1641,8 +2620,14 @@ func handleEmbeddedField(
 	return !hasTag
 }
 
+type sliceElemInfo struct {
+	structFields *fieldsType
+	dispatch     fieldDispatch
+}
+
 var (
 	fieldsMap        sync.Map
+	sliceElemMap     sync.Map
 	unmarshalerCache sync.Map
 )
 
@@ -1698,6 +2683,7 @@ func makeStructFields(rootType reflect.Type) *fieldsType {
 	return makeStructFieldsWithStack(rootType, map[reflect.Type]bool{rootType: true})
 }
 
+//nolint:gocyclo // Field discovery keeps validation and precedence rules in one traversal.
 func makeStructFieldsWithStack(
 	rootType reflect.Type,
 	stack map[reflect.Type]bool,
@@ -1731,19 +2717,41 @@ func makeStructFieldsWithStack(
 			// Parse maxminddb tag
 			fieldName := field.Name
 			hasTag := false
+			var tagOptions maxminddbtag.Options
 			if validationErr == nil {
 				validationErr = validateRawMaxMindDBTagValue(field, string(field.Tag))
 			}
-			if tag := field.Tag.Get("maxminddb"); tag != "" {
+			if tag, ok := field.Tag.Lookup("maxminddb"); ok {
 				if validationErr == nil {
 					validationErr = validateTag(field, tag)
 				}
+				var err error
+				tagOptions, err = maxminddbtag.Parse(tag)
+				if validationErr == nil && err != nil {
+					validationErr = fmt.Errorf(
+						"invalid maxminddb struct tag on field %q: %w",
+						field.Name,
+						err,
+					)
+				}
 
-				if tag == "-" {
+				if tagOptions.Ignored {
 					continue // Skip ignored fields
 				}
-				fieldName = tag
-				hasTag = true
+				if tagOptions.HasName {
+					fieldName = tagOptions.Name
+					hasTag = true
+				}
+			}
+
+			// Validate maxsize before embedded fields can be flattened away.
+			if tagOptions.HasMaxSize && validationErr == nil {
+				if _, supported := maxSizeKindsForType(field.Type); !supported {
+					validationErr = fmt.Errorf(
+						"invalid maxminddb struct tag on field %q: maxsize is only supported for maps, slices, strings, and bytes",
+						field.Name,
+					)
+				}
 			}
 
 			// Handle embedded structs and embedded pointers to structs
@@ -1760,34 +2768,38 @@ func makeStructFieldsWithStack(
 			fieldType := field.Type
 			unwrappedFieldType := unwrapPtrType(fieldType)
 			var dispatch fieldDispatch
+			var elemDispatch fieldDispatch
 			var structFields *fieldsType
+			maxSizeCustom := mayImplementUnmarshaler(unwrappedFieldType)
+			maxSizeKinds, maxSizeSupported := maxSizeKindsForField(
+				fieldType,
+				maxSizeCustom,
+			)
 			switch {
-			case mayImplementUnmarshaler(unwrappedFieldType) ||
-				unwrappedFieldType.Kind() == reflect.Interface:
-				dispatch = dispatchUnmarshaler
-			case isFastDecodeType(fieldType):
-				dispatch = dispatchFast
+			case tagOptions.HasMaxSize && maxSizeSupported:
+				dispatch = dispatchMaxSize
+			case !maxSizeCustom && fieldType.Kind() == reflect.Slice && fieldType != sliceType:
+				dispatch = dispatchSlice
+				elemDispatch, structFields = classifyValueType(fieldType.Elem(), stack)
 			default:
-				dispatch = dispatchPlain
-				if unwrappedFieldType.Kind() == reflect.Struct &&
-					unwrappedFieldType != bigIntType &&
-					!stack[unwrappedFieldType] {
-					structFields = cachedFieldsForTypeWithStack(unwrappedFieldType, stack)
-					if fieldType.Kind() == reflect.Pointer {
-						dispatch = dispatchPointerStruct
-					} else {
-						dispatch = dispatchStruct
-					}
-				}
+				dispatch, structFields = classifyValueTypeWithUnwrapped(
+					fieldType,
+					unwrappedFieldType,
+					maxSizeCustom,
+					stack,
+				)
 			}
 			allFields = append(allFields, fieldInfo{
-				index:        fieldIndex, // Will be reindexed later for optimization
-				name:         fieldName,
-				hasTag:       hasTag,
-				depth:        entry.depth,
-				fieldType:    fieldType,
-				structFields: structFields,
-				dispatch:     dispatch,
+				index:         fieldIndex, // Will be reindexed later for optimization
+				name:          fieldName,
+				hasTag:        hasTag,
+				depth:         entry.depth,
+				structFields:  structFields,
+				dispatch:      dispatch,
+				elemDispatch:  elemDispatch,
+				maxSize:       tagOptions.MaxSize,
+				maxSizeKinds:  maxSizeKinds,
+				maxSizeCustom: maxSizeCustom,
 			})
 		}
 	}
@@ -1852,12 +2864,65 @@ func makeStructFieldsWithStack(
 		namedFields:       namedFields,
 		fingerprintFields: makeFingerprintFields(namedFields),
 		validationErr:     validationErr,
+		customUnmarshaler: mayImplementUnmarshaler(rootType),
 	}
 
 	// Reindex all fields for optimized access
 	fields.reindex()
 
 	return fields
+}
+
+func cachedSliceElemInfo(elemType reflect.Type) sliceElemInfo {
+	if info, ok := sliceElemMap.Load(elemType); ok {
+		return info.(sliceElemInfo)
+	}
+	dispatch, structFields := classifyValueType(elemType, nil)
+	info := sliceElemInfo{
+		structFields: structFields,
+		dispatch:     dispatch,
+	}
+	actual, _ := sliceElemMap.LoadOrStore(elemType, info)
+	return actual.(sliceElemInfo)
+}
+
+func classifyValueType(
+	t reflect.Type,
+	stack map[reflect.Type]bool,
+) (fieldDispatch, *fieldsType) {
+	unwrapped := unwrapPtrType(t)
+	return classifyValueTypeWithUnwrapped(
+		t,
+		unwrapped,
+		mayImplementUnmarshaler(unwrapped),
+		stack,
+	)
+}
+
+func classifyValueTypeWithUnwrapped(
+	t reflect.Type,
+	unwrapped reflect.Type,
+	mayUnmarshal bool,
+	stack map[reflect.Type]bool,
+) (fieldDispatch, *fieldsType) {
+	switch {
+	case mayUnmarshal || unwrapped.Kind() == reflect.Interface:
+		return dispatchUnmarshaler, nil
+	case t.Kind() == reflect.String:
+		return dispatchString, nil
+	case isFastDecodeType(t):
+		return dispatchFast, nil
+	case unwrapped.Kind() == reflect.Struct &&
+		unwrapped != bigIntType &&
+		!stack[unwrapped]:
+		structFields := cachedFieldsForTypeWithStack(unwrapped, stack)
+		if t.Kind() == reflect.Pointer {
+			return dispatchPointerStruct, structFields
+		}
+		return dispatchStruct, structFields
+	default:
+		return dispatchPlain, nil
+	}
 }
 
 func validateRawMaxMindDBTagValue(field reflect.StructField, rawTag string) error {
@@ -1885,6 +2950,7 @@ func validateRawMaxMindDBTagValue(field reflect.StructField, rawTag string) erro
 // This follows the json/v2 pattern of splitting the first index from the remainder.
 func (fs *fieldsType) reindex() {
 	for _, field := range fs.namedFields {
+		field.initKeyMatcher()
 		if len(field.index) > 0 {
 			field.index0 = field.index[0]
 			field.index = field.index[1:]
@@ -1956,6 +3022,80 @@ func unwrapPtrType(t reflect.Type) reflect.Type {
 	return t
 }
 
+func maxSizeKindsForType(t reflect.Type) (KindSet, bool) {
+	t = unwrapPtrType(t)
+	switch t.Kind() {
+	case reflect.Map:
+		return NewKindSet(KindMap), true
+	case reflect.Slice:
+		if t == sliceType {
+			return NewKindSet(KindBytes, KindSlice), true
+		}
+		return NewKindSet(KindSlice), true
+	case reflect.String:
+		return NewKindSet(KindString), true
+	default:
+		return 0, false
+	}
+}
+
+func maxSizeKindsForField(t reflect.Type, customUnmarshaler bool) (KindSet, bool) {
+	kinds, supported := maxSizeKindsForType(t)
+	if supported && customUnmarshaler {
+		// A custom callback may accept any MMDB encoding regardless of its Go
+		// type's underlying shape. Apply the schema limit to every size-bearing
+		// kind before transferring control to it.
+		return supportedMaxSizeKinds, true
+	}
+	return kinds, supported
+}
+
+func (d *ReflectionDecoder) decodeAny(
+	offset uint,
+	result addressableValue,
+	depth int,
+) error {
+	if !result.IsNil() {
+		existing := result.Elem()
+		if existing.Kind() == reflect.Pointer && !existing.IsNil() {
+			_, err := d.decodeValue(offset, result, depth)
+			return err
+		}
+	}
+	kind, size, dataOffset, err := d.decodeCtrlData(offset)
+	if err != nil {
+		return err
+	}
+	// The destination is an empty interface, and a retained pointer has
+	// already been handled above. Avoid repeating destination and integer
+	// width dispatch for directly encoded unsigned scalars.
+	switch kind {
+	case KindUint16:
+		value, _, err := d.decodeUint16(size, dataOffset)
+		if err != nil {
+			return err
+		}
+		result.Set(reflect.ValueOf(uint64(value)))
+		return nil
+	case KindUint32:
+		value, _, err := d.decodeUint32(size, dataOffset)
+		if err != nil {
+			return err
+		}
+		result.Set(reflect.ValueOf(uint64(value)))
+		return nil
+	case KindUint64:
+		value, _, err := d.decodeUint64(size, dataOffset)
+		if err != nil {
+			return err
+		}
+		result.Set(reflect.ValueOf(value))
+		return nil
+	}
+	_, err = d.decodeFromType(kind, size, dataOffset, result, depth+1)
+	return err
+}
+
 // fieldByIndex efficiently accesses a field by its index path,
 // initializing embedded pointers as needed.
 func (av addressableValue) fieldByIndex(
@@ -1968,15 +3108,23 @@ func (av addressableValue) fieldByIndex(
 
 	// Handle remaining indices if any
 	if len(remainingIndex) > 0 {
-		for _, i := range remainingIndex {
-			av = av.indirect(mayAlloc)
-			if !av.IsValid() {
-				return av
-			}
-			av = addressableValue{av.Field(i), av.forcedAddr}
-		}
+		return av.fieldByIndexSlow(remainingIndex, mayAlloc)
 	}
 
+	return av
+}
+
+func (av addressableValue) fieldByIndexSlow(
+	remainingIndex []int,
+	mayAlloc bool,
+) addressableValue {
+	for _, i := range remainingIndex {
+		av = av.indirect(mayAlloc)
+		if !av.IsValid() {
+			return av
+		}
+		av = addressableValue{av.Field(i), av.forcedAddr}
+	}
 	return av
 }
 
@@ -1994,153 +3142,443 @@ func (av addressableValue) indirect(mayAlloc bool) addressableValue {
 	return av
 }
 
+// tryFastDecodeString uses the key decoder to validate either an inline string
+// or one database pointer to a string. Failures fall back to value decoding so
+// type errors describe a value, not a map key. Callers must have an active budget.
+// Keep this in sync with dispatchString in decodeStructWithFields.
+func (d *ReflectionDecoder) tryFastDecodeString(
+	offset uint,
+	result addressableValue,
+	depth int,
+) (uint, bool) {
+	// Leave the depth boundary to the general decoder. Following a database
+	// pointer adds one level, even though its target is a scalar.
+	if !fastPathDepthOK(depth, true) {
+		return 0, false
+	}
+	value, cacheOffset, nextOffset, err := d.decodeKeyAt(offset)
+	if err != nil || uint(len(value)) > uint(d.payloadRemaining) {
+		return 0, false
+	}
+	d.payloadRemaining -= uint32(len(value))
+	result.SetString(d.decodeStringBytes(cacheOffset, value))
+	return nextOffset, true
+}
+
 // tryFastDecodeTyped returns (newOffset, true) on success and (0, false)
 // on any failure: a malformed buffer, a DB-type/Go-kind mismatch, or an
 // inner decode error. Callers surface failures by re-decoding from the same
 // offset via the slow path, which re-encounters the underlying error and
 // propagates it with proper context. The fast path itself never logs or wraps.
+// String and []byte callers must have an active operation budget; standalone
+// payload entry points use their unbudgeted fast paths instead.
+// Keep the scalar cases in sync with tryFastDecodePointer.
 //
-//nolint:gocyclo // fairly readable and this is optimized code.
+//nolint:gocyclo // Separate scalar and pointer dispatch keeps scalar decoding fast.
 func (d *ReflectionDecoder) tryFastDecodeTyped(
 	offset uint,
 	result addressableValue,
-	expectedType reflect.Type,
+	depth int,
 ) (uint, bool) {
+	if !fastPathDepthOK(depth, false) {
+		return 0, false
+	}
 	typeNum, size, newOffset, err := d.decodeCtrlData(offset)
 	if err != nil {
 		return 0, false
 	}
 
-	// Use pre-computed type information for faster matching
-	switch expectedType.Kind() {
+	var pointerEndOffset uint
+	if typeNum == KindPointer {
+		if !fastPathDepthOK(depth, true) {
+			return 0, false
+		}
+		var pointer uint
+		pointer, pointerEndOffset, err = d.decodePointer(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		typeNum, size, newOffset, err = d.decodeCtrlData(pointer)
+		if err != nil || typeNum == KindPointer {
+			return 0, false
+		}
+	}
+
+	var finalOffset uint
+	switch result.Kind() {
 	case reflect.Slice:
-		if expectedType == sliceType && typeNum == KindBytes {
-			value, finalOffset, err := d.decodeBytes(size, newOffset)
-			if err != nil {
-				return 0, false
-			}
-			result.SetBytes(value)
-			return finalOffset, true
+		if result.Type() != sliceType || typeNum != KindBytes || size > uint(d.payloadRemaining) {
+			return 0, false
 		}
+		var value []byte
+		value, finalOffset, err = d.decodeBytes(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		d.payloadRemaining -= uint32(size)
+		result.SetBytes(value)
 	case reflect.String:
-		if typeNum == KindString {
-			value, finalOffset, err := d.decodeString(size, newOffset)
-			if err != nil {
-				return 0, false
-			}
-			result.SetString(value)
-			return finalOffset, true
+		if typeNum != KindString || size > uint(d.payloadRemaining) {
+			return 0, false
 		}
+		var value string
+		value, finalOffset, err = d.decodeString(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		d.payloadRemaining -= uint32(size)
+		result.SetString(value)
 	case reflect.Uint:
+		var value uint64
 		switch typeNum {
 		case KindUint16:
-			value, finalOffset, err := d.decodeUint16(size, newOffset)
+			var v uint16
+			v, finalOffset, err = d.decodeUint16(size, newOffset)
 			if err != nil {
 				return 0, false
 			}
-			result.SetUint(uint64(value))
-			return finalOffset, true
+			value = uint64(v)
 		case KindUint32:
-			value, finalOffset, err := d.decodeUint32(size, newOffset)
+			var v uint32
+			v, finalOffset, err = d.decodeUint32(size, newOffset)
 			if err != nil {
 				return 0, false
 			}
-			result.SetUint(uint64(value))
-			return finalOffset, true
+			value = uint64(v)
 		case KindUint64:
-			value, finalOffset, err := d.decodeUint64(size, newOffset)
+			value, finalOffset, err = d.decodeUint64(size, newOffset)
 			if err != nil || uint64(uint(value)) != value {
 				return 0, false
 			}
-			result.SetUint(value)
-			return finalOffset, true
+		default:
+			return 0, false
 		}
+		result.SetUint(value)
 	case reflect.Uint32:
-		if typeNum == KindUint32 {
-			value, finalOffset, err := d.decodeUint32(size, newOffset)
-			if err != nil {
-				return 0, false
-			}
-			result.SetUint(uint64(value))
-			return finalOffset, true
+		if typeNum != KindUint32 {
+			return 0, false
 		}
+		var value uint32
+		value, finalOffset, err = d.decodeUint32(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		result.SetUint(uint64(value))
 	case reflect.Uint16:
-		if typeNum == KindUint16 {
-			value, finalOffset, err := d.decodeUint16(size, newOffset)
-			if err != nil {
-				return 0, false
-			}
-			result.SetUint(uint64(value))
-			return finalOffset, true
+		if typeNum != KindUint16 {
+			return 0, false
 		}
+		var value uint16
+		value, finalOffset, err = d.decodeUint16(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		result.SetUint(uint64(value))
 	case reflect.Uint64:
-		if typeNum == KindUint64 {
-			value, finalOffset, err := d.decodeUint64(size, newOffset)
-			if err != nil {
-				return 0, false
-			}
-			result.SetUint(value)
-			return finalOffset, true
+		if typeNum != KindUint64 {
+			return 0, false
 		}
+		var value uint64
+		value, finalOffset, err = d.decodeUint64(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		result.SetUint(value)
 	case reflect.Bool:
-		if typeNum == KindBool {
-			value, finalOffset, err := d.decodeBool(size, newOffset)
-			if err != nil {
-				return 0, false
-			}
-			result.SetBool(value)
-			return finalOffset, true
+		if typeNum != KindBool {
+			return 0, false
 		}
+		var value bool
+		value, finalOffset, err = d.decodeBool(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		result.SetBool(value)
 	case reflect.Int32:
-		if typeNum == KindInt32 {
-			value, finalOffset, err := d.decodeInt32(size, newOffset)
-			if err != nil {
-				return 0, false
-			}
-			result.SetInt(int64(value))
-			return finalOffset, true
+		if typeNum != KindInt32 {
+			return 0, false
 		}
+		var value int32
+		value, finalOffset, err = d.decodeInt32(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		result.SetInt(int64(value))
 	case reflect.Float32:
-		if typeNum == KindFloat32 {
-			value, finalOffset, err := d.decodeFloat32(size, newOffset)
-			if err != nil {
-				return 0, false
-			}
-			result.SetFloat(float64(value))
-			return finalOffset, true
+		if typeNum != KindFloat32 {
+			return 0, false
 		}
+		var value float32
+		value, finalOffset, err = d.decodeFloat32(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		result.SetFloat(float64(value))
 	case reflect.Float64:
-		if typeNum == KindFloat64 {
-			value, finalOffset, err := d.decodeFloat64(size, newOffset)
-			if err != nil {
-				return 0, false
-			}
-			result.SetFloat(value)
-			return finalOffset, true
+		if typeNum != KindFloat64 {
+			return 0, false
 		}
+		var value float64
+		value, finalOffset, err = d.decodeFloat64(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		result.SetFloat(value)
 	case reflect.Pointer:
-		// Handle pointer to fast types
-		if result.IsNil() {
-			elem := reflect.New(expectedType.Elem()).Elem()
-			finalOffset, ok := d.tryFastDecodeTyped(
-				offset,
-				addressableValue{Value: elem},
-				expectedType.Elem(),
-			)
-			if !ok {
-				return 0, false
-			}
-			result.Set(elem.Addr())
-			return finalOffset, true
-		}
-		return d.tryFastDecodeTyped(
-			offset,
-			addressableValue{Value: result.Elem()},
-			expectedType.Elem(),
-		)
+		return d.tryFastDecodePointer(typeNum, size, newOffset, pointerEndOffset, result)
 	default:
-		// Type not supported for fast path
+		return 0, false
 	}
 
-	return 0, false
+	if pointerEndOffset != 0 {
+		return pointerEndOffset, true
+	}
+	return finalOffset, true
+}
+
+// Keep the scalar cases in sync with tryFastDecodeTyped.
+//
+//nolint:gocyclo,maintidx // Flat type dispatch for pointer-wrapped scalar fields.
+func (d *ReflectionDecoder) tryFastDecodePointer(
+	typeNum Kind,
+	size uint,
+	newOffset uint,
+	pointerEndOffset uint,
+	result addressableValue,
+) (uint, bool) {
+	for result.Kind() == reflect.Pointer && !result.IsNil() {
+		result = addressableValue{Value: result.Elem()}
+	}
+	kind := result.Kind()
+	isNilPtr := kind == reflect.Pointer
+	var elemType reflect.Type
+	if isNilPtr {
+		elemType = unwrapPtrType(result.Type())
+		kind = elemType.Kind()
+	}
+
+	var (
+		finalOffset uint
+		err         error
+	)
+	switch kind {
+	case reflect.Slice:
+		if isNilPtr {
+			if elemType != sliceType {
+				return 0, false
+			}
+		} else if result.Type() != sliceType {
+			return 0, false
+		}
+		if typeNum != KindBytes || size > uint(d.payloadRemaining) {
+			return 0, false
+		}
+		var value []byte
+		value, finalOffset, err = d.decodeBytes(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		d.payloadRemaining -= uint32(size)
+		if isNilPtr {
+			result = derefAllocPointers(result)
+		}
+		result.SetBytes(value)
+	case reflect.String:
+		if typeNum != KindString || size > uint(d.payloadRemaining) {
+			return 0, false
+		}
+		var value string
+		value, finalOffset, err = d.decodeString(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		d.payloadRemaining -= uint32(size)
+		if isNilPtr {
+			result = derefAllocPointers(result)
+		}
+		result.SetString(value)
+	case reflect.Uint:
+		var value uint64
+		switch typeNum {
+		case KindUint16:
+			var v uint16
+			v, finalOffset, err = d.decodeUint16(size, newOffset)
+			if err != nil {
+				return 0, false
+			}
+			value = uint64(v)
+		case KindUint32:
+			var v uint32
+			v, finalOffset, err = d.decodeUint32(size, newOffset)
+			if err != nil {
+				return 0, false
+			}
+			value = uint64(v)
+		case KindUint64:
+			value, finalOffset, err = d.decodeUint64(size, newOffset)
+			if err != nil || uint64(uint(value)) != value {
+				return 0, false
+			}
+		default:
+			return 0, false
+		}
+		if isNilPtr {
+			result = derefAllocPointers(result)
+		}
+		result.SetUint(value)
+	case reflect.Uint32:
+		if typeNum != KindUint32 {
+			return 0, false
+		}
+		var value uint32
+		value, finalOffset, err = d.decodeUint32(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		if isNilPtr {
+			result = derefAllocPointers(result)
+		}
+		result.SetUint(uint64(value))
+	case reflect.Uint16:
+		if typeNum != KindUint16 {
+			return 0, false
+		}
+		var value uint16
+		value, finalOffset, err = d.decodeUint16(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		if isNilPtr {
+			result = derefAllocPointers(result)
+		}
+		result.SetUint(uint64(value))
+	case reflect.Uint64:
+		if typeNum != KindUint64 {
+			return 0, false
+		}
+		var value uint64
+		value, finalOffset, err = d.decodeUint64(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		if isNilPtr {
+			result = derefAllocPointers(result)
+		}
+		result.SetUint(value)
+	case reflect.Bool:
+		if typeNum != KindBool {
+			return 0, false
+		}
+		var value bool
+		value, finalOffset, err = d.decodeBool(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		if isNilPtr {
+			result = derefAllocPointers(result)
+		}
+		result.SetBool(value)
+	case reflect.Int32:
+		if typeNum != KindInt32 {
+			return 0, false
+		}
+		var value int32
+		value, finalOffset, err = d.decodeInt32(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		if isNilPtr {
+			result = derefAllocPointers(result)
+		}
+		result.SetInt(int64(value))
+	case reflect.Float32:
+		if typeNum != KindFloat32 {
+			return 0, false
+		}
+		var value float32
+		value, finalOffset, err = d.decodeFloat32(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		if isNilPtr {
+			result = derefAllocPointers(result)
+		}
+		result.SetFloat(float64(value))
+	case reflect.Float64:
+		if typeNum != KindFloat64 {
+			return 0, false
+		}
+		var value float64
+		value, finalOffset, err = d.decodeFloat64(size, newOffset)
+		if err != nil {
+			return 0, false
+		}
+		if isNilPtr {
+			result = derefAllocPointers(result)
+		}
+		result.SetFloat(value)
+	default:
+		return 0, false
+	}
+
+	if pointerEndOffset != 0 {
+		return pointerEndOffset, true
+	}
+	return finalOffset, true
+}
+
+func derefAllocPointers(result addressableValue) addressableValue {
+	for result.Kind() == reflect.Pointer {
+		if result.IsNil() {
+			result.Set(reflect.New(result.Type().Elem()))
+		}
+		result = addressableValue{Value: result.Elem()}
+	}
+	return result
+}
+
+func (d *ReflectionDecoder) tryFastDecodeUnbudgetedString(
+	offset uint,
+	result addressableValue,
+) bool {
+	bufferLen := uint(len(d.buffer))
+	if offset < bufferLen {
+		ctrlByte := d.buffer[offset]
+		size := uint(ctrlByte & 0x1f)
+		dataOffset := offset + 1
+		if Kind(ctrlByte>>5) == KindString && size < 29 &&
+			hasBufferRange(bufferLen, dataOffset, size) {
+			result.SetString(d.decodeCompactString(size, dataOffset))
+			return true
+		}
+	}
+	typeNum, size, newOffset, err := d.decodeCtrlData(offset)
+	if err != nil {
+		return false
+	}
+	if typeNum == KindString {
+		value, _, err := d.decodeString(size, newOffset)
+		if err != nil {
+			return false
+		}
+		result.SetString(value)
+		return true
+	}
+	return false
+}
+
+func (d *ReflectionDecoder) tryFastDecodeUnbudgetedBytes(
+	offset uint,
+	result addressableValue,
+) bool {
+	typeNum, size, newOffset, err := d.decodeCtrlData(offset)
+	if err != nil || typeNum != KindBytes {
+		return false
+	}
+	value, _, err := d.decodeBytes(size, newOffset)
+	if err != nil {
+		return false
+	}
+	result.SetBytes(value)
+	return true
 }

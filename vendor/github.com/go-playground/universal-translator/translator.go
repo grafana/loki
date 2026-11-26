@@ -101,33 +101,85 @@ func (t *translator) Add(key interface{}, text string, override bool) error {
 		return &ErrConflictingTranslation{locale: t.Locale(), key: key, text: text}
 	}
 
-	lb := strings.Count(text, "{")
-	rb := strings.Count(text, "}")
-
-	if lb != rb {
-		return &ErrMissingBracket{locale: t.Locale(), key: key, text: text}
+	indexes, err := parseParamPlaceholders(text, t.Locale(), key)
+	if err != nil {
+		return err
 	}
 
-	trans := &transText{
-		text: text,
-	}
-
-	var idx int
-
-	for i := 0; i < lb; i++ {
-		s := "{" + strconv.Itoa(i) + "}"
-		idx = strings.Index(text, s)
-		if idx == -1 {
-			return &ErrBadParamSyntax{locale: t.Locale(), param: s, key: key, text: text}
-		}
-
-		trans.indexes = append(trans.indexes, idx)
-		trans.indexes = append(trans.indexes, idx+len(s))
-	}
-
-	t.translations[key] = trans
+	t.translations[key] = &transText{text: text, indexes: indexes}
 
 	return nil
+}
+
+// parseParamPlaceholders scans text for {N} placeholders where N is a canonical
+// non-negative integer (no leading zeros). Returns triplets [start, end, paramIdx, ...]
+// sorted by text position. Requires consecutive param indices starting from 0.
+func parseParamPlaceholders(text string, locale string, key interface{}) ([]int, error) {
+	var indexes []int
+	seen := make(map[int]struct{})
+	maxParam := -1
+
+	for i := 0; i < len(text); i++ {
+		if text[i] != '{' {
+			continue
+		}
+
+		j := i + 1
+		for j < len(text) && text[j] >= '0' && text[j] <= '9' {
+			j++
+		}
+
+		digitLen := j - i - 1
+		if digitLen == 0 {
+			continue
+		}
+
+		if j >= len(text) {
+			return nil, &ErrMissingBracket{locale: locale, key: key, text: text}
+		}
+
+		if text[j] != '}' {
+			i = j - 1
+			continue
+		}
+
+		if digitLen > 1 && text[i+1] == '0' {
+			i = j
+			continue
+		}
+
+		if digitLen > 9 {
+			i = j
+			continue
+		}
+
+		n := 0
+		for k := i + 1; k < j; k++ {
+			n = n*10 + int(text[k]-'0')
+		}
+
+		indexes = append(indexes, i, j+1, n)
+		seen[n] = struct{}{}
+		if n > maxParam {
+			maxParam = n
+		}
+
+		i = j
+	}
+
+	if len(seen) == 0 {
+		return nil, nil
+	}
+
+	if maxParam != len(seen)-1 {
+		for i := 0; i <= maxParam; i++ {
+			if _, ok := seen[i]; !ok {
+				return nil, &ErrBadParamSyntax{locale: locale, param: "{" + strconv.Itoa(i) + "}", key: key, text: text}
+			}
+		}
+	}
+
+	return indexes, nil
 }
 
 // AddCardinal adds a cardinal plural translation for a particular language/locale
@@ -298,20 +350,18 @@ func (t *translator) T(key interface{}, params ...string) (string, error) {
 
 	trans, ok := t.translations[key]
 	if !ok {
-		return unknownTranslation, ErrUnknowTranslation
+		return unknownTranslation, ErrUnknownTranslation
 	}
 
 	b := make([]byte, 0, 64)
 
-	var start, end, count int
+	var start, end int
 
-	for i := 0; i < len(trans.indexes); i++ {
+	for i := 0; i < len(trans.indexes); i += 3 {
 		end = trans.indexes[i]
 		b = append(b, trans.text[start:end]...)
-		b = append(b, params[count]...)
-		i++
-		start = trans.indexes[i]
-		count++
+		b = append(b, params[trans.indexes[i+2]]...)
+		start = trans.indexes[i+1]
 	}
 
 	b = append(b, trans.text[start:]...)
@@ -324,7 +374,7 @@ func (t *translator) C(key interface{}, num float64, digits uint64, param string
 
 	tarr, ok := t.cardinalTanslations[key]
 	if !ok {
-		return unknownTranslation, ErrUnknowTranslation
+		return unknownTranslation, ErrUnknownTranslation
 	}
 
 	rule := t.CardinalPluralRule(num, digits)
@@ -344,7 +394,7 @@ func (t *translator) O(key interface{}, num float64, digits uint64, param string
 
 	tarr, ok := t.ordinalTanslations[key]
 	if !ok {
-		return unknownTranslation, ErrUnknowTranslation
+		return unknownTranslation, ErrUnknownTranslation
 	}
 
 	rule := t.OrdinalPluralRule(num, digits)
@@ -365,7 +415,7 @@ func (t *translator) R(key interface{}, num1 float64, digits1 uint64, num2 float
 
 	tarr, ok := t.rangeTanslations[key]
 	if !ok {
-		return unknownTranslation, ErrUnknowTranslation
+		return unknownTranslation, ErrUnknownTranslation
 	}
 
 	rule := t.RangePluralRule(num1, digits1, num2, digits2)

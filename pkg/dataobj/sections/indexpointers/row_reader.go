@@ -8,7 +8,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 )
 
 // RowReader is a reader for index pointers in a data object.
@@ -22,8 +21,6 @@ type RowReader struct {
 
 	reader  *dataset.RowReader
 	columns []dataset.Column
-
-	symbols *symbolizer.Symbolizer
 }
 
 var errRowReaderNotOpen = errors.New("row reader not opened")
@@ -73,6 +70,9 @@ func (r *RowReader) SetPredicate(p RowPredicate) error {
 // Read reads up to the next len(s) indexpointers from the reader and stores them
 // into s. It returns the number of indexpointers read and any error encountered. At
 // the end of the indexpointers section, Read returns 0, io.EOF.
+//
+// The caller owns the strings in s. They do not point into the buffers of the
+// reader, so they stay valid after later reads and after Close.
 func (r *RowReader) Read(ctx context.Context, s []IndexPointer) (int, error) {
 	if r.sec == nil {
 		return 0, io.EOF
@@ -92,7 +92,7 @@ func (r *RowReader) Read(ctx context.Context, s []IndexPointer) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		if err := decodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols); err != nil {
+		if err := decodeRow(r.sec.Columns(), r.buf[i], &s[i]); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 	}
@@ -114,7 +114,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 
 	readerOpts := dataset.RowReaderOptions{
 		Dataset:           dset,
-		Columns:           columns,
+		ProjectedColumns:  columns,
 		Predicates:        predicates,
 		PrefetchAllOnOpen: true,
 	}
@@ -126,12 +126,6 @@ func (r *RowReader) initReader(ctx context.Context) error {
 	}
 	if err := r.reader.Open(ctx); err != nil {
 		return fmt.Errorf("opening row reader: %w", err)
-	}
-
-	if r.symbols == nil {
-		r.symbols = symbolizer.New(128, 100_000)
-	} else {
-		r.symbols.Reset()
 	}
 
 	r.columns = columns
@@ -151,10 +145,6 @@ func (r *RowReader) Reset(sec *Section) {
 	r.predicate = nil
 	r.ready = false
 	r.columns = nil
-
-	if r.symbols != nil {
-		r.symbols.Reset()
-	}
 }
 
 // Close closes the RowReader and releases any resources it holds. Closed

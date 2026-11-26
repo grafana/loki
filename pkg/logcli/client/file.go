@@ -235,7 +235,7 @@ type limiter struct {
 	n int
 }
 
-func (l *limiter) MaxQuerySeries(_ context.Context, _ string) int {
+func (l *limiter) MaxQuerySeries(_ string) int {
 	return l.n
 }
 
@@ -255,12 +255,8 @@ func (l *limiter) RequiredLabels(_ context.Context, _ string) []string {
 	return nil
 }
 
-func (l *limiter) DebugEngineTasks(_ string) bool {
-	return false // This setting for the v2 execution engine is unused in LogCLI
-}
-
-func (l *limiter) DebugEngineStreams(_ string) bool {
-	return false // This setting for the v2 execution engine is unused in LogCLI
+func (l *limiter) StreamFirstExecutionEnabled(_ string) bool {
+	return false
 }
 
 type querier struct {

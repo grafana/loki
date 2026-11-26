@@ -58,7 +58,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 
 	builder := NewBuilder(desiredVer)
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-		builder.AddSeries(lbls.Copy(), fp, chks)
+		builder.AddSeries(lbls, fp, chks)
 		return false
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -94,19 +94,78 @@ type TSDBFile struct {
 
 	// to sastisfy Reader() and Close() methods
 	getRawFileReader GetRawFileReaderFunc
+
+	// shard is the fingerprint range of the file when its name says it is one
+	// of several shards of its table (see SingleTenantTSDBIdentifier.Shard).
+	shard index.ShardAnnotation
+}
+
+// FingerprintBounds returns the [from, through) fingerprint range the file
+// holds. An unsharded file holds every fingerprint.
+func (f *TSDBFile) FingerprintBounds() (model.Fingerprint, model.Fingerprint) {
+	if f.shard.IsSharded() {
+		return f.shard.GetFromThrough()
+	}
+	return 0, model.Fingerprint(math.MaxUint64)
+}
+
+func shardOfIdentifier(id Identifier) index.ShardAnnotation {
+	parsed, _ := ParseSingleTenantTSDBPath(filepath.Base(id.Name()))
+	return parsed.Shard
 }
 
 func NewShippableTSDBFile(id Identifier, opts index.ReaderOptions) (*TSDBFile, error) {
+	return newShippableTSDBFile(id, opts, nil, "")
+}
+
+func postingsObjectIdentity(indexCacheLocation, filePath, storagePrefix string) (string, bool) {
+	relative, err := filepath.Rel(indexCacheLocation, filePath)
+	if err != nil || !filepath.IsLocal(relative) {
+		return "", false
+	}
+	dir, filename := filepath.Split(relative)
+	dir, tenant := filepath.Split(filepath.Clean(dir))
+	if tenant == "." || filename == "" {
+		return "", false
+	}
+	if dir == "" {
+		// Common files live directly under the table directory. Tenant isolation
+		// comes from the matcher injected by MultiTenantIndex, not the file path.
+		return objectIdentity(storagePrefix, tenant, "", filename), true
+	}
+	parent, table := filepath.Split(filepath.Clean(dir))
+	if parent != "" || table == "." {
+		return "", false
+	}
+	return objectIdentity(storagePrefix, table, tenant, filename), true
+}
+
+func openShippableTSDBWithPostingsCache(p string, opts index.ReaderOptions, postingsCache *postingsCache, storagePrefix, indexCacheLocation string) (shipperindex.Index, error) {
+	id, err := identifierFromPath(p)
+	if err != nil {
+		return nil, err
+	}
+	identity, ok := postingsObjectIdentity(indexCacheLocation, p, storagePrefix)
+	if !ok {
+		postingsCache = nil
+	}
+	return newShippableTSDBFile(id, opts, postingsCache, identity)
+}
+
+func newShippableTSDBFile(id Identifier, opts index.ReaderOptions, postingsCache *postingsCache, identity string) (*TSDBFile, error) {
 	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path(), opts)
 	if err != nil {
 		return nil, err
 	}
+	idx.setPostingsCache(postingsCache, identity)
 
-	return &TSDBFile{
+	file := &TSDBFile{
 		Identifier:       id,
 		Index:            idx,
 		getRawFileReader: getRawFileReader,
-	}, err
+	}
+	file.shard = shardOfIdentifier(id)
+	return file, err
 }
 
 func (f *TSDBFile) Close() error {
@@ -125,6 +184,13 @@ type TSDBIndex struct {
 	reader        IndexReader
 	chunkFilterMu sync.Mutex
 	chunkFilter   chunk.RequestChunkFilterer
+	postingsCache *postingsCache
+	postingsID    string
+}
+
+func (i *TSDBIndex) setPostingsCache(c *postingsCache, identity string) {
+	i.postingsCache = c
+	i.postingsID = identity
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -168,8 +234,9 @@ func (i *TSDBIndex) getChunkFilter() chunk.RequestChunkFilterer {
 	return f
 }
 
-// fn must NOT capture it's arguments. They're reused across series iterations and returned to
-// a pool after completion.
+// fn must NOT capture the chunks. They're reused across series iterations and returned to
+// a pool after completion. The labels may be retained, even after the index is closed (see
+// index.SeriesScan.Series); the compactor relies on this to avoid copying them.
 // Iteration will stop if the callback returns true.
 // Accepts a userID argument in order to implement `Index` interface, but since this is a single tenant index,
 // it is ignored (it's enforced elsewhere in index selection)
@@ -193,7 +260,7 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 		defer scan.Close()
 
 		for p.Next() {
-			hash, err := scan.Series(p.At(), int64(from), int64(through), &ls, &chks)
+			hash, err := scan.Series(p.At(), int64(from), int64(through), &ls, &chks, nil)
 			if err != nil {
 				return err
 			}
@@ -217,22 +284,41 @@ func (i *TSDBIndex) forSeriesAndLabels(ctx context.Context, fpFilter index.Finge
 }
 
 // Same as ForSeries, but the callback fn does not take a Labels parameter.
-func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+// If filterer is non-nil, it is applied to each series, only decoding the labels needed by the filterer.
+func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.FingerprintFilter, filterer chunk.Filterer, from model.Time, through model.Time, fn func(model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
 	chks := ChunkMetasPool.Get()
 	defer func() { ChunkMetasPool.Put(chks) }()
+
+	// Only decode labels needed by the filterer.
+	var (
+		lbls *labels.Labels
+		by   map[string]struct{}
+	)
+	if filterer != nil {
+		lbls = new(labels.Labels)
+		names := filterer.RequiredLabelNames()
+		by = make(map[string]struct{}, len(names))
+		for _, n := range names {
+			by[n] = struct{}{}
+		}
+	}
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		scan := i.reader.NewSeriesScan()
 		defer scan.Close()
 
 		for p.Next() {
-			hash, err := scan.Series(p.At(), int64(from), int64(through), nil, &chks)
+			hash, err := scan.Series(p.At(), int64(from), int64(through), lbls, &chks, by)
 			if err != nil {
 				return err
 			}
 
 			// skip series that belong to different shards
 			if fpFilter != nil && !fpFilter.Match(model.Fingerprint(hash)) {
+				continue
+			}
+
+			if filterer != nil && filterer.ShouldFilter(*lbls) {
 				continue
 			}
 
@@ -244,17 +330,32 @@ func (i *TSDBIndex) forSeriesNoLabels(ctx context.Context, fpFilter index.Finger
 	})
 }
 
+// forPostings calls fn with the postings matching matchers.
+// fn must not keep the postings as they are closed when fn returns.
 func (i *TSDBIndex) forPostings(
-	_ context.Context,
+	ctx context.Context,
 	fpFilter index.FingerprintFilter,
 	_, _ model.Time,
 	matchers []*labels.Matcher,
 	fn func(index.Postings) error,
 ) error {
-	p, err := PostingsForMatchers(i.reader, fpFilter, matchers...)
+	var p index.Postings
+	var err error
+	postingsCache, postingsID := i.postingsCache, i.postingsID
+	if postingsCache != nil {
+		p, err = postingsCache.cachedPostings(ctx, postingsKey(postingsID, matchers), func() (index.Postings, error) {
+			return PostingsForMatchers(i.reader, nil, matchers...)
+		})
+		if err == nil {
+			p = i.reader.ShardPostings(p, fpFilter)
+		}
+	} else {
+		p, err = PostingsForMatchers(i.reader, fpFilter, matchers...)
+	}
 	if err != nil {
 		return err
 	}
+	defer p.Close()
 	return fn(p)
 }
 
@@ -285,15 +386,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 	if f := i.getChunkFilter(); f != nil {
 		filterer = f.ForRequest(ctx)
 	}
-	var err error
-	if filterer != nil {
-		// We need to fetch labels to pass to the filterer, even though we don't look at them in the callback.
-		err = i.forSeriesAndLabels(ctx, fpFilter, filterer, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-			return addChunksToResult(fp, chks)
-		}, matchers...)
-	} else {
-		err = i.forSeriesNoLabels(ctx, fpFilter, from, through, addChunksToResult, matchers...)
-	}
+	err := i.forSeriesNoLabels(ctx, fpFilter, filterer, from, through, addChunksToResult, matchers...)
 	return res, err
 }
 

@@ -46,9 +46,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -134,7 +134,7 @@ type Config struct {
 
 	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
 
-	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled."`
+	DelegateStreamLimits bool `yaml:"delegate_stream_limits_enabled" doc:"description=Deprecated: use the per-tenant limit delegate_stream_limits_enabled instead. It provides the default for that limit, so the ingester skips stream count limit checks for all tenants that do not set the per-tenant limit, delegating them entirely to the ingest-limits service. Requires ingest-limits service to be enabled."`
 
 	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
 }
@@ -166,7 +166,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
-	f.BoolVar(&cfg.DelegateStreamLimits, "ingester.delegate-stream-limits-enabled", false, "When enabled, the ingester skips stream count limit checks, delegating them entirely to the ingest-limits service (Thor). Requires ingest-limits service to be enabled.")
+	f.BoolVar(&cfg.DelegateStreamLimits, "ingester.delegate-stream-limits-enabled", false, "Deprecated: use the per-tenant limit -limits.delegate-stream-limits-enabled instead. It provides the default for that limit, so the ingester skips stream count limit checks for all tenants that do not set the per-tenant limit, delegating them entirely to the ingest-limits service. Requires ingest-limits service to be enabled.")
 }
 
 func (cfg *Config) Validate() error {
@@ -230,7 +230,7 @@ type Interface interface {
 	logproto.StreamDataServer
 
 	CheckReady(ctx context.Context) error
-	FlushHandler(w http.ResponseWriter, _ *http.Request)
+	FlushHandler(w http.ResponseWriter, r *http.Request)
 	FlushTenantHandler(w http.ResponseWriter, r *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
@@ -253,6 +253,10 @@ type Ingester struct {
 	instances    map[string]*instance
 	readonly     bool
 
+	// indexFlushMtx allows one flush_index request (/flush or /flush/tenant) at a
+	// time; concurrent ones are rejected rather than queued (see tryLockIndexFlush).
+	indexFlushMtx sync.Mutex
+
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
@@ -264,7 +268,8 @@ type Ingester struct {
 	tailersQuit chan struct{}
 
 	// One queue per flush thread.  Fingerprint is used to
-	// pick a queue.
+	// pick a queue, so a stream is always flushed by the same
+	// queue and only one flush op operates on it at a time.
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
@@ -354,6 +359,9 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 
 			return nil, fmt.Errorf("creating WAL folder at %q: %w", path, err)
 		}
+
+		// Must run before newWAL, which creates a segment and hides a stale checkpoint.
+		warnOnStaleCheckpoint(cfg.WAL.Dir, logger)
 	}
 
 	wal, err := newWAL(cfg.WAL, registerer, metrics, newIngesterSeriesIter(i))
@@ -382,13 +390,16 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
 			}
 		}
-		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
+		i.partitionRingLifecycler, err = ring.NewPartitionInstanceLifecycler(
 			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
 			PartitionRingName,
 			PartitionRingKey,
 			partitionRingKV,
 			logger,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+		if err != nil {
+			return nil, fmt.Errorf("creating ingester partition ring lifecycler: %w", err)
+		}
 
 		i.partitionReader, err = partition.NewReaderService(
 			cfg.KafkaIngestion.KafkaConfig,
@@ -478,7 +489,14 @@ func (i *Ingester) setupAutoForget() {
 		defer ticker.Stop()
 
 		var forgetList []string
-		for range ticker.C {
+		for {
+			select {
+			case <-ticker.C:
+			case <-i.loopQuit:
+				// the ring entry goes away with the ingester, nothing left to clean
+				return
+			}
+
 			err := i.lifecycler.KVStore.CAS(ctx, RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 				forgetList = forgetList[:0]
 				if in == nil {
@@ -575,15 +593,20 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		if err != nil {
 			return err
 		}
-		defer checkpointCloser.Close()
-
+		// Close readers as soon as they are consumed; otherwise their file
+		// descriptors keep deleted segments alive until starting() returns,
+		// which can take long when the partition reader is catching up.
 		checkpointRecoveryErr := RecoverCheckpoint(checkpointReader, recoverer)
+		if err := checkpointCloser.Close(); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to close checkpoint reader", "err", err)
+		}
 		if checkpointRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeCheckpoint).Inc()
 			level.Error(i.logger).Log(
 				"msg",
 				`Recovered from checkpoint with errors. Some streams were likely not recovered due to WAL checkpoint file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.`,
 				"elapsed", time.Since(start).String(),
+				"err", checkpointRecoveryErr,
 			)
 		}
 		level.Info(i.logger).Log(
@@ -597,15 +620,17 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		if err != nil {
 			return err
 		}
-		defer segmentCloser.Close()
-
 		segmentRecoveryErr := RecoverWAL(ctx, segmentReader, recoverer)
+		if err := segmentCloser.Close(); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to close WAL segment reader", "err", err)
+		}
 		if segmentRecoveryErr != nil {
 			i.metrics.walCorruptionsTotal.WithLabelValues(walTypeSegment).Inc()
 			level.Error(i.logger).Log(
 				"msg",
 				"Recovered from WAL segments with errors. Some streams and/or entries were likely not recovered due to WAL segment file corruptions (or WAL file deletions while Loki is running). No administrator action is needed and data loss is only a possibility if more than (replication factor / 2 + 1) ingesters suffer from this.",
 				"elapsed", time.Since(start).String(),
+				"err", segmentRecoveryErr,
 			)
 		}
 		level.Info(i.logger).Log(
@@ -773,7 +798,7 @@ func (i *Ingester) loop() {
 	// flush at the same time. Flushing at the same time can cause concurrently
 	// writing the same chunk to object storage, which in AWS S3 leads to being
 	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG. -- nosemgrep: math-random-used
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) // #nosec G404 -- Jitter does not require a CSPRNG. -- nosemgrep: math-random-used
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
@@ -999,8 +1024,20 @@ func (i *Ingester) handleShutdown(terminate, flush, del bool) error {
 	return services.StopAndAwaitTerminated(context.Background(), i)
 }
 
+type TimestampedPush struct {
+	*logproto.PushRequest
+	// IngestedAt is the timestamp of the Kafka record the push was read from, or zero if there is none.
+	IngestedAt time.Time
+}
+
 // Push implements logproto.Pusher.
+// NOTE: gRPC pushes don't carry a record timestamp.
 func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
+	return i.PushWithTimestamp(ctx, TimestampedPush{PushRequest: req})
+}
+
+// PushWithTimestamp pushes a request along with the timestamp of the Kafka record it was read from.
+func (i *Ingester) PushWithTimestamp(ctx context.Context, push TimestampedPush) (*logproto.PushResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1022,7 +1059,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-	return &logproto.PushResponse{}, instance.Push(ctx, req)
+	return &logproto.PushResponse{}, instance.PushWithTimestamp(ctx, push)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
@@ -1174,7 +1211,26 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		attribute.String("end", req.End.String()),
 	))
 
+	// Close whatever it holds at return time. A bare defer would bind it.Close to the in-memory
+	// iterator. Nothing would then close the merge below, which owns the store iterator.
+	defer func() {
+		util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+	}()
+
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		// Both sources usually agree on a stream's identity, so the merge deduplicates a stream
+		// this ingester still holds in memory against its flushed copy. See sampleStream.hash
+		// for what the two report, and when they diverge.
+		var newMergeIterator func(context.Context, []iter.SampleIterator) iter.SampleIterator
+		switch req.Order {
+		case logproto.SAMPLE_ORDER_BY_TIMESTAMP:
+			newMergeIterator = iter.NewTimestampFirstMergeSampleIterator
+		case logproto.SAMPLE_ORDER_BY_STREAM:
+			newMergeIterator = iter.NewStreamFirstMergeSampleIterator
+		default:
+			return fmt.Errorf("unknown sample order %v", req.Order)
+		}
+
 		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 			Start:    start,
 			End:      end,
@@ -1182,19 +1238,17 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 			Shards:   req.Shards,
 			Deletes:  req.Deletes,
 			Plan:     req.Plan,
+			Order:    req.Order,
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
-			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
 
-		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+		it = newMergeIterator(ctx, []iter.SampleIterator{it, storeItr})
 	}
 
-	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-
-	return sendSampleBatches(ctx, it, queryServer)
+	return sendSampleBatches(ctx, it, queryServer, req.Order)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is `tsdb`.
@@ -1380,7 +1434,6 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
 		var storeSeries []logproto.SeriesIdentifier
-		var parsed syntax.Expr
 
 		groups := []string{""}
 		if len(req.Groups) != 0 {
@@ -1388,6 +1441,7 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		}
 
 		for _, group := range groups {
+			var parsed syntax.Expr
 			if group != "" {
 				parsed, err = syntax.ParseExpr(group)
 				if err != nil {

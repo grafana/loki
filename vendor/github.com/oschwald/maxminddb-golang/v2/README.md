@@ -93,6 +93,40 @@ ip := netip.MustParseAddr("1.2.3.4")
 err = db.Lookup(ip).Decode(&record)
 ```
 
+### Untrusted Database Files
+
+Call `Reader.Verify` once immediately after opening an untrusted database and
+before performing lookups or decoding records:
+
+```go
+if err := db.Verify(); err != nil {
+	log.Fatal(err)
+}
+```
+
+Verification applies to the database contents at the time of the call. Keep
+those contents immutable for the Reader's lifetime: do not modify a slice
+passed to `OpenBytes` or rewrite or truncate a memory-mapped file in place.
+Open and verify a new Reader when publishing an updated database.
+
+Reflection decoding limits each operation to 32,768 declared container child
+slots; map keys and values each consume one slot. Maps and slices reserve their
+children before allocation or traversal. Materialized string and byte payloads
+also have an operation-wide bound: every delivered payload byte draws from a
+shared 2 MiB allowance. Materialized map keys and keys inspected by `DecodePath`
+draw their full size from the same payload allowance.
+
+Decoding into `any` activates these limits even when the root is a scalar. A
+standalone scalar decoded into a directly typed destination or a named
+empty-interface type remains unbudgeted because it cannot amplify.
+A non-empty `DecodePath` shares one set of limits between path navigation and
+the selected value. Skipping an unknown field still charges any inline
+containers, but does not follow pointer targets or charge payload that is not
+materialized. Custom unmarshalers and low-level cursor traversal control and
+must bound their own work; `Reader.Verify` validates the complete data section
+and the original metadata graph, including unknown metadata fields, before
+those APIs are used with untrusted input.
+
 ### Custom Struct Decoding
 
 ```go
@@ -104,11 +138,26 @@ type City struct {
 			German  string `maxminddb:"de"`
 		} `maxminddb:"names"`
 	} `maxminddb:"country"`
+	Subdivisions []struct {
+		ISOCode string `maxminddb:"iso_code"`
+	} `maxminddb:"subdivisions,maxsize:32"`
 }
 
 var city City
 err = db.Lookup(ip).Decode(&city)
 ```
+
+The `maxsize:N` tag option rejects a matching MMDB map or array with more than
+`N` entries, or a matching string or byte value with more than `N` bytes. An
+MMDB array decoded into `[]byte` is covered as well. The check happens before
+the matching field is allocated or mutated and is supported by both reflection
+decoding and `maxminddb-gen`. Tag options use the `encoding/json/v2` comma and
+colon grammar, for example `maxminddb:"subdivisions,maxsize:32"`. Because a
+comma delimits options, quote a literal field name containing a comma with the
+same grammar, for example `maxminddb:"'city,name'"`. For a supported custom
+field type, `maxsize` checks every size-bearing MMDB kind (map, array, string,
+and bytes) before invoking the unmarshaler because the encodings accepted by a
+callback cannot be inferred from its Go type.
 
 ### High-Performance Custom Unmarshaling
 
@@ -145,6 +194,12 @@ The older `UnmarshalMaxMindDB(*mmdbdata.Decoder) error` callback is deprecated.
 It remains supported throughout v2 but is planned for removal in v3; see
 [GitHub #224](https://github.com/oschwald/maxminddb-golang/issues/224). When a
 type implements both callbacks, `UnmarshalMaxMindDBCursor` takes precedence.
+
+Custom unmarshalers control their own traversal and allocation. If a database
+is not trusted, an implementation should use one aggregate per-record work
+budget across nested calls. The budget should cover recursion, collection
+entries, repeated pointer targets, and produced string or byte payloads; the
+reflection decoder's expansion guard is not applied inside custom callbacks.
 
 ```go
 type Label string
@@ -234,6 +289,18 @@ regardless of the data provider.
 4. **Consider caching**: Use `Result.Offset()` as a cache key for database
    records
 
+Standalone `mmdbdata.NewDecoder` calls do not cache strings by default. For a
+decoder that repeatedly reads the same strings, pass `mmdbdata.WithStringCache()`.
+The decoder and its cursors share the cache. Use `decoder.CursorAt(offset)` to
+read different records from the same buffer without constructing a new decoder
+or changing its position. Independent cursors can be read concurrently. Keep the
+input buffer unchanged while a cached decoder or any of its cursors are in use.
+Separate `NewDecoder` calls do not share caches.
+
+On 64-bit systems, the table allocates 72 KiB when the first string of 2 through
+100 bytes is read, plus memory for retained strings. Reader-supplied decoders
+and cursors use the Reader's caching policy.
+
 ## Getting Database Files
 
 ### Free GeoLite2 Databases
@@ -248,13 +315,37 @@ Download from
 
 ## Requirements
 
-- Go 1.25 or later
+- Go 1.26 or later
 - MaxMind DB file in .mmdb format
 
 ## Contributing
 
 Contributions welcome! Please fork the repository and open a pull request with
 your changes.
+
+### Cache Benchmarks
+
+The real-City benchmarks use `GeoLite2-City.mmdb` in the current directory or
+the path in `MAXMIND_REAL_CITY_DB`. They need a full City database and skip when
+the default file is absent. An invalid explicit path fails the benchmark.
+
+Measure lookup time and allocations without instrumentation:
+
+```sh
+MAXMIND_REAL_CITY_DB=/path/to/GeoIP2-City.mmdb go test -run '^$' -bench '^BenchmarkRealCityCache$' -benchmem
+```
+
+Measure cache hit rates separately:
+
+```sh
+MAXMIND_REAL_CITY_DB=/path/to/GeoIP2-City.mmdb go test -tags cachemetrics -run '^$' -bench '^BenchmarkRealCityCacheHitRate$'
+```
+
+The `cachemetrics` build adds shared counters and suppresses benchmark timing.
+Use its hit-rate results separately from uninstrumented timings.
+`BenchmarkStringCacheHotHome` exercises the home-slot fast path;
+`BenchmarkStringCacheHotDisplaced` exercises bucket scanning. Neither
+microbenchmark represents a full database lookup.
 
 ## License
 

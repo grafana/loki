@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	conntrack "github.com/mwitkow/go-conntrack"
 	"github.com/prometheus/common/model"
 )
 
@@ -37,6 +38,7 @@ type HTTPConfig struct {
 	Transport http.RoundTripper `yaml:"-"`
 
 	TLSConfig          TLSConfig `yaml:"tls_config"`
+	ForceAttemptHTTP2  bool      `yaml:"force_attempt_http2"`
 	DisableCompression bool      `yaml:"disable_compression"`
 }
 
@@ -51,14 +53,21 @@ func DefaultTransport(config HTTPConfig) (*http.Transport, error) {
 	}
 	tlsConfig.InsecureSkipVerify = config.InsecureSkipVerify
 
-	return &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-			DualStack: true,
-		}).DialContext,
+	dialFn := (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+		DualStack: true,
+	}).DialContext
+	// conntrack exports metrics for every connection attempted, failed, etc.
+	dialFn = conntrack.NewDialContextFunc(
+		conntrack.DialWithDialContextFunc(dialFn),
+		// Can be overwritten with conntrack.DialNameToContext.
+		conntrack.DialWithName("objstore"),
+	)
 
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialFn,
 		MaxIdleConns:          config.MaxIdleConns,
 		MaxIdleConnsPerHost:   config.MaxIdleConnsPerHost,
 		IdleConnTimeout:       time.Duration(config.IdleConnTimeout),
@@ -74,6 +83,7 @@ func DefaultTransport(config HTTPConfig) (*http.Transport, error) {
 		// content-encoding set to `gzip`.
 		//
 		// Refer: https://golang.org/src/net/http/transport.go?h=roundTrip#L1843.
-		TLSClientConfig: tlsConfig,
+		TLSClientConfig:   tlsConfig,
+		ForceAttemptHTTP2: config.ForceAttemptHTTP2,
 	}, nil
 }

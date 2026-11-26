@@ -10,6 +10,8 @@ const MAP_HASSEMAPHORE = 512
 
 const S_IFWHT = 57344
 
+const TIOCSTI = 2147578994
+
 const TMP_MAX = 308915776
 
 type Tin_addr_t = uint32

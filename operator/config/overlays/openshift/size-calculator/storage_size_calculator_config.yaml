@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: storage-size-calculator-ca-bundle
-  annotations:
-    "service.beta.openshift.io/inject-cabundle": "true"

@@ -85,7 +85,7 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 | eqcsfield | Field Equals Another Field (relative)|
 | eqfield | Field Equals Another Field |
 | fieldcontains | Check the indicated characters are present in the Field |
-| fieldexcludes | Check the indicated characters are not present in the field |
+| fieldexcludes | Current field does not contain another field's value |
 | gtcsfield | Field Greater Than Another Relative Field |
 | gtecsfield | Field Greater Than or Equal To Another Relative Field |
 | gtefield | Field Greater Than or Equal To Another Field |
@@ -132,6 +132,7 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 | origin | Web origin (URL with HTTP(S) scheme and host, but no path/query/fragment) |
 | url_encoded | URL Encoded |
 | urn_rfc2141 | Urn RFC 2141 String |
+| urn_rfc8141 | Urn RFC 8141 String |
 
 ### Strings:
 
@@ -180,6 +181,7 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 | cron | Cron |
 | spicedb | SpiceDb ObjectID/Permission/Type |
 | datetime | Datetime |
+| duration | Duration string (Go time.ParseDuration format) |
 | e164 | e164 formatted phone number |
 | ein | U.S. Employer Identification Number |
 | email | E-mail String
@@ -218,6 +220,7 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 | uuid4_rfc4122 | Universally Unique Identifier UUID v4 RFC4122 |
 | uuid5 | Universally Unique Identifier UUID v5 |
 | uuid5_rfc4122 | Universally Unique Identifier UUID v5 RFC4122 |
+| uuid7 | Universally Unique Identifier UUID v7 |
 | uuid_rfc4122 | Universally Unique Identifier UUID RFC4122 |
 | md4 | MD4 hash |
 | md5 | MD5 hash |
@@ -282,6 +285,7 @@ validate := validator.New(validator.WithRequiredStructEnabled())
 | - | - |
 | iscolor | hexcolor\|rgb\|rgba\|hsl\|hsla\|cmyk |
 | country_code | iso3166_1_alpha2\|iso3166_1_alpha3\|iso3166_1_alpha_numeric |
+| eu_country_code | iso3166_1_alpha2_eu\|iso3166_1_alpha3_eu\|iso3166_1_alpha_numeric_eu |
 
 Benchmarks
 ------

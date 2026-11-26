@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/prometheus/procfs/internal/util"
+	"github.com/prometheus/procfs/internal/parsers"
 )
 
 // CPUInfo contains general information about a system CPU found in /proc/cpuinfo.
@@ -65,7 +65,7 @@ var (
 // CPUInfo returns information about current system CPUs.
 // See https://www.kernel.org/doc/Documentation/filesystems/proc.txt
 func (fs FS) CPUInfo() ([]CPUInfo, error) {
-	data, err := util.ReadFileNoStat(fs.proc.Path("cpuinfo"))
+	data, err := parsers.ReadFileNoStat(fs.proc.Path("cpuinfo"))
 	if err != nil {
 		return nil, err
 	}
@@ -187,6 +187,24 @@ func parseCPUInfoX86(info []byte) ([]CPUInfo, error) {
 	return cpuinfo, nil
 }
 
+func formatSteppingARM(variant, revision string) string {
+	if variant == "" && revision == "" {
+		return ""
+	}
+	varNum, errV := strconv.ParseUint(variant, 0, 64)
+	revNum, errR := strconv.ParseUint(revision, 0, 64)
+	if errV == nil && errR == nil {
+		return fmt.Sprintf("r%dp%d", varNum, revNum)
+	}
+	if errV == nil {
+		return fmt.Sprintf("r%d", varNum)
+	}
+	if errR == nil {
+		return fmt.Sprintf("p%d", revNum)
+	}
+	return fmt.Sprintf("r%sp%s", variant, revision)
+}
+
 func parseCPUInfoARM(info []byte) ([]CPUInfo, error) {
 	scanner := bufio.NewScanner(bytes.NewReader(info))
 
@@ -194,12 +212,13 @@ func parseCPUInfoARM(info []byte) ([]CPUInfo, error) {
 	match, err := regexp.MatchString("^[Pp]rocessor", firstLine)
 	if !match || !strings.Contains(firstLine, ":") {
 		return nil, fmt.Errorf("%w: Cannot parse line: %q: %w", ErrFileParse, firstLine, err)
-
 	}
 	field := strings.SplitN(firstLine, ": ", 2)
 	cpuinfo := []CPUInfo{}
 	featuresLine := ""
 	commonCPUInfo := CPUInfo{}
+	variants := make(map[int]string)
+	revisions := make(map[int]string)
 	i := 0
 	if strings.TrimSpace(field[0]) == "Processor" {
 		commonCPUInfo = CPUInfo{ModelName: field[1]}
@@ -219,6 +238,9 @@ func parseCPUInfoARM(info []byte) ([]CPUInfo, error) {
 			continue
 		}
 		field := strings.SplitN(line, ": ", 2)
+		if len(field) < 2 {
+			continue
+		}
 		switch strings.TrimSpace(field[0]) {
 		case "processor":
 			cpuinfo = append(cpuinfo, commonCPUInfo) // start of the next processor
@@ -242,15 +264,75 @@ func parseCPUInfoARM(info []byte) ([]CPUInfo, error) {
 		case "Features":
 			featuresLine = line
 		case "model name":
-			cpuinfo[i].ModelName = field[1]
+			if i == -1 {
+				commonCPUInfo.ModelName = field[1]
+			} else {
+				cpuinfo[i].ModelName = field[1]
+			}
+		case "CPU implementer", "cpu implementer":
+			val := strings.TrimSpace(field[1])
+			if i == -1 {
+				commonCPUInfo.VendorID = val
+			} else {
+				cpuinfo[i].VendorID = val
+			}
+		case "CPU architecture", "cpu architecture":
+			val := strings.TrimSpace(field[1])
+			if i == -1 {
+				commonCPUInfo.CPUFamily = val
+			} else {
+				cpuinfo[i].CPUFamily = val
+			}
+		case "CPU part", "cpu part":
+			val := strings.TrimSpace(field[1])
+			if i == -1 {
+				commonCPUInfo.Model = val
+			} else {
+				cpuinfo[i].Model = val
+			}
+		case "CPU variant", "cpu variant":
+			variants[i] = strings.TrimSpace(field[1])
+		case "CPU revision", "cpu revision":
+			revisions[i] = strings.TrimSpace(field[1])
 		}
 	}
-	fields := strings.SplitN(featuresLine, ": ", 2)
-	for i := range cpuinfo {
-		cpuinfo[i].Flags = strings.Fields(fields[1])
+
+	for j := range cpuinfo {
+		stepping := formatSteppingARM(variants[j], revisions[j])
+		if stepping == "" {
+			stepping = formatSteppingARM(variants[-1], revisions[-1])
+		}
+		cpuinfo[j].Stepping = stepping
+	}
+
+	if len(cpuinfo) > 0 && cpuinfo[0].VendorID == "" && cpuinfo[len(cpuinfo)-1].VendorID != "" {
+		last := cpuinfo[len(cpuinfo)-1]
+		for j := range cpuinfo {
+			if cpuinfo[j].VendorID == "" {
+				cpuinfo[j].VendorID = last.VendorID
+			}
+			if cpuinfo[j].CPUFamily == "" {
+				cpuinfo[j].CPUFamily = last.CPUFamily
+			}
+			if cpuinfo[j].Model == "" {
+				cpuinfo[j].Model = last.Model
+			}
+			if cpuinfo[j].Stepping == "" {
+				cpuinfo[j].Stepping = last.Stepping
+			}
+		}
+	}
+
+	if featuresLine != "" {
+		fields := strings.SplitN(featuresLine, ": ", 2)
+		if len(fields) > 1 {
+			flags := strings.Fields(fields[1])
+			for i := range cpuinfo {
+				cpuinfo[i].Flags = flags
+			}
+		}
 	}
 	return cpuinfo, nil
-
 }
 
 func parseCPUInfoS390X(info []byte) ([]CPUInfo, error) {

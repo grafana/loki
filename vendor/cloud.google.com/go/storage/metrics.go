@@ -17,6 +17,7 @@ package storage
 import (
 	"context"
 	"crypto/tls"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptrace"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -35,10 +37,12 @@ import (
 	"cloud.google.com/go/iam/apiv1/iampb"
 	"cloud.google.com/go/storage/internal"
 	mexporter "github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/detectors/gcp"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.opentelemetry.io/otel/sdk/resource"
 
@@ -47,6 +51,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 )
@@ -68,11 +73,11 @@ type clientMetrics struct {
 	ttfb                      metric.Float64Histogram
 	errors                    metric.Int64Counter
 	activeRequests            metric.Int64UpDownCounter
-	gfeHeaderMissing          metric.Int64Counter
+	serverUnreached           metric.Int64Counter
 	dnsLookupDuration         metric.Float64Histogram
 	tcpConnectDuration        metric.Float64Histogram
 	tlsHandshakeDuration      metric.Float64Histogram
-	gfeDuration               metric.Float64Histogram
+	serverDuration            metric.Float64Histogram
 	credentialRefreshDuration metric.Float64Histogram
 	networkBytesSent          metric.Int64Counter
 	networkBytesReceived      metric.Int64Counter
@@ -124,12 +129,10 @@ func newMetricsGCMExporter(ctx context.Context, projectID string) (sdkmetric.Exp
 		mexporter.WithMetricDescriptorTypeFormatter(func(m metricdata.Metrics) string {
 			return formatMetricWithPrefix(m, customMetricPrefix)
 		}),
-		// The OTel GCP exporter drops any resource attributes that don't map to the
-		// target MonitoredResource (currently generic_node).
-		// We use WithFilteredResourceAttributes returning true to ensure that ANY
-		// resource attributes not in the MonitoredResource schema (like gcp.client.*,
-		// or gcp detector attributes not supported by generic_node) are preserved
-		// as metric labels instead of being dropped.
+		// The OTel GCP exporter drops resource attributes that don't map to the
+		// target MonitoredResource (currently generic_node). WithFilteredResourceAttributes
+		// keeps an allowlist of attributes (see keepFilteredResourceAttribute) as metric
+		// labels and drops the rest to stay under the Cloud Monitoring label limit.
 		//
 		// TODO: When storage_client node is allowlisted in Monarch
 		// (google3/configs/monitoring/cloud_pulse_monarch/storage/storage_client.proto),
@@ -137,28 +140,39 @@ func newMetricsGCMExporter(ctx context.Context, projectID string) (sdkmetric.Exp
 		// mexporter.WithCreateServiceTimeSeries(),
 		// mexporter.WithMonitoredResourceDescription("storage.googleapis.com/Client", []string{"project_id", "location", "cloud_platform", "host_id", "instance_id", "api"}),
 		mexporter.WithFilteredResourceAttributes(func(kv attribute.KeyValue) bool {
-			key := string(kv.Key)
-			// Keep our custom gcp.client.* attributes as labels
-			if strings.HasPrefix(key, "gcp.client.") {
-				return true
-			}
-			// Keep attributes that can later be mapped to the storage.googleapis.com/Client
-			// MonitoredResource schema in Monarch.
-			switch key {
-			case "cloud.platform",
-				"cloud.region",
-				"cloud.availability_zone",
-				"host.id":
-				return true
-			}
-			// Drop the rest to avoid hitting the Cloud Monitoring label limit.
-			return false
+			return keepFilteredResourceAttribute(string(kv.Key))
 		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("storage: creating GCM exporter: %w", err)
 	}
 	return exporter, nil
+}
+
+// keepFilteredResourceAttribute reports whether an OpenTelemetry Resource
+// attribute key should be retained by the GCM exporter (either to map onto the
+// storage.googleapis.com/Client MonitoredResource or to be promoted to a base
+// metric label via gcp.client.*).
+func keepFilteredResourceAttribute(key string) bool {
+	if strings.HasPrefix(key, "gcp.client.") {
+		return true
+	}
+	switch key {
+	case "cloud.platform", "cloud.region", "host.id":
+		return true
+	}
+	return false
+}
+
+// metricBaseLabels returns the client identity resource attributes (including
+// a per-client UUID) promoted to base metric labels by keepFilteredResourceAttribute.
+func metricBaseLabels() []attribute.KeyValue {
+	return []attribute.KeyValue{
+		attribute.String("gcp.client.version", internal.Version),
+		attribute.String("gcp.client.service", "storage"),
+		attribute.String("gcp.client.artifact", "cloud.google.com/go/storage"),
+		attribute.String("gcp.client.instance_id", uuid.New().String()),
+	}
 }
 
 // initMetrics initializes clientMetrics with a meter provider and registered exporter.
@@ -187,15 +201,9 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 
 		reader := sdkmetric.NewPeriodicReader(&exporterLogSuppressor{Exporter: exporter}, sdkmetric.WithInterval(interval))
 
-		// Static common attributes are defined as Resource Attributes.
 		res, err := resource.New(ctx,
 			resource.WithDetectors(gcp.NewDetector()),
-			resource.WithAttributes(
-				attribute.String("gcp.client.version", internal.Version),
-				attribute.String("gcp.client.service", "storage"),
-				attribute.String("gcp.client.repo", "googleapis/google-cloud-go"),
-				attribute.String("gcp.client.artifact", "cloud.google.com/go/storage"),
-			),
+			resource.WithAttributes(metricBaseLabels()...),
 		)
 		if err != nil {
 			return nil, nil, fmt.Errorf("storage: creating metrics resource: %w", err)
@@ -204,6 +212,7 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 		provider = sdkmetric.NewMeterProvider(
 			sdkmetric.WithReader(reader),
 			sdkmetric.WithResource(res),
+			sdkmetric.WithExemplarFilter(exemplar.TraceBasedFilter),
 			sdkmetric.WithView(
 				sdkmetric.NewView(
 					sdkmetric.Instrument{Name: "rpc.client.call.duration", Kind: sdkmetric.InstrumentKindHistogram},
@@ -218,7 +227,7 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 					sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: latencyHistogramBoundaries()}},
 				),
 				sdkmetric.NewView(
-					sdkmetric.Instrument{Name: "gcp.storage.client.operation.ttfb", Kind: sdkmetric.InstrumentKindHistogram},
+					sdkmetric.Instrument{Name: "gcp.storage.client.ttfb", Kind: sdkmetric.InstrumentKindHistogram},
 					sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: latencyHistogramBoundaries()}},
 				),
 				sdkmetric.NewView(
@@ -242,11 +251,15 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 					sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: latencyHistogramBoundaries()}},
 				),
 				sdkmetric.NewView(
-					sdkmetric.Instrument{Name: "gcp.storage.client.gfe.duration", Kind: sdkmetric.InstrumentKindHistogram},
+					sdkmetric.Instrument{Name: "gcp.storage.client.server.duration", Kind: sdkmetric.InstrumentKindHistogram},
 					sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: latencyHistogramBoundaries()}},
 				),
 				sdkmetric.NewView(
 					sdkmetric.Instrument{Name: "gcp.storage.client.auth.credential_refresh.duration", Kind: sdkmetric.InstrumentKindHistogram},
+					sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: latencyHistogramBoundaries()}},
+				),
+				sdkmetric.NewView(
+					sdkmetric.Instrument{Name: "gcp.storage.client.stall.duration", Kind: sdkmetric.InstrumentKindHistogram},
 					sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{Boundaries: latencyHistogramBoundaries()}},
 				),
 			),
@@ -286,7 +299,7 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 	operations, err := meter.Int64Counter(
 		"gcp.storage.client.operations",
 		metric.WithDescription("Number of GCS client operations"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{operation}"),
 	)
 	if err != nil {
 		return nil, nil, err
@@ -295,7 +308,7 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 	attempts, err := meter.Int64Counter(
 		"gcp.storage.client.attempts",
 		metric.WithDescription("Number of GCS client attempts"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{attempt}"),
 	)
 	if err != nil {
 		return nil, nil, err
@@ -320,7 +333,7 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 	}
 
 	ttfb, err := meter.Float64Histogram(
-		"gcp.storage.client.operation.ttfb",
+		"gcp.storage.client.ttfb",
 		metric.WithDescription("Time to first byte of GCS client operations"),
 		metric.WithUnit("s"),
 	)
@@ -331,18 +344,26 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 	errors, err := meter.Int64Counter(
 		"gcp.storage.client.errors",
 		metric.WithDescription("Number of GCS client errors"),
-		metric.WithUnit("1"),
+		metric.WithUnit("{error}"),
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	serverUnreached, err := meter.Int64Counter(
+		"gcp.storage.client.server.unreached",
+		metric.WithDescription("Number of GCS requests that did not reach a Cloud Storage server"),
+		metric.WithUnit("{request}"),
 	)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var activeRequests metric.Int64UpDownCounter
-	var gfeHeaderMissing metric.Int64Counter
 	var dnsLookupDuration metric.Float64Histogram
 	var tcpConnectDuration metric.Float64Histogram
 	var tlsHandshakeDuration metric.Float64Histogram
-	var gfeDuration metric.Float64Histogram
+	var serverDuration metric.Float64Histogram
 	var credentialRefreshDuration metric.Float64Histogram
 
 	var networkBytesSent metric.Int64Counter
@@ -351,8 +372,8 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 
 	if isOtelDebugMetricsEnabled(config) {
 		networkBytesSent, err = meter.Int64Counter(
-			"gcp.storage.client.network.egress_bytes_count",
-			metric.WithDescription("Total physical bytes sent over the wire socket (gRPC only)."),
+			"gcp.storage.client.network.bytes.sent",
+			metric.WithDescription("Total physical bytes sent over the wire socket (gRPC only)"),
 			metric.WithUnit("By"),
 		)
 		if err != nil {
@@ -360,8 +381,8 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 		}
 
 		networkBytesReceived, err = meter.Int64Counter(
-			"gcp.storage.client.network.ingress_bytes_count",
-			metric.WithDescription("Total physical bytes received over the wire socket (gRPC only)."),
+			"gcp.storage.client.network.bytes.received",
+			metric.WithDescription("Total physical bytes received over the wire socket (gRPC only)"),
 			metric.WithUnit("By"),
 		)
 		if err != nil {
@@ -370,7 +391,7 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 
 		stallDuration, err = meter.Float64Histogram(
 			"gcp.storage.client.stall.duration",
-			metric.WithDescription("Duration a connection was stalled waiting for the first byte before being aborted."),
+			metric.WithDescription("Stall timeout duration before a read or write attempt was aborted"),
 			metric.WithUnit("s"),
 		)
 		if err != nil {
@@ -379,25 +400,16 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 
 		credentialRefreshDuration, err = meter.Float64Histogram(
 			"gcp.storage.client.auth.credential_refresh.duration",
-			metric.WithDescription("Duration of the background API/network calls made to refresh OAuth2/JWT access credentials."),
+			metric.WithDescription("Time taken to refresh access credentials"),
 			metric.WithUnit("s"),
 		)
 		if err != nil {
 			return nil, nil, err
 		}
 		activeRequests, err = meter.Int64UpDownCounter(
-			"gcp.storage.client.active_requests",
+			"gcp.storage.client.request.active",
 			metric.WithDescription("Number of active GCS client requests"),
-			metric.WithUnit("1"),
-		)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		gfeHeaderMissing, err = meter.Int64Counter(
-			"gcp.storage.client.gfe.header_missing",
-			metric.WithDescription("Number of GCS requests where the X-Goog-Gfe-Service-Time header was missing"),
-			metric.WithUnit("1"),
+			metric.WithUnit("{request}"),
 		)
 		if err != nil {
 			return nil, nil, err
@@ -430,9 +442,9 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 			return nil, nil, err
 		}
 
-		gfeDuration, err = meter.Float64Histogram(
-			"gcp.storage.client.gfe.duration",
-			metric.WithDescription("GFE proxy processing time"),
+		serverDuration, err = meter.Float64Histogram(
+			"gcp.storage.client.server.duration",
+			metric.WithDescription("Server-reported request processing time"),
 			metric.WithUnit("s"),
 		)
 		if err != nil {
@@ -452,11 +464,11 @@ func initMetrics(ctx context.Context, projectID string, config *storageConfig) (
 		ttfb:                      ttfb,
 		errors:                    errors,
 		activeRequests:            activeRequests,
-		gfeHeaderMissing:          gfeHeaderMissing,
+		serverUnreached:           serverUnreached,
 		dnsLookupDuration:         dnsLookupDuration,
 		tcpConnectDuration:        tcpConnectDuration,
 		tlsHandshakeDuration:      tlsHandshakeDuration,
-		gfeDuration:               gfeDuration,
+		serverDuration:            serverDuration,
 		credentialRefreshDuration: credentialRefreshDuration,
 		networkBytesSent:          networkBytesSent,
 		networkBytesReceived:      networkBytesReceived,
@@ -517,6 +529,24 @@ func grpcCodeToString(code codes.Code) string {
 	}
 }
 
+// isServerChecksumError reports whether err is the service rejecting a
+// request because a CRC32C or MD5 checksum did not match, for example
+// "Object crc32c mismatch: ..." (gRPC InvalidArgument) or
+// "Provided CRC32C \"...\" doesn't match calculated CRC32C \"...\"" (HTTP 400).
+func isServerChecksumError(err error, errStr string) bool {
+	if !(strings.Contains(errStr, "crc32c") || strings.Contains(errStr, "md5")) || !strings.Contains(errStr, "match") {
+		return false
+	}
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) && apiErr.Code == http.StatusBadRequest {
+		return true
+	}
+	if st, ok := status.FromError(err); ok {
+		return st.Code() == codes.InvalidArgument || st.Code() == codes.DataLoss
+	}
+	return false
+}
+
 // computeErrorType maps the request result to the standard error.type values.
 func computeErrorType(err error, isHTTP bool, statusCode int64) string {
 	if err == nil {
@@ -526,57 +556,82 @@ func computeErrorType(err error, isHTTP bool, statusCode int64) string {
 		return "OK"
 	}
 
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return "OK"
 	}
 
 	errStr := strings.ToLower(err.Error())
 
-	if err == context.Canceled || strings.Contains(errStr, "context canceled") {
+	if errors.Is(err, context.Canceled) || strings.Contains(errStr, "context canceled") {
 		return "CANCELLED"
 	}
 
-	if err == context.DeadlineExceeded || strings.Contains(errStr, "deadline exceeded") || strings.Contains(errStr, "timeout") {
+	// gRPC reports a client-side deadline as a DeadlineExceeded status with
+	// this message; other DeadlineExceeded statuses come from the service.
+	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(errStr, "context deadline exceeded") {
 		return "TIMEOUT"
 	}
 
-	if strings.Contains(errStr, "checksum") || strings.Contains(errStr, "mismatch") {
+	// The not-found sentinels are returned without an underlying status, for
+	// example by the HTTP XML reader on a 404 response.
+	if errors.Is(err, ErrObjectNotExist) || errors.Is(err, ErrBucketNotExist) {
+		return "NOT_FOUND"
+	}
+
+	if errors.Is(err, errChecksumMismatch) || isServerChecksumError(err, errStr) {
 		return "CHECKSUM_MISMATCH"
 	}
 
-	if strings.Contains(errStr, "auth") || strings.Contains(errStr, "credentials") || strings.Contains(errStr, "token") || strings.Contains(errStr, "key") {
-		return "AUTHENTICATION_ERROR"
-	}
-
-	if strings.Contains(errStr, "no such host") || strings.Contains(errStr, "no address") {
-		return "DNS_FAILURE"
-	}
-
-	if strings.Contains(errStr, "connection refused") || strings.Contains(errStr, "connection reset") || strings.Contains(errStr, "dial tcp") || strings.Contains(errStr, "broken pipe") || strings.Contains(errStr, "eof") {
-		return "CONNECTION_ERROR"
-	}
-
-	if strings.Contains(errStr, "tls") || strings.Contains(errStr, "certificate") || strings.Contains(errStr, "x509") {
-		return "TLS_FAILURE"
-	}
-
-	if !isHTTP {
-		if st, ok := status.FromError(err); ok && st.Code() != codes.OK {
-			return grpcCodeToString(st.Code())
-		}
-	}
-
+	// Prefer the status returned by the service over matching the error text,
+	// which can contain resource names such as "my-key" or "geofence.json".
 	if isHTTP {
 		var apiErr *googleapi.Error
-		if errors.As(err, &apiErr) {
+		if errors.As(err, &apiErr) && apiErr.Code > 0 {
 			return mapHTTPStatusCode(apiErr.Code)
 		}
 		if statusCode >= 400 {
 			return mapHTTPStatusCode(int(statusCode))
 		}
 	}
+	var grpcType string
+	if !isHTTP {
+		if st, ok := status.FromError(err); ok && st.Code() != codes.OK {
+			grpcType = grpcCodeToString(st.Code())
+			// Unknown and Unavailable are also used for client-side and
+			// network failures, which the message describes more precisely.
+			if st.Code() != codes.Unknown && st.Code() != codes.Unavailable {
+				return grpcType
+			}
+		}
+	}
 
+	if errType := errorTypeFromMessage(errStr); errType != "" {
+		return errType
+	}
+	if grpcType != "" {
+		return grpcType
+	}
 	return "UNKNOWN"
+}
+
+// errorTypeFromMessage classifies client-side and network errors by their
+// lowercase error text. It returns "" if the text matches no known class.
+func errorTypeFromMessage(errStr string) string {
+	switch {
+	case strings.Contains(errStr, "timeout"):
+		return "TIMEOUT"
+	case strings.Contains(errStr, "checksum") || strings.Contains(errStr, "mismatch"):
+		return "CHECKSUM_MISMATCH"
+	case strings.Contains(errStr, "auth") || strings.Contains(errStr, "credentials") || strings.Contains(errStr, "token") || strings.Contains(errStr, "key"):
+		return "AUTHENTICATION_ERROR"
+	case strings.Contains(errStr, "no such host") || strings.Contains(errStr, "no address"):
+		return "DNS_FAILURE"
+	case strings.Contains(errStr, "connection refused") || strings.Contains(errStr, "connection reset") || strings.Contains(errStr, "dial tcp") || strings.Contains(errStr, "broken pipe") || strings.Contains(errStr, "eof"):
+		return "CONNECTION_ERROR"
+	case strings.Contains(errStr, "tls") || strings.Contains(errStr, "certificate") || strings.Contains(errStr, "x509"):
+		return "TLS_FAILURE"
+	}
+	return ""
 }
 
 // mapHTTPStatusCode converts an HTTP status code to a canonical API error string.
@@ -591,8 +646,12 @@ func mapHTTPStatusCode(code int) string {
 		return "PERMISSION_DENIED"
 	case 404:
 		return "NOT_FOUND"
+	case 408:
+		return "DEADLINE_EXCEEDED"
 	case 409:
 		return "ABORTED"
+	case 412:
+		return "FAILED_PRECONDITION"
 	case 416:
 		return "OUT_OF_RANGE"
 	case 429:
@@ -644,12 +703,14 @@ func (cm *clientMetrics) recordRPC(ctx context.Context, method, target string, d
 	logicalMethod := methodName
 	if state != nil {
 		logicalMethod = state.method
+		state.setTarget(target)
 	}
 	attemptAttrs := make([]attribute.KeyValue, 0, 5)
 	attemptAttrs = append(attemptAttrs,
 		attribute.String("rpc.system.name", "grpc"),
 		attribute.String("rpc.method", logicalMethod),
 		attribute.Int64("rpc.grpc.status_code", statusCode),
+		attribute.String("server.address", stripPort(target)),
 		attribute.String("error.type", errorType),
 	)
 	cm.attempts.Add(ctx, 1, metric.WithAttributes(injectAPIMethod(ctx, attemptAttrs)...))
@@ -660,8 +721,8 @@ func (cm *clientMetrics) recordRPC(ctx context.Context, method, target string, d
 		errorAttrs = append(errorAttrs,
 			attribute.String("rpc.system.name", "grpc"),
 			attribute.String("rpc.method", logicalMethod),
+			attribute.String("server.address", stripPort(target)),
 			attribute.String("error.type", errorType),
-			attribute.String("gcp.errors.domain", "storage.googleapis.com"),
 		)
 		cm.errors.Add(ctx, 1, metric.WithAttributes(injectAPIMethod(ctx, errorAttrs)...))
 	}
@@ -669,7 +730,7 @@ func (cm *clientMetrics) recordRPC(ctx context.Context, method, target string, d
 	// For unary calls, record TTFB equal to the total attempt latency.
 	isStreaming := methodName == "ReadObject" || methodName == "WriteObject" || methodName == "BidiReadObject" || methodName == "BidiWriteObject"
 	if !isStreaming {
-		ttfbAttrs := []attribute.KeyValue{attribute.String("rpc.method", logicalMethod)}
+		ttfbAttrs := []attribute.KeyValue{attribute.String("rpc.system.name", "grpc"), attribute.String("rpc.method", logicalMethod), attribute.String("server.address", stripPort(target))}
 		cm.ttfb.Record(ctx, duration, metric.WithAttributes(injectAPIMethod(ctx, ttfbAttrs)...))
 	}
 }
@@ -773,11 +834,13 @@ func (rt *metricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 			attribute.String("rpc.system.name", "http"),
 			attribute.String("server.address", host),
 		)
-		rpcAttrs = metric.WithAttributes(
-			attribute.String("rpc.method", logicalMethod),
-			attribute.String("rpc.system.name", "http"),
-			attribute.String("server.address", host),
-		)
+		if rt.metrics.activeRequests != nil || rt.metrics.serverDuration != nil {
+			rpcAttrs = metric.WithAttributes(
+				attribute.String("rpc.method", logicalMethod),
+				attribute.String("rpc.system.name", "http"),
+				attribute.String("server.address", host),
+			)
+		}
 		if rt.metrics.activeRequests != nil {
 			rt.metrics.activeRequests.Add(req.Context(), 1, rpcAttrs)
 			decrementActiveRequests = true
@@ -843,12 +906,17 @@ func (rt *metricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 	errorType := computeErrorType(err, true, statusCode)
 
 	if rt.metrics != nil {
+		state := metricsStateFromContext(req.Context())
+		if state != nil {
+			state.setTarget(req.URL.Host)
+		}
 		// Record attempt.
 		attemptAttrs := make([]attribute.KeyValue, 0, 4)
 		attemptAttrs = append(attemptAttrs,
 			attribute.String("rpc.system.name", "http"),
 			attribute.String("rpc.method", logicalMethod),
 			attribute.Int64("http.response.status_code", statusCode),
+			attribute.String("server.address", stripPort(req.URL.Host)),
 			attribute.String("error.type", errorType),
 		)
 		rt.metrics.attempts.Add(req.Context(), 1, metric.WithAttributes(injectAPIMethod(req.Context(), attemptAttrs)...))
@@ -859,38 +927,20 @@ func (rt *metricsRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 			errorAttrs = append(errorAttrs,
 				attribute.String("rpc.system.name", "http"),
 				attribute.String("rpc.method", logicalMethod),
+				attribute.String("server.address", stripPort(req.URL.Host)),
 				attribute.String("error.type", errorType),
-				attribute.String("gcp.errors.domain", "storage.googleapis.com"),
 			)
 			rt.metrics.errors.Add(req.Context(), 1, metric.WithAttributes(injectAPIMethod(req.Context(), errorAttrs)...))
 		}
 
-		if rt.metrics.gfeHeaderMissing != nil {
-			headerVal := ""
-			if resp != nil {
-				headerVal = resp.Header.Get("X-Goog-Gfe-Service-Time")
-			}
-			if resp == nil || headerVal == "" {
-				missingAttrs := metric.WithAttributes(
-					attribute.String("rpc.method", logicalMethod),
-					attribute.String("rpc.system.name", "http"),
-					attribute.String("server.address", stripPort(req.URL.Host)),
-					attribute.String("error.type", errorType),
-				)
-				rt.metrics.gfeHeaderMissing.Add(req.Context(), 1, missingAttrs)
-			} else if rt.metrics.gfeDuration != nil {
-				if ms, parseErr := strconv.ParseFloat(headerVal, 64); parseErr == nil {
-					rt.metrics.gfeDuration.Record(req.Context(), ms/1000.0, rpcAttrs)
-				}
-			}
-		}
+		rt.metrics.recordHTTPServerMetrics(req.Context(), resp, logicalMethod, stripPort(req.URL.Host), errorType, rpcAttrs)
 
 		// Record TTFB.
 		isDownload := req.Method == "GET" && req.URL.Query().Get("alt") == "media"
 		isResumableInit := req.Method == "POST" && strings.Contains(req.URL.Path, "/upload/") && req.URL.Query().Get("uploadType") == "resumable"
 		if !isDownload || isResumableInit {
 			duration := time.Since(startTime).Seconds()
-			ttfbAttrs := []attribute.KeyValue{attribute.String("rpc.method", logicalMethod)}
+			ttfbAttrs := []attribute.KeyValue{attribute.String("rpc.system.name", "http"), attribute.String("rpc.method", logicalMethod), attribute.String("server.address", stripPort(req.URL.Host))}
 			rt.metrics.ttfb.Record(req.Context(), duration, metric.WithAttributes(injectAPIMethod(req.Context(), ttfbAttrs)...))
 		}
 	}
@@ -941,7 +991,7 @@ func (w *wrappedResponseBody) Read(p []byte) (n int, err error) {
 		if state != nil {
 			logicalMethod = state.method
 		}
-		w.metrics.ttfb.Record(w.req.Context(), duration, metric.WithAttributes(attribute.String("rpc.method", logicalMethod)))
+		w.metrics.ttfb.Record(w.req.Context(), duration, metric.WithAttributes(attribute.String("rpc.system.name", "http"), attribute.String("rpc.method", logicalMethod), attribute.String("server.address", stripPort(w.req.URL.Host))))
 	}
 	n, err = w.ReadCloser.Read(p)
 	if err != nil {
@@ -985,8 +1035,98 @@ func getLogicalMethod(method string) string {
 	return method
 }
 
-func (cm *clientMetrics) recordGFEMetrics(ctx context.Context, headerMD, trailerMD metadata.MD, err error, logicalMethod, target string, rpcAttrs metric.MeasurementOption) {
-	if cm.gfeHeaderMissing == nil {
+// uploadIDHeader is set on every HTTP and gRPC response served by Cloud
+// Storage via GFE (for all operations, not only uploads). metadata.MD.Get
+// lowercases its key lookup automatically, and http.Header.Get canonicalizes it.
+const uploadIDHeader = "X-GUploader-UploadID"
+
+var (
+	directPathIPv4Range = netip.MustParsePrefix("34.126.0.0/18")
+	directPathIPv6Range = netip.MustParsePrefix("2001:4860:8040::/42")
+)
+
+func isDirectPathPeer(p *peer.Peer) bool {
+	if p == nil || p.Addr == nil {
+		return false
+	}
+	var ip netip.Addr
+	if tcp, ok := p.Addr.(*net.TCPAddr); ok {
+		ip, _ = netip.AddrFromSlice(tcp.IP)
+	} else {
+		ip, _ = netip.ParseAddr(stripPort(p.Addr.String()))
+	}
+	ip = ip.Unmap()
+	return directPathIPv4Range.Contains(ip) || directPathIPv6Range.Contains(ip)
+}
+
+func isAmbiguousClientAbort(errorType string) bool {
+	switch errorType {
+	case "CANCELLED", "TIMEOUT", "DEADLINE_EXCEEDED":
+		return true
+	}
+	return false
+}
+
+func isPreServerErrorType(errorType string) bool {
+	switch errorType {
+	case "AUTHENTICATION_ERROR", "TLS_FAILURE", "DNS_FAILURE", "CONNECTION_ERROR":
+		return true
+	}
+	return false
+}
+
+// recordUnreached increments gcp.storage.client.server.unreached for an
+// attempt that is positively known not to have reached a Cloud Storage server.
+func (cm *clientMetrics) recordUnreached(ctx context.Context, system, method, host, errType string) {
+	cm.serverUnreached.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("rpc.method", method),
+		attribute.String("rpc.system.name", system),
+		attribute.String("server.address", host),
+		attribute.String("error.type", errType),
+	))
+}
+
+func (cm *clientMetrics) recordHTTPServerMetrics(ctx context.Context, resp *http.Response, logicalMethod, host, errorType string, rpcAttrs metric.MeasurementOption) {
+	if cm.serverUnreached == nil {
+		return
+	}
+	var gfeTime string
+	var reached bool
+	if resp != nil {
+		gfeTime = resp.Header.Get("X-Goog-Gfe-Service-Time")
+		reached = gfeTime != "" || resp.Header.Get(uploadIDHeader) != ""
+	}
+	if !reached {
+		if resp == nil && isAmbiguousClientAbort(errorType) {
+			return
+		}
+		cm.recordUnreached(ctx, "http", logicalMethod, host, errorType)
+		return
+	}
+	if cm.serverDuration != nil && gfeTime != "" {
+		if ms, err := strconv.ParseFloat(gfeTime, 64); err == nil {
+			cm.serverDuration.Record(ctx, ms/1000.0, rpcAttrs)
+		}
+	}
+}
+
+// grpcServerElapsed decodes the server elapsed time from the
+// grpc-server-stats-bin trailer: version byte 0, field ID 0, then the
+// elapsed time in nanoseconds as a little-endian uint64.
+func grpcServerElapsed(md metadata.MD) (time.Duration, bool) {
+	vals := md.Get("grpc-server-stats-bin")
+	if len(vals) == 0 {
+		return 0, false
+	}
+	b := []byte(vals[0])
+	if len(b) != 10 || b[0] != 0 || b[1] != 0 {
+		return 0, false
+	}
+	return time.Duration(binary.LittleEndian.Uint64(b[2:])), true
+}
+
+func (cm *clientMetrics) recordServerMetrics(ctx context.Context, headerMD, trailerMD metadata.MD, err error, logicalMethod, target string, rpcAttrs metric.MeasurementOption, p *peer.Peer) {
+	if cm.serverUnreached == nil {
 		return
 	}
 
@@ -994,23 +1134,46 @@ func (cm *clientMetrics) recordGFEMetrics(ctx context.Context, headerMD, trailer
 	if len(headerVals) == 0 {
 		headerVals = trailerMD.Get("x-goog-gfe-service-time")
 	}
-	headerVal := ""
-	if len(headerVals) > 0 {
-		headerVal = headerVals[0]
-	}
-	if headerVal == "" {
-		errType := computeErrorType(err, false, int64(status.Code(err)))
-		missingAttrs := metric.WithAttributes(
-			attribute.String("rpc.method", logicalMethod),
-			attribute.String("rpc.system.name", "grpc"),
-			attribute.String("server.address", stripPort(target)),
-			attribute.String("error.type", errType),
-		)
-		cm.gfeHeaderMissing.Add(ctx, 1, missingAttrs)
-	} else if cm.gfeDuration != nil {
-		if ms, parseErr := strconv.ParseFloat(headerVal, 64); parseErr == nil {
-			cm.gfeDuration.Record(ctx, ms/1000.0, rpcAttrs)
+	var seconds float64
+	var ok bool
+	if len(headerVals) > 0 && headerVals[0] != "" {
+		if ms, parseErr := strconv.ParseFloat(headerVals[0], 64); parseErr == nil {
+			seconds, ok = ms/1000.0, true
 		}
+	}
+	if !ok {
+		if d, found := grpcServerElapsed(trailerMD); found {
+			seconds, ok = d.Seconds(), true
+		}
+	}
+
+	errType := computeErrorType(err, false, int64(status.Code(err)))
+	hasGFEUploadID := len(headerMD.Get(uploadIDHeader)) > 0 || len(trailerMD.Get(uploadIDHeader)) > 0
+	var reached bool
+	if isDirectPathPeer(p) {
+		reached = ok || len(headerMD) > 0 || len(trailerMD) > 0 || err == nil
+	} else {
+		reached = ok || hasGFEUploadID
+	}
+
+	if !reached {
+		// On DirectPath, an error without server metadata is only proven
+		// unreached for pre-server transport/auth failures; timeouts,
+		// cancellations, or bare UNAVAILABLE ("transport is closing") are
+		// ambiguous and skipped. On CloudPath, GFE always attaches uploadIDHeader
+		// when reached, so only client-side aborts/timeouts are ambiguous.
+		if isDirectPathPeer(p) {
+			if !isPreServerErrorType(errType) {
+				return
+			}
+		} else if isAmbiguousClientAbort(errType) {
+			return
+		}
+		cm.recordUnreached(ctx, "grpc", logicalMethod, stripPort(target), errType)
+		return
+	}
+	if ok && cm.serverDuration != nil {
+		cm.serverDuration.Record(ctx, seconds, rpcAttrs)
 	}
 }
 
@@ -1025,7 +1188,7 @@ func metricsInterceptors(cm *clientMetrics) (grpc.UnaryClientInterceptor, grpc.S
 		}
 
 		var rpcAttrs metric.MeasurementOption
-		if cm.activeRequests != nil || cm.gfeHeaderMissing != nil {
+		if cm.activeRequests != nil || cm.serverDuration != nil {
 			rpcAttrs = metric.WithAttributes(
 				attribute.String("rpc.method", logicalMethod),
 				attribute.String("rpc.system.name", "grpc"),
@@ -1039,12 +1202,13 @@ func metricsInterceptors(cm *clientMetrics) (grpc.UnaryClientInterceptor, grpc.S
 		}
 
 		var headerMD, trailerMD metadata.MD
-		opts = append(opts, grpc.Header(&headerMD), grpc.Trailer(&trailerMD))
+		var p peer.Peer
+		opts = append(opts, grpc.Header(&headerMD), grpc.Trailer(&trailerMD), grpc.Peer(&p))
 
 		startTime := time.Now()
 		err := invoker(ctx, method, req, reply, cc, opts...)
 
-		cm.recordGFEMetrics(ctx, headerMD, trailerMD, err, logicalMethod, target, rpcAttrs)
+		cm.recordServerMetrics(ctx, headerMD, trailerMD, err, logicalMethod, target, rpcAttrs, &p)
 
 		duration := time.Since(startTime).Seconds()
 		cm.recordRPC(ctx, method, target, duration, err)
@@ -1060,12 +1224,14 @@ func metricsInterceptors(cm *clientMetrics) (grpc.UnaryClientInterceptor, grpc.S
 		}
 
 		var rpcAttrs metric.MeasurementOption
-		if cm.activeRequests != nil {
+		if cm.activeRequests != nil || cm.serverDuration != nil {
 			rpcAttrs = metric.WithAttributes(
 				attribute.String("rpc.method", logicalMethod),
 				attribute.String("rpc.system.name", "grpc"),
 				attribute.String("server.address", stripPort(target)),
 			)
+		}
+		if cm.activeRequests != nil {
 			cm.activeRequests.Add(ctx, 1, rpcAttrs)
 		}
 
@@ -1076,6 +1242,7 @@ func metricsInterceptors(cm *clientMetrics) (grpc.UnaryClientInterceptor, grpc.S
 			if cm.activeRequests != nil {
 				cm.activeRequests.Add(ctx, -1, rpcAttrs)
 			}
+			cm.recordServerMetrics(ctx, nil, nil, err, logicalMethod, target, rpcAttrs, nil)
 			duration := time.Since(startTime).Seconds()
 			cm.recordRPC(ctx, method, target, duration, err)
 			return nil, err
@@ -1139,7 +1306,7 @@ func (w *wrappedClientStream) record(err error) {
 		logicalMethod := getLogicalMethod(w.method)
 
 		var rpcAttrs metric.MeasurementOption
-		if w.metrics.activeRequests != nil || w.metrics.gfeHeaderMissing != nil {
+		if w.metrics.activeRequests != nil || w.metrics.serverDuration != nil {
 			rpcAttrs = metric.WithAttributes(
 				attribute.String("rpc.method", logicalMethod),
 				attribute.String("rpc.system.name", "grpc"),
@@ -1153,7 +1320,8 @@ func (w *wrappedClientStream) record(err error) {
 
 		headerMD, _ := w.ClientStream.Header()
 		trailerMD := w.ClientStream.Trailer()
-		w.metrics.recordGFEMetrics(w.ctx, headerMD, trailerMD, err, logicalMethod, w.target, rpcAttrs)
+		p, _ := peer.FromContext(w.ClientStream.Context())
+		w.metrics.recordServerMetrics(w.ctx, headerMD, trailerMD, err, logicalMethod, w.target, rpcAttrs, p)
 	}
 }
 
@@ -1172,7 +1340,7 @@ func (w *wrappedClientStream) recordTTFB(m interface{}) {
 		if state != nil {
 			logicalMethod = state.method
 		}
-		w.metrics.ttfb.Record(w.ctx, duration, metric.WithAttributes(attribute.String("rpc.method", logicalMethod)))
+		w.metrics.ttfb.Record(w.ctx, duration, metric.WithAttributes(attribute.String("rpc.system.name", "grpc"), attribute.String("rpc.method", logicalMethod), attribute.String("server.address", stripPort(w.target))))
 	}
 }
 
@@ -1188,11 +1356,39 @@ func injectAPIMethod(ctx context.Context, attrs []attribute.KeyValue) []attribut
 }
 
 type metricsState struct {
+	target    atomic.Pointer[string]
 	method    string
 	startTime time.Time
 	metrics   *clientMetrics
 	isHTTP    bool
 	record    func(error)
+}
+
+func (s *metricsState) setTarget(t string) {
+	if s == nil {
+		return
+	}
+	s.target.Store(&t)
+}
+
+func (s *metricsState) getSystemName() string {
+	if s == nil {
+		return ""
+	}
+	if s.isHTTP {
+		return "http"
+	}
+	return "grpc"
+}
+
+func (s *metricsState) getTarget() string {
+	if s == nil {
+		return ""
+	}
+	if p := s.target.Load(); p != nil {
+		return *p
+	}
+	return ""
 }
 
 func contextWithMetricsState(ctx context.Context, state *metricsState) context.Context {
@@ -1231,15 +1427,12 @@ func (cm *clientMetrics) startOperation(ctx context.Context, method string, isHT
 	record := func(err error) {
 		recordOnce.Do(func() {
 			duration := time.Since(state.startTime).Seconds()
-			statusStr := "OK"
-			if err != nil && err != io.EOF {
-				statusStr = "Error"
-			}
 			errorType := computeErrorType(err, isHTTP, 0)
 
 			attrs := []attribute.KeyValue{
+				attribute.String("rpc.system.name", state.getSystemName()),
 				attribute.String("rpc.method", method),
-				attribute.String("status", statusStr),
+				attribute.String("server.address", stripPort(state.getTarget())),
 				attribute.String("error.type", errorType),
 			}
 			opts := metric.WithAttributes(injectAPIMethod(ctx, attrs)...)

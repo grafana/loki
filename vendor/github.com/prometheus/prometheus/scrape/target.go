@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"net/url"
 	"strconv"
 	"strings"
@@ -84,6 +85,14 @@ func NewTarget(labels labels.Labels, scrapeConfig *config.ScrapeConfig, tLabels,
 		scrapeConfig: scrapeConfig,
 		health:       HealthUnknown,
 	}
+}
+
+// LogValue returns the target's representation for logging.
+func (t *Target) LogValue() slog.Value {
+	if t == nil {
+		return slog.AnyValue(nil)
+	}
+	return slog.StringValue(t.String())
 }
 
 func (t *Target) String() string {
@@ -245,9 +254,19 @@ func (t *Target) URL() *url.URL {
 		}
 	})
 
+	host := t.labels.Get(model.AddressLabel)
+	scheme := t.labels.Get(model.SchemeLabel)
+
+	// If a unix socket is configured but no address is specified, fall
+	// back to "localhost" so that the URL remains valid. The actual
+	// connection is routed through the unix socket by the DialContext.
+	if host == "" && t.labels.Get(UnixSocketLabel) != "" {
+		host = "localhost"
+	}
+
 	return &url.URL{
-		Scheme:   t.labels.Get(model.SchemeLabel),
-		Host:     t.labels.Get(model.AddressLabel),
+		Scheme:   scheme,
+		Host:     host,
 		Path:     t.labels.Get(model.MetricsPathLabel),
 		RawQuery: params.Encode(),
 	}

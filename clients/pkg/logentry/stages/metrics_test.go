@@ -1,12 +1,10 @@
 package stages
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -77,15 +75,6 @@ var testMetricLogLine2 = `
 	"time":"2012-11-01T22:08:41+00:00",
 	"app":"bloki",
     "payload": 20,
-	"component": ["parser","type"],
-	"level" : "WARN"
-}
-`
-
-var testMetricLogLineWithMissingKey = `
-{
-	"time":"2012-11-01T22:08:41+00:00",
-	"payload": 20,
 	"component": ["parser","type"],
 	"level" : "WARN"
 }
@@ -167,22 +156,6 @@ pipeline_stages:
 promtail_custom_longitude{test="app",vehicle="1"} -10.1234
 `)); err != nil {
 		t.Fatalf("mismatch metrics: %v", err)
-	}
-}
-
-func TestPipelineWithMissingKey_Metrics(t *testing.T) {
-	var buf bytes.Buffer
-	w := log.NewSyncWriter(&buf)
-	logger := log.NewLogfmtLogger(w)
-	pl, err := NewPipeline(logger, loadConfig(testMetricYaml), nil, prometheus.DefaultRegisterer)
-	if err != nil {
-		t.Fatal(err)
-	}
-	Debug = true
-	processEntries(pl, newEntry(nil, nil, testMetricLogLineWithMissingKey, time.Now()))
-	expectedLog := "level=debug msg=\"failed to convert extracted value to string, can't perform value comparison\" metric=bloki_count err=\"can't convert <nil> to string\""
-	if !(strings.Contains(buf.String(), expectedLog)) {
-		t.Errorf("\nexpected: %s\n+actual: %s", expectedLog, buf.String())
 	}
 }
 

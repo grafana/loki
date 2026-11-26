@@ -6,6 +6,7 @@
 package s2
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
@@ -139,11 +140,9 @@ func (w *Writer) Reset(writer io.Writer) {
 
 	toWrite := make(chan chan result, w.concurrency)
 	w.output = toWrite
-	w.writerWg.Add(1)
 
 	// Start a writer goroutine that will write all output in order.
-	go func() {
-		defer w.writerWg.Done()
+	w.writerWg.Go(func() {
 
 		// Get a queued write.
 		for write := range toWrite {
@@ -175,7 +174,7 @@ func (w *Writer) Reset(writer io.Writer) {
 			// This can be used for synchronizing flushes.
 			close(write)
 		}
-	}()
+	})
 }
 
 // Write satisfies the io.Writer interface.
@@ -227,12 +226,15 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 			return 0, err
 		}
 	}
-	if br, ok := r.(byter); ok {
-		buf := br.Bytes()
+	if bb, ok := r.(*bytes.Buffer); ok {
+		buf := bb.Bytes()
 		if err := w.EncodeBuffer(buf); err != nil {
 			return 0, err
 		}
-		return int64(len(buf)), w.AsyncFlush()
+		// EncodeBuffer borrows buf until Flush, and ReadFrom must consume r.
+		err := w.Flush()
+		bb.Next(len(buf))
+		return int64(len(buf)), err
 	}
 	for {
 		inbuf := w.buffers.Get().([]byte)[:w.blockSize+obufHeaderLen]
@@ -764,13 +766,12 @@ func (w *Writer) AsyncFlush() error {
 // Flush flushes the Writer to its underlying io.Writer.
 // This does not apply padding.
 func (w *Writer) Flush() error {
-	if err := w.AsyncFlush(); err != nil {
+	err := w.AsyncFlush()
+	if w.output == nil {
 		return err
 	}
-	if w.output == nil {
-		return w.err(nil)
-	}
 
+	// Wait even after an error: queued blocks may still read EncodeBuffer input.
 	// Send empty buffer
 	res := make(chan result)
 	w.output <- res
@@ -790,6 +791,7 @@ func (w *Writer) Close() error {
 }
 
 // CloseIndex calls Close and returns an index on first call.
+// It returns no index if no data was written.
 // This is not required if you are only adding index to a stream.
 func (w *Writer) CloseIndex() ([]byte, error) {
 	return w.closeIndex(true)
@@ -806,12 +808,12 @@ func (w *Writer) closeIndex(idx bool) ([]byte, error) {
 	var index []byte
 	if w.err(err) == nil && w.writer != nil {
 		// Create index.
-		if idx {
+		if idx && w.uncompWritten > 0 {
 			compSize := int64(-1)
 			if w.pad <= 1 {
 				compSize = w.written
 			}
-			index = w.index.appendTo(w.ibuf[:0], w.uncompWritten, compSize)
+			index = w.index.appendTo(w.ibuf[:0], compSize, w.uncompWritten)
 			// Count as written for padding.
 			if w.appendIndex {
 				w.written += int64(len(index))

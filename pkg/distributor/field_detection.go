@@ -2,7 +2,9 @@ package distributor
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"unicode"
@@ -39,19 +41,36 @@ var (
 
 	errKeyFound = errors.New("key found")
 
-	levelPatterns = []struct {
-		word  string
-		level string
-	}{
-		{"trace", constants.LogLevelTrace},
-		{"debug", constants.LogLevelDebug},
-		{"fatal", constants.LogLevelFatal},
-		{"critical", constants.LogLevelCritical},
-		{"error", constants.LogLevelError},
-		{"err", constants.LogLevelError},
-		{"warning", constants.LogLevelWarn},
-		{"warn", constants.LogLevelWarn},
-		{"info", constants.LogLevelInfo},
+	// Lookup tables for isLeftWordDelim and isRightWordDelim.
+	leftWordDelims = [256]bool{
+		' ':  true,
+		'\t': true,
+		'\n': true,
+		'[':  true,
+		'(':  true,
+		'{':  true,
+		'"':  true,
+		'\'': true,
+		'=':  true,
+		'|':  true,
+	}
+	rightWordDelims = [256]bool{
+		' ':  true,
+		'\t': true,
+		'\n': true,
+		'[':  true,
+		']':  true,
+		'(':  true,
+		')':  true,
+		'{':  true,
+		'}':  true,
+		':':  true,
+		',':  true,
+		'!':  true,
+		'"':  true,
+		'\'': true,
+		'=':  true,
+		'|':  true,
 	}
 )
 
@@ -93,7 +112,28 @@ func (l *FieldDetector) shouldDiscoverGenericFields() bool {
 	return l.validationContext.allowStructuredMetadata && len(l.validationContext.discoverGenericFields) > 0
 }
 
-func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
+func (l *FieldDetector) discoverFields(ctx context.Context, lbs labels.Labels, entry *logproto.Entry, structuredMetadata labels.Labels, sharedMetadata ...labels.Labels) {
+	if l.shouldDiscoverLogLevels() {
+		pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
+			logLevel, ok := l.extractLogLevel(lbs, structuredMetadata, *entry, sharedMetadata...)
+			if ok {
+				entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
+			}
+		})
+	}
+	if l.shouldDiscoverGenericFields() {
+		pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
+			for field, hints := range l.validationContext.discoverGenericFields {
+				extracted, ok := l.extractGenericField(field, hints, lbs, structuredMetadata, *entry, sharedMetadata...)
+				if ok {
+					entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+				}
+			}
+		})
+	}
+}
+
+func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry, sharedMetadata ...labels.Labels) (logproto.LabelAdapter, bool) {
 	// Check if detected_level is already present in entry.StructuredMetadata and normalize it
 	for i, sm := range entry.StructuredMetadata {
 		if sm.Name == constants.LevelLabel {
@@ -107,14 +147,21 @@ func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata
 		}
 	}
 
+	// Shared detected levels are normalized once before entries are processed.
+	for _, shared := range sharedMetadata {
+		if shared.Has(constants.LevelLabel) {
+			return logproto.LabelAdapter{}, false
+		}
+	}
+
 	levelFromLabel, hasLevelLabel := labelsContainAny(labels, l.allowedLevelLabels)
 	var logLevel string
 	if hasLevelLabel {
 		logLevel = normalizeLogLevel(levelFromLabel)
-	} else if levelFromMetadata, ok := labelsContainAny(structuredMetadata, l.allowedLevelLabels); ok {
+	} else if levelFromMetadata, ok := labelsContainAny(structuredMetadata, l.allowedLevelLabels, sharedMetadata...); ok {
 		logLevel = normalizeLogLevel(levelFromMetadata)
 	} else {
-		logLevel = l.detectLogLevelFromLogEntry(entry, structuredMetadata)
+		logLevel = l.detectLogLevelFromLogEntry(entry, structuredMetadata, sharedMetadata...)
 	}
 
 	if logLevel == "" {
@@ -126,12 +173,12 @@ func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata
 	}, true
 }
 
-func (l *FieldDetector) extractGenericField(name string, hints []string, labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
+func (l *FieldDetector) extractGenericField(name string, hints []string, labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry, sharedMetadata ...labels.Labels) (logproto.LabelAdapter, bool) {
 
 	var value string
 	if v, ok := labelsContainAny(labels, hints); ok {
 		value = v
-	} else if v, ok := labelsContainAny(structuredMetadata, hints); ok {
+	} else if v, ok := labelsContainAny(structuredMetadata, hints, sharedMetadata...); ok {
 		value = v
 	} else {
 		value = l.detectGenericFieldFromLogEntry(entry, hints)
@@ -143,10 +190,16 @@ func (l *FieldDetector) extractGenericField(name string, hints []string, labels 
 	return logproto.LabelAdapter{Name: name, Value: value}, true
 }
 
-func labelsContainAny(labels labels.Labels, names []string) (string, bool) {
+// Search hint names in order, then metadata sources in precedence order.
+func labelsContainAny(metadata labels.Labels, names []string, sharedMetadata ...labels.Labels) (string, bool) {
 	for _, name := range names {
-		if labels.Has(name) {
-			return labels.Get(name), true
+		if metadata.Has(name) {
+			return metadata.Get(name), true
+		}
+		for _, shared := range sharedMetadata {
+			if shared.Has(name) {
+				return shared.Get(name), true
+			}
 		}
 	}
 	return "", false
@@ -176,10 +229,10 @@ func normalizeLogLevel(level string) string {
 	}
 }
 
-func (l *FieldDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+func (l *FieldDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels, sharedMetadata ...labels.Labels) string {
 	// otlp logs have a severity number, using which we are defining the log levels.
 	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
-	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
+	if otlpSeverityNumberTxt, _ := labelsContainAny(structuredMetadata, []string{push.OTLPSeverityNumber}, sharedMetadata...); otlpSeverityNumberTxt != "" {
 		otlpSeverityNumber, err := strconv.Atoi(otlpSeverityNumberTxt)
 		if err != nil {
 			return constants.LogLevelInfo
@@ -345,59 +398,70 @@ func isJSON(line string) bool {
 	return firstNonSpaceChar == '{' && lastNonSpaceChar == '}'
 }
 
-// isLeftWordBoundary checks the character to the left of a potential keyword match.
-// Colons are intentionally excluded: they indicate a key:value compound (e.g. misc:error)
-// where the keyword is not a standalone log level.
-// Operates on bytes since log lines are expected to be ASCII.
-func isLeftWordBoundary(s string, pos int) bool {
-	if pos < 0 || pos >= len(s) {
-		return true
-	}
-	c := s[pos]
-	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == '(' || c == '{' || c == '"' || c == '\'' || c == '=' || c == '|'
+// isLeftWordDelim checks the character to the left of a potential match.
+// Colons are excluded as these indicate a tuple such as misc:error where
+// the level is not a separate word.
+func isLeftWordDelim(c byte) bool {
+	return leftWordDelims[c]
 }
 
-// isRightWordBoundary checks the character to the right of a potential keyword match.
-// Colons are allowed here to support "level:" prefix patterns (e.g. "debug: message").
-// Equals and quotes are allowed to support key=value and key="value" patterns.
-// Operates on bytes since log lines are expected to be ASCII.
-func isRightWordBoundary(s string, pos int) bool {
-	if pos < 0 || pos >= len(s) {
-		return true
-	}
-	c := s[pos]
-	return c == ' ' || c == '\t' || c == '\n' || c == '[' || c == ']' || c == '(' || c == ')' || c == '{' || c == '}' || c == ':' || c == ',' || c == '!' || c == '"' || c == '\'' || c == '=' || c == '|'
+// isRightWordDelim checks the character to the right of a potential match.
+// Colons are allowed here to support "level:" prefix patterns such as
+// "debug: message". Equals and quotes are allowed to match key=value and
+// key="value".
+func isRightWordDelim(c byte) bool {
+	return rightWordDelims[c]
 }
 
-func indexOfBoundedLevel(log, level string) int {
-	offset := 0
-	for {
-		pos := strings.Index(log[offset:], level)
-		if pos == -1 {
-			return -1
+// hasFullWordPrefix checks if s starts with prefix and prefix consumes all of
+// s, or the next char after a prefix is a delimiter or whitespace. This
+// function is ASCII case-insensitive, and expects prefix to contain all
+// lowercase ASCII letters.
+func hasFullWordPrefix(s, prefix string) bool {
+	if len(s) < len(prefix) {
+		return false
+	}
+	// or with 0x20 folds ASCII upper case to lower case.
+	for i := 0; i < len(prefix); i++ {
+		if s[i]|0x20 != prefix[i] {
+			return false
 		}
-		abs := offset + pos
-		if isLeftWordBoundary(log, abs-1) && isRightWordBoundary(log, abs+len(level)) {
-			return abs
-		}
-		offset = abs + 1
 	}
+	return len(s) == len(prefix) || isRightWordDelim(s[len(prefix)])
 }
 
-func detectLevelFromLogLine(log string) string {
-	lowerLog := strings.ToLower(log)
-	idx, bestGuess := len(lowerLog), constants.LogLevelUnknown
+var levelTable = [256]string{
+	'c': constants.LogLevelCritical,
+	'd': constants.LogLevelDebug,
+	'e': constants.LogLevelError,
+	'f': constants.LogLevelFatal,
+	'i': constants.LogLevelInfo,
+	't': constants.LogLevelTrace,
+	'w': constants.LogLevelWarn,
+}
 
-	for _, p := range levelPatterns {
-		pos := indexOfBoundedLevel(lowerLog, p.word)
-		if pos == -1 || pos >= idx {
+// detectLevelFromLogLine returns the first level in the log line.
+// It is zero-allocation.
+func detectLevelFromLogLine(s string) string {
+	for i := 0; i < len(s); i++ {
+		// A level must start the line or follow a left-word delimiter.
+		if i > 0 && !isLeftWordDelim(s[i-1]) {
 			continue
 		}
-		idx = pos
-		bestGuess = p.level
-		if idx == 0 {
-			break
+		// In ASCII, an upper-case letter and its lower-case form differ in the
+		// 5th bit (0x20). For example, 'E' is 0x45 and 'e' is 0x65. If we OR an
+		// ASCII uppercase letter with 0x20 it transforms it to lowercase.
+		// This means s[i]|0x20 == 'e' matches both E and e.
+		c := s[i] | 0x20
+		if level := levelTable[c]; level != "" {
+			if hasFullWordPrefix(s[i:], level) {
+				return level
+			} else if c == 'e' && hasFullWordPrefix(s[i:], "err") {
+				return constants.LogLevelError
+			} else if c == 'w' && hasFullWordPrefix(s[i:], "warning") {
+				return constants.LogLevelWarn
+			}
 		}
 	}
-	return bestGuess
+	return constants.LogLevelUnknown
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/float16"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/internal/bitutils"
 	"github.com/apache/arrow-go/v18/internal/hashing"
 	"github.com/apache/arrow-go/v18/internal/json"
 	"github.com/apache/arrow-go/v18/internal/utils"
@@ -57,6 +58,72 @@ type Dictionary struct {
 
 	indices arrow.Array
 	dict    arrow.Array
+}
+
+const maxDictionaryIndexValidRuns = 8
+
+type dictionaryIndexValidRuns struct {
+	runs       [maxDictionaryIndexValidRuns]bitutils.SetBitRun
+	count      int
+	fragmented bool
+}
+
+func findDictionaryIndexValidRuns(validBits []byte, offset, length int) dictionaryIndexValidRuns {
+	var result dictionaryIndexValidRuns
+	reader := bitutils.NewSetBitRunReader(validBits, int64(offset), int64(length))
+	for i := range result.runs {
+		run := reader.NextRun()
+		if run.AtEnd() {
+			result.count = i
+			return result
+		}
+		result.runs[i] = run
+	}
+
+	result.count = len(result.runs)
+	result.fragmented = !reader.NextRun().AtEnd()
+	return result
+}
+
+func getMinMaxRuns[T arrow.IntType | arrow.UintType](
+	values []T, offset int, runs []bitutils.SetBitRun, getMinMax func([]T) (T, T),
+) (min, max T, hasValues bool) {
+	for _, run := range runs {
+		start := offset + int(run.Pos)
+		runMin, runMax := getMinMax(values[start : start+int(run.Length)])
+		if !hasValues {
+			min, max, hasValues = runMin, runMax, true
+			continue
+		}
+		if runMin < min {
+			min = runMin
+		}
+		if runMax > max {
+			max = runMax
+		}
+	}
+	return
+}
+
+func getMinMaxValid[T arrow.IntType | arrow.UintType](
+	values []T, validBits []byte, offset, length int, getMinMax func([]T) (T, T),
+) (min, max T, hasValues bool) {
+	visitRun := func(pos, runLength int64) {
+		start := offset + int(pos)
+		runMin, runMax := getMinMax(values[start : start+int(runLength)])
+		if !hasValues {
+			min, max, hasValues = runMin, runMax, true
+			return
+		}
+		if runMin < min {
+			min = runMin
+		}
+		if runMax > max {
+			max = runMax
+		}
+	}
+	bitutils.VisitSetBitRunsNoErr(validBits, int64(offset), int64(length), visitRun)
+	return
 }
 
 // NewDictionaryArray constructs a dictionary array with the provided indices
@@ -103,55 +170,181 @@ func checkIndexBounds(indices *Data, upperlimit uint64) error {
 	start := indices.offset
 	end := indices.offset + indices.length
 
-	// TODO(ARROW-15950): lift BitSetRunReader from parquet to utils
-	// and use it here for performance improvement.
+	var validBits []byte
+	var validRuns dictionaryIndexValidRuns
+	if indices.buffers[0] != nil && indices.nulls != 0 {
+		validBits = indices.buffers[0].Bytes()
+		// Run-based min/max is useful for clustered validity. Fragmented
+		// bitmaps retain the whole-slice fast path below.
+		validRuns = findDictionaryIndexValidRuns(validBits, start, indices.length)
+	}
 
 	switch indices.dtype.ID() {
 	case arrow.INT8:
 		data := arrow.Int8Traits.CastFromBytes(indices.buffers[1].Bytes())
-		min, max := utils.GetMinMaxInt8(data[start:end])
-		if min < 0 || max >= int8(upperlimit) {
+		min, max := int8(0), int8(0)
+		hasValues := true
+		if validBits == nil {
+			min, max = utils.GetMinMaxInt8(data[start:end])
+		} else if !validRuns.fragmented {
+			min, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxInt8)
+		} else {
+			min, max = utils.GetMinMaxInt8(data[start:end])
+			if min >= 0 && uint64(max) < upperlimit {
+				return nil
+			}
+			min, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxInt8)
+		}
+		if !hasValues {
+			return nil
+		}
+		if min < 0 || uint64(max) >= upperlimit {
 			return fmt.Errorf("contains out of bounds index: min: %d, max: %d", min, max)
 		}
 	case arrow.UINT8:
 		data := arrow.Uint8Traits.CastFromBytes(indices.buffers[1].Bytes())
-		_, max := utils.GetMinMaxUint8(data[start:end])
+		max := uint8(0)
+		hasValues := true
+		if validBits == nil {
+			_, max = utils.GetMinMaxUint8(data[start:end])
+		} else if !validRuns.fragmented {
+			_, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxUint8)
+		} else {
+			_, max = utils.GetMinMaxUint8(data[start:end])
+			if uint64(max) < upperlimit {
+				return nil
+			}
+			_, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxUint8)
+		}
+		if !hasValues {
+			return nil
+		}
 		if max >= uint8(upperlimit) {
 			return fmt.Errorf("contains out of bounds index: max: %d", max)
 		}
 	case arrow.INT16:
 		data := arrow.Int16Traits.CastFromBytes(indices.buffers[1].Bytes())
-		min, max := utils.GetMinMaxInt16(data[start:end])
-		if min < 0 || max >= int16(upperlimit) {
+		min, max := int16(0), int16(0)
+		hasValues := true
+		if validBits == nil {
+			min, max = utils.GetMinMaxInt16(data[start:end])
+		} else if !validRuns.fragmented {
+			min, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxInt16)
+		} else {
+			min, max = utils.GetMinMaxInt16(data[start:end])
+			if min >= 0 && uint64(max) < upperlimit {
+				return nil
+			}
+			min, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxInt16)
+		}
+		if !hasValues {
+			return nil
+		}
+		if min < 0 || uint64(max) >= upperlimit {
 			return fmt.Errorf("contains out of bounds index: min: %d, max: %d", min, max)
 		}
 	case arrow.UINT16:
 		data := arrow.Uint16Traits.CastFromBytes(indices.buffers[1].Bytes())
-		_, max := utils.GetMinMaxUint16(data[start:end])
+		max := uint16(0)
+		hasValues := true
+		if validBits == nil {
+			_, max = utils.GetMinMaxUint16(data[start:end])
+		} else if !validRuns.fragmented {
+			_, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxUint16)
+		} else {
+			_, max = utils.GetMinMaxUint16(data[start:end])
+			if uint64(max) < upperlimit {
+				return nil
+			}
+			_, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxUint16)
+		}
+		if !hasValues {
+			return nil
+		}
 		if max >= uint16(upperlimit) {
 			return fmt.Errorf("contains out of bounds index: max: %d", max)
 		}
 	case arrow.INT32:
 		data := arrow.Int32Traits.CastFromBytes(indices.buffers[1].Bytes())
-		min, max := utils.GetMinMaxInt32(data[start:end])
-		if min < 0 || max >= int32(upperlimit) {
+		min, max := int32(0), int32(0)
+		hasValues := true
+		if validBits == nil {
+			min, max = utils.GetMinMaxInt32(data[start:end])
+		} else if !validRuns.fragmented {
+			min, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxInt32)
+		} else {
+			min, max = utils.GetMinMaxInt32(data[start:end])
+			if min >= 0 && uint64(max) < upperlimit {
+				return nil
+			}
+			min, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxInt32)
+		}
+		if !hasValues {
+			return nil
+		}
+		if min < 0 || uint64(max) >= upperlimit {
 			return fmt.Errorf("contains out of bounds index: min: %d, max: %d", min, max)
 		}
 	case arrow.UINT32:
 		data := arrow.Uint32Traits.CastFromBytes(indices.buffers[1].Bytes())
-		_, max := utils.GetMinMaxUint32(data[start:end])
+		max := uint32(0)
+		hasValues := true
+		if validBits == nil {
+			_, max = utils.GetMinMaxUint32(data[start:end])
+		} else if !validRuns.fragmented {
+			_, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxUint32)
+		} else {
+			_, max = utils.GetMinMaxUint32(data[start:end])
+			if uint64(max) < upperlimit {
+				return nil
+			}
+			_, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxUint32)
+		}
+		if !hasValues {
+			return nil
+		}
 		if max >= uint32(upperlimit) {
 			return fmt.Errorf("contains out of bounds index: max: %d", max)
 		}
 	case arrow.INT64:
 		data := arrow.Int64Traits.CastFromBytes(indices.buffers[1].Bytes())
-		min, max := utils.GetMinMaxInt64(data[start:end])
-		if min < 0 || max >= int64(upperlimit) {
+		min, max := int64(0), int64(0)
+		hasValues := true
+		if validBits == nil {
+			min, max = utils.GetMinMaxInt64(data[start:end])
+		} else if !validRuns.fragmented {
+			min, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxInt64)
+		} else {
+			min, max = utils.GetMinMaxInt64(data[start:end])
+			if min >= 0 && uint64(max) < upperlimit {
+				return nil
+			}
+			min, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxInt64)
+		}
+		if !hasValues {
+			return nil
+		}
+		if min < 0 || uint64(max) >= upperlimit {
 			return fmt.Errorf("contains out of bounds index: min: %d, max: %d", min, max)
 		}
 	case arrow.UINT64:
 		data := arrow.Uint64Traits.CastFromBytes(indices.buffers[1].Bytes())
-		_, max := utils.GetMinMaxUint64(data[indices.offset : indices.offset+indices.length])
+		max := uint64(0)
+		hasValues := true
+		if validBits == nil {
+			_, max = utils.GetMinMaxUint64(data[start:end])
+		} else if !validRuns.fragmented {
+			_, max, hasValues = getMinMaxRuns(data, start, validRuns.runs[:validRuns.count], utils.GetMinMaxUint64)
+		} else {
+			_, max = utils.GetMinMaxUint64(data[start:end])
+			if max < upperlimit {
+				return nil
+			}
+			_, max, hasValues = getMinMaxValid(data, validBits, start, indices.length, utils.GetMinMaxUint64)
+		}
+		if !hasValues {
+			return nil
+		}
 		if max >= upperlimit {
 			return fmt.Errorf("contains out of bounds value: max: %d", max)
 		}
@@ -295,6 +488,13 @@ func (d *Dictionary) GetOneForMarshal(i int) interface{} {
 	return d.Dictionary().GetOneForMarshal(vidx)
 }
 
+func (d *Dictionary) ValueAsAny(i int) any {
+	if d.IsNull(i) {
+		return nil
+	}
+	return ValueAsAny(d.Dictionary(), d.GetValueIndex(i))
+}
+
 func (d *Dictionary) MarshalJSON() ([]byte, error) {
 	vals := make([]any, d.Len())
 	for i := range d.Len() {
@@ -316,6 +516,12 @@ type IndexBuilder struct {
 	Builder
 	Append       func(int)
 	UnsafeAppend func(int)
+}
+
+func appendDictionaryIndices[T arrow.IntType | arrow.UintType](dst []T, indices []int) {
+	for i, idx := range indices {
+		dst[i] = T(idx)
+	}
 }
 
 func createIndexBuilder(mem memory.Allocator, dt arrow.FixedWidthDataType) (ret IndexBuilder, err error) {
@@ -428,6 +634,17 @@ func createMemoTable(mem memory.Allocator, dt arrow.DataType) (ret hashing.MemoT
 	return
 }
 
+// DictionaryBuilder builds dictionary-encoded arrays, adding each distinct
+// value to the dictionary once.
+//
+// Consecutive calls to NewArray or NewDictionaryArray may return arrays that
+// share one dictionary when no new values were added in between. The builder
+// caches the last full dictionary. It drops its reference when that
+// dictionary is replaced, on checkpoint restore, on ResetFull, or on its
+// final Release. Releasing all returned arrays alone does not free the cached
+// dictionary. Release the builder before checking that its allocator is
+// empty. Treat the shared dictionary data as immutable. For example, do not
+// call [arrow.ArrayData.Reset] on it.
 type DictionaryBuilder interface {
 	Builder
 
@@ -446,6 +663,7 @@ type dictionaryBuilder struct {
 	deltaOffset int
 	memoTable   hashing.MemoTable
 	idxBuilder  IndexBuilder
+	dict        *Data
 }
 
 func createDictBuilder[T arrow.ValueType](mem memory.Allocator, idxbldr IndexBuilder, memo hashing.MemoTable, dt *arrow.DictionaryType, init arrow.Array) DictionaryBuilder {
@@ -645,6 +863,14 @@ func (b *dictionaryBuilder) Release() {
 			binmemo.Release()
 		}
 		b.memoTable = nil
+		b.releaseDict()
+	}
+}
+
+func (b *dictionaryBuilder) releaseDict() {
+	if b.dict != nil {
+		b.dict.Release()
+		b.dict = nil
 	}
 }
 
@@ -661,14 +887,35 @@ func (b *dictionaryBuilder) AppendNulls(n int) {
 }
 
 func (b *dictionaryBuilder) AppendEmptyValue() {
-	b.length += 1
-	b.idxBuilder.AppendEmptyValue()
+	b.AppendEmptyValues(1)
 }
 
 func (b *dictionaryBuilder) AppendEmptyValues(n int) {
-	for i := 0; i < n; i++ {
-		b.AppendEmptyValue()
+	if n <= 0 {
+		return
 	}
+
+	if b.dt.ValueType.ID() == arrow.NULL {
+		b.AppendNulls(n)
+		return
+	}
+
+	valueBuilder := NewBuilder(b.mem, b.dt.ValueType)
+	defer valueBuilder.Release()
+	valueBuilder.AppendEmptyValue()
+
+	values := valueBuilder.NewArray()
+	defer values.Release()
+	idx, _, err := b.memoTable.GetOrInsert(getvalFn(values)(0))
+	if err != nil {
+		panic(err)
+	}
+
+	b.idxBuilder.Reserve(n)
+	for i := 0; i < n; i++ {
+		b.idxBuilder.UnsafeAppend(idx)
+	}
+	b.length += n
 }
 
 func (b *dictionaryBuilder) UnsafeAppendBoolToBitmap(v bool) {
@@ -686,12 +933,38 @@ func (b *dictionaryBuilder) Reserve(n int) {
 func (b *dictionaryBuilder) Resize(n int) {
 	b.idxBuilder.Resize(n)
 	b.length = b.idxBuilder.Len()
+	b.nulls = b.idxBuilder.NullN()
+}
+
+func (b *dictionaryBuilder) truncate(n int) {
+	b.idxBuilder.truncate(n)
+	b.length = b.idxBuilder.Len()
+	b.nulls = b.idxBuilder.NullN()
 }
 
 func (b *dictionaryBuilder) ResetFull() {
 	b.reset()
 	b.idxBuilder.NewArray().Release()
 	b.memoTable.Reset()
+	b.releaseDict()
+}
+
+type dictionaryBuilderCheckpoint struct {
+	builder *dictionaryBuilder
+	size    int
+}
+
+func (c *dictionaryBuilderCheckpoint) capture() {
+	c.size = c.builder.memoTable.Size()
+}
+
+func (c *dictionaryBuilderCheckpoint) restore() {
+	c.builder.memoTable.Truncate(c.size)
+	c.builder.releaseDict()
+}
+
+func (b *dictionaryBuilder) newCheckpoint() checkpointState {
+	return &dictionaryBuilderCheckpoint{builder: b}
 }
 
 func (b *dictionaryBuilder) Cap() int { return b.idxBuilder.Cap() }
@@ -784,7 +1057,19 @@ func (b *dictionaryBuilder) newWithDictOffset(offset int) (indices, dict *Data, 
 	indices = idxarr.Data().(*Data)
 
 	b.deltaOffset = b.memoTable.Size()
-	dict, err = GetDictArrayData(b.mem, b.dt.ValueType, b.memoTable, offset)
+	switch {
+	case offset != 0:
+		dict, err = GetDictArrayData(b.mem, b.dt.ValueType, b.memoTable, offset)
+	case b.dict != nil && b.dict.length == b.deltaOffset:
+		b.dict.Retain()
+		dict = b.dict
+	default:
+		if dict, err = GetDictArrayData(b.mem, b.dt.ValueType, b.memoTable, 0); err == nil {
+			b.releaseDict()
+			dict.Retain()
+			b.dict = dict
+		}
+	}
 	b.reset()
 	indices.Retain()
 	return
@@ -936,57 +1221,42 @@ func (b *dictionaryBuilder) IndexBuilder() IndexBuilder {
 }
 
 func (b *dictionaryBuilder) AppendIndices(indices []int, valid []bool) {
-	b.length += len(indices)
+	if len(indices) != len(valid) && len(valid) != 0 {
+		panic("len(indices) != len(valid) && len(valid) != 0")
+	}
+
+	if len(indices) == 0 {
+		return
+	}
+
+	b.idxBuilder.Reserve(len(indices))
 	switch idxbldr := b.idxBuilder.Builder.(type) {
 	case *Int8Builder:
-		vals := make([]int8, len(indices))
-		for i, v := range indices {
-			vals[i] = int8(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Int16Builder:
-		vals := make([]int16, len(indices))
-		for i, v := range indices {
-			vals[i] = int16(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Int32Builder:
-		vals := make([]int32, len(indices))
-		for i, v := range indices {
-			vals[i] = int32(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Int64Builder:
-		vals := make([]int64, len(indices))
-		for i, v := range indices {
-			vals[i] = int64(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Uint8Builder:
-		vals := make([]uint8, len(indices))
-		for i, v := range indices {
-			vals[i] = uint8(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Uint16Builder:
-		vals := make([]uint16, len(indices))
-		for i, v := range indices {
-			vals[i] = uint16(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Uint32Builder:
-		vals := make([]uint32, len(indices))
-		for i, v := range indices {
-			vals[i] = uint32(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	case *Uint64Builder:
-		vals := make([]uint64, len(indices))
-		for i, v := range indices {
-			vals[i] = uint64(v)
-		}
-		idxbldr.AppendValues(vals, valid)
+		appendDictionaryIndices(idxbldr.rawData[idxbldr.length:], indices)
+		idxbldr.unsafeAppendBoolsToBitmap(valid, len(indices))
 	}
+	b.length += len(indices)
 }
 
 func (b *dictionaryBuilder) DictionarySize() int {

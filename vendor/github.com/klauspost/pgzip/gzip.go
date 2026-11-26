@@ -85,7 +85,7 @@ func (z *Writer) SetConcurrency(blockSize, blocks int) error {
 	z.blockSize = blockSize
 	z.results = make(chan result, blocks)
 	z.blocks = blocks
-	z.dstPool.New = func() interface{} { return make([]byte, 0, blockSize+(blockSize)>>4) }
+	z.dstPool.New = func() any { return make([]byte, 0, blockSize+(blockSize)>>4) }
 	return nil
 }
 
@@ -155,12 +155,18 @@ func (z *Writer) init(w io.Writer, level int) {
 	z.Extra = nil
 	z.ModTime = time.Time{}
 	z.wroteHeader = false
-	z.currentBuffer = nil
+	if z.currentBuffer != nil {
+		z.dstPool.Put(z.currentBuffer)
+		z.currentBuffer = nil
+	}
 	z.buf = [10]byte{}
-	z.prevTail = nil
+	if z.prevTail != nil {
+		z.dstPool.Put(z.prevTail)
+		z.prevTail = nil
+	}
 	z.size = 0
 	if z.dictFlatePool.New == nil {
-		z.dictFlatePool.New = func() interface{} {
+		z.dictFlatePool.New = func() any {
 			f, _ := flate.NewWriterDict(w, level, nil)
 			return f
 		}
@@ -175,6 +181,8 @@ func (z *Writer) Reset(w io.Writer) {
 	if z.results != nil && !z.closed {
 		close(z.results)
 	}
+	z.wg.Wait()
+	z.wroteHeader = false
 	z.SetConcurrency(defaultBlockSize, runtime.GOMAXPROCS(0))
 	z.init(w, z.level)
 }
@@ -357,7 +365,9 @@ func (z *Writer) Write(p []byte) (int, error) {
 			}
 		}
 		// Start receiving data from compressors
+		z.wg.Add(1)
 		go func() {
+			defer z.wg.Done()
 			listen := z.results
 			var failed bool
 			for {
@@ -504,10 +514,10 @@ func (z *Writer) Close() error {
 		}
 	}
 	z.compressCurrent(true)
+	close(z.results)
 	if err := z.checkError(); err != nil {
 		return err
 	}
-	close(z.results)
 	put4(z.buf[0:4], z.digest.Sum32())
 	put4(z.buf[4:8], uint32(z.size))
 	_, err := z.w.Write(z.buf[0:8])
