@@ -1,0 +1,59 @@
+auth_enabled: true
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: warn
+
+common:
+  path_prefix: /loki
+  replication_factor: 1
+  compactor_address: http://{{ .Compactor }}:3100
+  storage:
+    object_store:
+      s3:
+        endpoint: {{ .Minio }}
+        bucket_name: loki
+        access_key_id: {{ .MinioAccessKey }}
+        secret_access_key: {{ .MinioSecretKey }}
+        insecure: true
+  ring:
+    kvstore:
+      store: memberlist
+
+memberlist:
+  bind_port: 7946
+  join_members:
+    - {{ .Ingester }}:7946
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+frontend:
+  scheduler_address: {{ .Scheduler }}:9095
+
+frontend_worker:
+  scheduler_address: {{ .Scheduler }}:9095
+
+query_scheduler:
+  use_scheduler_ring: false
+
+pattern_ingester:
+  enabled: true
+
+limits_config:
+  allow_structured_metadata: true
+  volume_enabled: true
+  otlp_config:
+    resource_attributes:
+      attributes_config:
+        - action: index_label
+          attributes:
+            - service.name

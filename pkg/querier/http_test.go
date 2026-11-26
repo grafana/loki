@@ -209,6 +209,36 @@ func TestSeriesHandler(t *testing.T) {
 		require.JSONEq(t, expected, res.Body.String())
 	})
 
+	t.Run("hides shard labels and merges the series that differ only by them", func(t *testing.T) {
+		ret := func() *logproto.SeriesResponse {
+			return &logproto.SeriesResponse{
+				Series: []logproto.SeriesIdentifier{
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "job", Value: "a"}, {Key: "__stream_shard__", Value: "0"}, {Key: "__time_shard__", Value: "1"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{
+						{Key: "__stream_shard__", Value: "1"}, {Key: "job", Value: "a"}, {Key: "__time_shard__", Value: "1"},
+					}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "job", Value: "b"}}},
+					// Pattern and aggregated metric streams differ by these labels, so they stay.
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "job", Value: "c"}, {Key: "__pattern__", Value: "x"}}},
+					{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "job", Value: "c"}, {Key: "__pattern__", Value: "y"}}},
+				},
+			}
+		}
+
+		q := newQuerierMock()
+		q.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
+		handler := buildHandler(setupAPI(t, q, false))
+
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+		req.Header.Set("X-Scope-OrgID", "test-org")
+		res := makeRequest(t, handler, req)
+
+		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
+		require.JSONEq(t, `{"status":"success","data":[{"job":"a"},{"job":"b"},{"job":"c","__pattern__":"x"},{"job":"c","__pattern__":"y"}]}`, res.Body.String())
+	})
+
 	t.Run("ignores __aggregated_metric__ and __patern__ series, when possible, unless explicitly requested", func(t *testing.T) {
 		ret := func() *logproto.SeriesResponse {
 			return &logproto.SeriesResponse{

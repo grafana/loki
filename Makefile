@@ -390,6 +390,12 @@ test: all ## run the unit tests
 test-integration:
 	$(GOTEST) -race -count=1 -v -tags=integration -timeout 15m ./integration
 
+# Smoke tests that run the Loki docker image in single binary and distributed mode. They need
+# a running Docker daemon and take the image from LOKI_E2E_IMAGE (default grafana/loki:e2e).
+test-e2e: ## run the docker-based smoke tests against a freshly built image
+	$(MAKE) loki-image IMAGE_TAG=e2e
+	LOKI_E2E_IMAGE=$(IMAGE_PREFIX)/loki:e2e $(GOTEST) -count=1 -v -tags=e2e -timeout 20m ./integration/e2e
+
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
