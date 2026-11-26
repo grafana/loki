@@ -232,11 +232,15 @@ func Test_pageReader_SkipRows(t *testing.T) {
 		require.Nil(t, arr)
 	})
 
-	t.Run("returns an error when a read value runs past the end of the page", func(t *testing.T) {
+	t.Run("returns the same error on every read when a value runs past the end of the page", func(t *testing.T) {
 		pr := truncatedPageReader(t, 1)
 
 		var alloc memory.Allocator
 		arr, err := pr.Read(t.Context(), &alloc, 5)
+		require.EqualError(t, err, "plain: value of 1 bytes at offset 8 runs past the end of the data")
+		require.Nil(t, arr)
+
+		arr, err = pr.Read(t.Context(), &alloc, 5)
 		require.EqualError(t, err, "plain: value of 1 bytes at offset 8 runs past the end of the data")
 		require.Nil(t, arr)
 	})
@@ -281,6 +285,150 @@ func Test_pageReader_statsStability(t *testing.T) {
 	testStrings[0].Buffer()[0] = 'Z'
 	require.Equal(t, BinaryValue([]byte("a")), b.minValue)
 	require.Equal(t, BinaryValue([]byte("d")), b.maxValue)
+}
+
+func TestPageReader_RowCount(t *testing.T) {
+	opts := BuilderOptions{
+		PageSizeHint: 4 * 1024 * 1024,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+	}
+
+	shapes := []struct {
+		name string
+		rows []*string
+	}{
+		{"page of values only", nullableStrings("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l")},
+		{"page of values and nulls ending in a bitpacked run", nullableStrings("a", nil, "c", nil, "e", nil, "g", nil, "i", nil, "k", nil, "m", nil, "o", nil)},
+		{"page of values and nulls ending in an RLE run", nullableStrings("a", nil, "c", nil, "e", nil, "g", nil, "i", "j", nil, "l")},
+	}
+
+	// readExactly reads the first n rows of the page in batches of at most
+	// batchSize rows. The last batch stops at row n. If n does not exceed the
+	// rows in the page, the decode gets no io.EOF.
+	readExactly := func(t *testing.T, pr *pageReader, n, batchSize int) error {
+		var alloc memory.Allocator
+		for read := 0; read < n; {
+			arr, err := pr.Read(t.Context(), &alloc, min(batchSize, n-read))
+			if err != nil {
+				return err
+			}
+			read += arr.Len()
+		}
+		return nil
+	}
+
+	for _, shape := range shapes {
+		rows := len(shape.rows)
+		batchSizes := []int{1, rows + 1}
+
+		newReader := func(t *testing.T, descriptorRows int) *pageReader {
+			page := buildNullablePage(t, format.ColumnarVersionPageChecksum, opts, shape.rows)
+			page.Desc.RowCount = descriptorRows
+			return newPageReader(page, opts.Type.Physical, opts.Compression)
+		}
+
+		t.Run(shape.name, func(t *testing.T) {
+			t.Run("reads every row when the descriptor matches the page", func(t *testing.T) {
+				for _, batchSize := range batchSizes {
+					var alloc memory.Allocator
+					arr, err := readPage(&alloc, newReader(t, rows), batchSize)
+					require.NoError(t, err, "batch of %d rows", batchSize)
+					require.Equal(t, shape.rows, readNullableStrings(arr), "batch of %d rows", batchSize)
+				}
+			})
+
+			t.Run("returns an error when the descriptor counts fewer rows than the page holds", func(t *testing.T) {
+				for _, declared := range []int{rows - 1, 1} {
+					expected := fmt.Sprintf("page has more rows than the %d in its descriptor: unexpected EOF", declared)
+
+					for _, batchSize := range batchSizes {
+						var alloc memory.Allocator
+						_, err := readPage(&alloc, newReader(t, declared), batchSize)
+						require.EqualError(t, err, expected, "reading to the end of the page in batches of %d rows", batchSize)
+						require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+
+						err = readExactly(t, newReader(t, declared), declared, batchSize)
+						require.EqualError(t, err, expected, "reading the declared rows in batches of %d rows", batchSize)
+					}
+				}
+			})
+
+			t.Run("returns an error when the descriptor counts more rows than the page holds", func(t *testing.T) {
+				for _, declared := range []int{rows + 1, rows * 3} {
+					expected := fmt.Sprintf("page has %d rows, fewer than the %d in its descriptor: unexpected EOF", rows, declared)
+
+					for _, batchSize := range batchSizes {
+						var alloc memory.Allocator
+						_, err := readPage(&alloc, newReader(t, declared), batchSize)
+						require.EqualError(t, err, expected, "batch of %d rows", batchSize)
+						require.NotErrorIs(t, err, io.EOF)
+					}
+				}
+			})
+
+			t.Run("returns the same error when a read follows a failed read", func(t *testing.T) {
+				for _, declared := range []int{rows - 1, rows + 1} {
+					pr := newReader(t, declared)
+
+					first := readExactly(t, pr, declared, 5)
+					require.Error(t, first, "declared %d rows", declared)
+
+					var alloc memory.Allocator
+					arr, second := pr.Read(t.Context(), &alloc, 5)
+					require.EqualError(t, second, first.Error(), "declared %d rows", declared)
+					require.Nil(t, arr)
+				}
+			})
+		})
+	}
+}
+
+func TestPageReader_EndOfPage(t *testing.T) {
+	opts := BuilderOptions{
+		PageSizeHint: 1024,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+	}
+
+	newReader := func(t *testing.T) (*pageReader, *countingPage) {
+		page := &countingPage{MemPage: buildPage(t, format.ColumnarVersionPageChecksum, opts, pageReaderTestStrings)}
+		return newPageReader(page, opts.Type.Physical, opts.Compression), page
+	}
+
+	t.Run("returns io.EOF without loading the page again when a read follows the end of the page", func(t *testing.T) {
+		var alloc memory.Allocator
+		pr, page := newReader(t)
+
+		_, err := readPage(&alloc, pr, 4)
+		require.NoError(t, err)
+		require.Equal(t, 1, page.loads)
+
+		for range 2 {
+			arr, err := pr.Read(t.Context(), &alloc, 4)
+			require.Nil(t, arr)
+			require.Equal(t, io.EOF, err)
+		}
+		require.Equal(t, 1, page.loads)
+	})
+
+	t.Run("loads the page again when a read follows a seek to the start after the end of the page", func(t *testing.T) {
+		var alloc memory.Allocator
+		pr, page := newReader(t)
+
+		_, err := readPage(&alloc, pr, 4)
+		require.NoError(t, err)
+
+		_, err = pr.Seek(0, io.SeekStart)
+		require.NoError(t, err)
+
+		arr, err := readPage(&alloc, pr, 4)
+		require.NoError(t, err)
+		require.Equal(t, pageReaderTestStrings, convertToStrings(t, arr))
+		require.Equal(t, 2, page.loads)
+	})
 }
 
 // buildPage returns a page of the given columnar format version that holds the
@@ -410,4 +558,15 @@ func convertToStrings(t *testing.T, arr columnar.Array) []string {
 		out = append(out, string(utf8Arr.Get(i)))
 	}
 	return out
+}
+
+// countingPage is a memory page that counts how many times a reader loads it.
+type countingPage struct {
+	*MemPage
+	loads int
+}
+
+func (p *countingPage) ReadPage(ctx context.Context) (PageData, error) {
+	p.loads++
+	return p.MemPage.ReadPage(ctx)
 }
