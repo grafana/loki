@@ -429,7 +429,7 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{labelTenant}),
 		logMergeTaskOutputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "loki_dataobj_compaction_log_merge_output_bytes_compressed",
+			Name:    "loki_dataobj_compaction_log_merge_task_output_bytes_compressed",
 			Help:    "Total encoded bytes uploaded across all compacted log objects for a successful LogMerge task.",
 			Buckets: byteBuckets,
 

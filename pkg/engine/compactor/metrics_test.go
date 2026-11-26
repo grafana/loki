@@ -172,7 +172,7 @@ func TestHistograms_ExposeClassicAndNativeBuckets(t *testing.T) {
 		"loki_dataobj_compaction_index_merge_task_output_bytes_compressed",
 		"loki_dataobj_compaction_index_merge_task_output_bytes_uncompressed",
 		"loki_dataobj_compaction_log_merge_duration_seconds",
-		"loki_dataobj_compaction_log_merge_output_bytes_compressed",
+		"loki_dataobj_compaction_log_merge_task_output_bytes_compressed",
 		"loki_dataobj_compaction_log_merge_task_input_bytes_uncompressed",
 	} {
 		t.Run("exposes classic and native buckets for "+name, func(t *testing.T) {
