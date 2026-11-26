@@ -880,10 +880,10 @@ func (m mockLimits) MaxCacheFreshness(context.Context, string) time.Duration {
 
 type mockResultsCache struct{}
 
-func (m mockResultsCache) Store(context.Context, []string, [][]byte) error {
+func (m mockResultsCache) Store(context.Context, []string, [][]byte, ...cache.Option) error {
 	panic("not implemented")
 }
-func (m mockResultsCache) Fetch(context.Context, []string) ([]string, [][]byte, []string, error) {
+func (m mockResultsCache) Fetch(context.Context, []string, ...cache.Option) ([]string, [][]byte, []string, error) {
 	panic("not implemented")
 }
 func (m mockResultsCache) Stop() {

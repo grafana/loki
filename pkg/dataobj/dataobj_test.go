@@ -820,7 +820,7 @@ func (p *spyPrefetcher) Prefetch(ctx context.Context, req metadata.PrefetchReque
 // unavailableCache is a cache whose lookups fail.
 type unavailableCache struct{ cache.Cache }
 
-func (unavailableCache) Fetch(context.Context, []string) ([]string, [][]byte, []string, error) {
+func (unavailableCache) Fetch(context.Context, []string, ...cache.Option) ([]string, [][]byte, []string, error) {
 	return nil, nil, nil, errors.New("cache is down")
 }
 

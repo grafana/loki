@@ -53,6 +53,7 @@ type backgroundCache struct {
 type backgroundWrite struct {
 	keys []string
 	bufs [][]byte
+	opts []Option
 }
 
 func (b *backgroundWrite) size() int {
@@ -135,7 +136,7 @@ func (c *backgroundCache) Stop() {
 const keysPerBatch = 100
 
 // Store writes keys for the cache in the background.
-func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
+func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte, opts ...Option) error {
 	for len(keys) > 0 {
 		num := keysPerBatch
 		if num > len(keys) {
@@ -145,6 +146,7 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 		bgWrite := backgroundWrite{
 			keys: keys[:num],
 			bufs: bufs[:num],
+			opts: opts,
 		}
 
 		size := bgWrite.size()
@@ -197,7 +199,7 @@ func (c *backgroundCache) writeBackLoop() {
 			c.queueLength.Sub(float64(len(bgWrite.keys)))
 			c.queueBytes.Set(float64(c.size.Load()))
 			c.dequeuedBytes.Add(float64(bgWrite.size()))
-			err := c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
+			err := c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs, bgWrite.opts...)
 			if err != nil {
 				level.Warn(util_log.Logger).Log("msg", "backgroundCache writeBackLoop Cache.Store fail", "err", err)
 				continue

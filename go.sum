@@ -433,10 +433,10 @@ github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWS
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 h1:JeSE6pjso5THxAzdVpqr6/geYxZytqFMBCOtn/ujyeo=
 github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674/go.mod h1:r4w70xmWCQKmi1ONH4KIaBptdivuRPyosB9RmPlGEwA=
-github.com/grafana/dskit v0.0.0-20261118194849-a94746663b7a h1:oj7iK3Q7SQLH1lI33Saj6Y6Chrxtt/6CTYjEsebe3Vg=
-github.com/grafana/dskit v0.0.0-20261118194849-a94746663b7a/go.mod h1:tcQGVglFqoPB4A5e21aOHCpmC9mztMZ66FtmYr1miVU=
-github.com/grafana/gomemcache v0.0.0-20261112174412-3f2aa5dee9f7 h1:gR9p7AtK9/Z3Fsy3R2B6QDR7XPktT1/LHgUvWz14TLs=
-github.com/grafana/gomemcache v0.0.0-20261112174412-3f2aa5dee9f7/go.mod h1:g00ZmBwPoxdx1YsYYtMrvHkWNRbJhn7Lc0ZOaAIZX4c=
+github.com/grafana/dskit v0.0.0-20261126092325-91e4d6e9ad64 h1:MCVafEF8dCoQ2vKx9jGBs4E8WZv4/PqO4UGXMoSO03g=
+github.com/grafana/dskit v0.0.0-20261126092325-91e4d6e9ad64/go.mod h1:LoHp5dF+/lD9ZglOy548RqFtbpkA65EQbmm/gAJ4SaQ=
+github.com/grafana/gomemcache v0.0.0-20261125152902-0d86d0d01144 h1:fvS03ROJVVqloXP3w+9Dh3njA/bXom9zj6AOM9Y+vig=
+github.com/grafana/gomemcache v0.0.0-20261125152902-0d86d0d01144/go.mod h1:g00ZmBwPoxdx1YsYYtMrvHkWNRbJhn7Lc0ZOaAIZX4c=
 github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34 h1:sQ4hElLT1o+YcyfAF10AGW7nNwFuQvc2NU7qLZ6UhFc=
 github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34/go.mod h1:796sq+UcONnSlzA3RtlBZ+b/hrerkZXiEmO8oMjyRwY=
 github.com/grafana/memberlist v0.3.1-0.20260921102813-8c522db348af h1:lrJdCKFFudfYdIQaOoYunORS8LGplY4QgK1iF9uj9b4=
