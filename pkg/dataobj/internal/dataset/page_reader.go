@@ -74,19 +74,16 @@ func (pr *pageReader) skipUnwantedRows(alloc *memory.Allocator) error {
 		return nil
 	}
 
-	// Since we don't need the values to live beyond this read call, we can
-	// create a short-lived allocator. This will also allow the "real" read to
-	// reuse any memory that was created during this step.
-	tempAlloc := memory.NewAllocator(alloc)
-	defer tempAlloc.Free()
-
+	// Skipping allocates only the presence bitmap, because the decoders move past
+	// the values without building arrays. A short-lived child allocator would add
+	// allocation overhead and free nothing worth reusing.
 	readCount := int(pr.nextRow - pr.pageRow)
 	_, err := pr.readColumnar(alloc, readCount, true)
 	return err
 }
 
 // readColumnar implements the actual Read operation for count rows. If skip is
-// true, no array values are returned, permitting for skipping expensive work.
+// true, readColumnar moves past the rows and returns a nil array.
 func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int, skip bool) (columnar.Array, error) {
 	// First read presence values for the next count rows.
 	bm := memory.NewBitmap(alloc, count)
@@ -106,23 +103,30 @@ func (pr *pageReader) readColumnar(alloc *memory.Allocator, count int, skip bool
 		return nil, nil
 	}
 
-	// The number of bits set to 1 in presenceBuf determines how many values we
-	// need to read from the inner page.
+	// The number of bits set to 1 in bm determines how many values we need to
+	// read or skip in the inner page.
 	presentCount := bm.SetCount()
 
 	var values columnar.Array
 
-	// Now fill up to presentCount values of concrete values.
+	// Read or skip the presentCount concrete values.
 	if presentCount > 0 {
-		// TODO(rfratto): Add a "skip" mode to decoders to allow them to bypass
-		// building an array if it's not going to be used.
-		values, err = pr.valuesDec.Decode(alloc, presentCount)
-		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, err
-		} else if values == nil {
-			return nil, fmt.Errorf("unexpected nil values")
-		} else if values.Len() != presentCount {
-			return nil, fmt.Errorf("unexpected number of values: %d, expected: %d", values.Len(), presentCount)
+		if skip {
+			skipped, skipErr := pr.valuesDec.Skip(presentCount)
+			if skipErr != nil {
+				return nil, skipErr
+			} else if skipped != presentCount {
+				return nil, fmt.Errorf("unexpected number of skipped values: %d, expected: %d", skipped, presentCount)
+			}
+		} else {
+			values, err = pr.valuesDec.Decode(alloc, presentCount)
+			if err != nil && !errors.Is(err, io.EOF) {
+				return nil, err
+			} else if values == nil {
+				return nil, fmt.Errorf("unexpected nil values")
+			} else if values.Len() != presentCount {
+				return nil, fmt.Errorf("unexpected number of values: %d, expected: %d", values.Len(), presentCount)
+			}
 		}
 	}
 

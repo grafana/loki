@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -89,6 +91,34 @@ func Test(t *testing.T) {
 	}
 
 	require.Equal(t, expect, actual)
+}
+
+func TestBuilder_Flush(t *testing.T) {
+	t.Run("writes a section of version 4 whose page descriptors have no checksum", func(t *testing.T) {
+		builder := streams.NewBuilder(nil, 1024, 0, streams.DefaultShardLayout())
+		builder.Record(labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(10, 0), 10)
+
+		obj, closer, err := buildObject(builder)
+		require.NoError(t, err)
+		t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+		section := obj.Sections()[0]
+		require.Equal(t, uint32(4), section.Type.Version)
+
+		dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
+		require.NoError(t, err)
+		md, err := dec.SectionMetadata(t.Context())
+		require.NoError(t, err)
+		pageSets, err := result.Collect(dec.Pages(t.Context(), md.Columns))
+		require.NoError(t, err)
+		require.NotEmpty(t, pageSets)
+		for _, descs := range pageSets {
+			require.NotEmpty(t, descs)
+			for _, desc := range descs {
+				require.Zero(t, desc.DeprecatedCrc32)
+			}
+		}
+	})
 }
 
 func copyLabels(in labels.Labels) labels.Labels {

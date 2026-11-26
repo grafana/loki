@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 func TestReadTask_RowPredicates(t *testing.T) {
@@ -44,7 +47,28 @@ func TestReadTask_RowPredicates(t *testing.T) {
 	})
 }
 
-func TestReadTask_Records(t *testing.T) {
+func TestReadTask_ForwardedLineBytes(t *testing.T) {
+	batch := batchOf(t, []int64{1, 1, 1}, []string{"one", "", "three"})
+
+	t.Run("it sums the line lengths when the task needs the line", func(t *testing.T) {
+		task := ReadTask{needReturningLine: true}
+		require.Equal(t, len("onethree"), task.forwardedLineBytes(batch))
+	})
+
+	t.Run("it returns zero when the task does not need the line", func(t *testing.T) {
+		task := ReadTask{}
+		require.Zero(t, task.forwardedLineBytes(batch))
+	})
+
+	t.Run("it returns zero when the batch has no message column", func(t *testing.T) {
+		task := ReadTask{needReturningLine: true}
+		noMessage := batchOf(t, []int64{1}, []string{"one"})
+		noMessage.Message = nil
+		require.Zero(t, task.forwardedLineBytes(noMessage))
+	})
+}
+
+func TestReadTask_AppendRecords(t *testing.T) {
 	// oneStreamTask returns a task for a single admitted stream, and that stream's ID.
 	oneStreamTask := func(t *testing.T, streamLabels string) (ReadTask, int64) {
 		t.Helper()
@@ -62,10 +86,7 @@ func TestReadTask_Records(t *testing.T) {
 	t.Run("it attaches each row's stream identity", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
-		records, err := task.records([]logs.Record{
-			{StreamID: id, Timestamp: at(1), Line: []byte("one")},
-			{StreamID: id, Timestamp: at(2), Line: []byte("two")},
-		})
+		records, err := task.appendRecords(nil, make([]byte, 0, 64), batchOf(t, []int64{id, id}, []string{"one", "two"}))
 		require.NoError(t, err)
 
 		streamLabels, err := syntax.ParseLabels(`{app="a"}`)
@@ -86,24 +107,84 @@ func TestReadTask_Records(t *testing.T) {
 		}, records)
 	})
 
-	t.Run("it copies the line, because the row reader reuses that buffer", func(t *testing.T) {
+	t.Run("a needed line is copied into lineBuf, so a later read does not change it", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 
-		// One buffer, rewritten between reads, is what the row reader does. The replacement is
-		// the same length as the original, so it overwrites every byte.
-		buffer := []byte("first")
-		first, err := task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: buffer}})
+		batch := batchOf(t, []int64{id}, []string{"first"})
+		lineBuf := make([]byte, 0, len("first"))
+		records, err := task.appendRecords(nil, lineBuf, batch)
 		require.NoError(t, err)
 
-		copy(buffer, []byte("third"))
-		require.Equal(t, "first", string(first[0].line), "the record must not alias the read buffer")
+		copy(batch.Message.Data(), "third")
+		require.Len(t, records, 1)
+		require.Equal(t, "first", string(records[0].line))
+		require.Same(t, &lineBuf[:1][0], &records[0].line[0])
+	})
+
+	t.Run("the lines of one call share lineBuf, each capped at its own length", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		lineBuf := make([]byte, 0, len("onetwo"))
+		records, err := task.appendRecords(nil, lineBuf, batchOf(t, []int64{id, id}, []string{"one", "two"}))
+		require.NoError(t, err)
+		require.Len(t, records, 2)
+
+		first, second := records[0].line, records[1].line
+		require.Equal(t, "one", string(first))
+		require.Equal(t, "two", string(second))
+		require.Equal(t, len(first), cap(first))
+		require.Same(t, &lineBuf[:1][0], &first[0])
+		require.Equal(t, unsafe.Add(unsafe.Pointer(&first[0]), len(first)), unsafe.Pointer(&second[0]))
+	})
+
+	t.Run("an empty line is forwarded as nil and needs no room in lineBuf", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		records, err := task.appendRecords(nil, nil, batchOf(t, []int64{id}, []string{""}))
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		require.Nil(t, records[0].line)
+	})
+
+	t.Run("a null message is forwarded as a nil line", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		batch := batchOf(t, []int64{id, id}, []string{"one", "two"})
+		messages := columnar.NewUTF8Builder(memory.NewAllocator(nil))
+		messages.AppendNull()
+		messages.AppendValue([]byte("two"))
+		batch.Message = messages.Build()
+
+		records, err := task.appendRecords(nil, make([]byte, 0, 64), batch)
+		require.NoError(t, err)
+		require.Len(t, records, 2)
+		require.Nil(t, records[0].line)
+		require.Equal(t, "two", string(records[1].line))
+	})
+
+	t.Run("a lineBuf without room for every needed line fails", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		_, err := task.appendRecords(nil, make([]byte, 0, 2), batchOf(t, []int64{id}, []string{"one"}))
+		require.EqualError(t, err, "line buffer has 2 free bytes, but the line of row 0 needs 3")
+	})
+
+	t.Run("it appends after the records already in dst", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		existing := LogRecord{timestamp: at(9).UnixNano()}
+		records, err := task.appendRecords([]LogRecord{existing}, make([]byte, 0, 64), batchOf(t, []int64{id}, []string{"one"}))
+		require.NoError(t, err)
+		require.Len(t, records, 2)
+		require.Equal(t, existing, records[0])
+		require.Equal(t, "one", string(records[1].line))
 	})
 
 	t.Run("it forwards no line when the task does not need it", func(t *testing.T) {
 		task, id := oneStreamTask(t, `{app="a"}`)
 		task.needReturningLine = false
 
-		records, err := task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		records, err := task.appendRecords(nil, make([]byte, 0, 64), batchOf(t, []int64{id}, []string{"one"}))
 		require.NoError(t, err)
 		require.Len(t, records, 1)
 		require.Nil(t, records[0].line)
@@ -112,7 +193,7 @@ func TestReadTask_Records(t *testing.T) {
 	t.Run("a row from a stream the task did not plan fails rather than get silently skipped", func(t *testing.T) {
 		task, _ := oneStreamTask(t, `{app="a"}`)
 
-		_, err := task.records([]logs.Record{{StreamID: 9999, Timestamp: at(1), Line: []byte("one")}})
+		_, err := task.appendRecords(nil, make([]byte, 0, 64), batchOf(t, []int64{9999}, []string{"one"}))
 		require.ErrorContains(t, err, "unexpected stream ID 9999")
 	})
 
@@ -127,16 +208,26 @@ func TestReadTask_Records(t *testing.T) {
 		)
 		task := ReadTask{objectPath: "objects/ab/cd", sectionIdx: 3, streams: streams}
 
-		_, err = task.records([]logs.Record{{StreamID: id, Timestamp: at(1), Line: []byte("one")}})
+		_, err = task.appendRecords(nil, make([]byte, 0, 64), batchOf(t, []int64{id}, []string{"one"}))
 		require.ErrorContains(t, err, "unexpected stream ID 7")
 	})
 
-	t.Run("no rows yields no records", func(t *testing.T) {
-		task, _ := oneStreamTask(t, `{app="a"}`)
+	t.Run("a batch without a stream ID array fails", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
 
-		records, err := task.records(nil)
-		require.NoError(t, err)
-		require.Empty(t, records)
+		batch := batchOf(t, []int64{id}, []string{"one"})
+		batch.StreamID = nil
+		_, err := task.appendRecords(nil, make([]byte, 0, 64), batch)
+		require.ErrorContains(t, err, "without the stream ID or timestamp column")
+	})
+
+	t.Run("a batch without a timestamp array fails", func(t *testing.T) {
+		task, id := oneStreamTask(t, `{app="a"}`)
+
+		batch := batchOf(t, []int64{id}, []string{"one"})
+		batch.Timestamp = nil
+		_, err := task.appendRecords(nil, make([]byte, 0, 64), batch)
+		require.ErrorContains(t, err, "without the stream ID or timestamp column")
 	})
 }
 

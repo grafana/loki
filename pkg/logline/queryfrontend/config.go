@@ -13,9 +13,11 @@ import (
 )
 
 const (
-	defaultNgramLength     = 6
-	defaultMaxHintParallel = 64
-	defaultHintTimeout     = 15 * time.Second
+	defaultNgramLength             = 6
+	defaultMaxHintParallel         = 64
+	defaultMaxConjunctions         = 1
+	defaultHintTimeout             = 15 * time.Second
+	defaultMaxHintRangesPerRequest = 100_000
 )
 
 // Config is logline's read path configuration.
@@ -34,11 +36,17 @@ type Config struct {
 	// MaxHintParallel is the maximum number of concurrent hint index workers
 	// dispatched per query. Defaults to 64 when zero.
 	MaxHintParallel int `yaml:"max_hint_parallel"`
+	// MaxConjunctions is the most needle sets a query is planned into. A filter
+	// with an or, or a regex with alternation, gives one set per branch, and
+	// the sets are ORed. Over the limit, sets collapse to the needles they
+	// share. 1 gives one set, the needles every branch shares. Defaults to 1
+	// when zero.
+	MaxConjunctions int `yaml:"max_conjunctions"`
 	// QueryIngestersWithin is the window of recent data that lives only in
 	// ingesters (not yet flushed to object storage). The logline index cannot
 	// cover this window, so it is always passed through to the Loki pipeline.
 	// Populated from Loki's querier.query_ingesters_within at assembly time.
-	QueryIngestersWithin time.Duration `yaml:"query_ingesters_within"`
+	QueryIngestersWithin time.Duration `yaml:"-"`
 	// HintTimeout is the maximum time to wait for the logline index hint
 	// lookup before falling back to passthrough. Defaults to 15s when zero.
 	HintTimeout time.Duration `yaml:"hint_timeout"`
@@ -51,6 +59,12 @@ type Config struct {
 	// hint cache. Only used when no external cache backend is configured.
 	// Defaults to 100 when zero.
 	HintCacheMaxSizeMB int64 `yaml:"hint_cache_max_size_mb"`
+	// MaxHintRangesPerRequest is the maximum number of hint ranges attached to
+	// one split or shard sub-request. When a sub-request has more hint ranges
+	// than this limit, the smallest gaps between each document shard's ranges
+	// are merged until it fits. The merged ranges still cover every match.
+	// 0 disables the limit.
+	MaxHintRangesPerRequest int `yaml:"max_hint_ranges_per_request"`
 	// AlignQueriesWithStep floors both ends of a range metric query onto the step
 	// before the splitter rounds the end up. Populated from
 	// query_range.align_queries_with_step at assembly time.
@@ -67,12 +81,16 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Require X-Logline-Index header to activate hint narrowing")
 	f.IntVar(&c.MaxHintParallel, prefix+".max-hint-parallel", 0,
 		"Maximum concurrent hint index workers per query (default 64)")
+	f.IntVar(&c.MaxConjunctions, prefix+".max-conjunctions", defaultMaxConjunctions,
+		"Maximum needle sets a query is planned into. Filters with or and regexes with alternation give one set per branch. 1 keeps only the needles every branch shares.")
 	f.DurationVar(&c.HintTimeout, prefix+".hint-timeout", 0,
 		"Maximum time to wait for logline index hint lookup (default 15s)")
 	f.DurationVar(&c.HintCacheTTL, prefix+".hint-cache-ttl", 2*time.Minute,
 		"TTL for cached hint results. Uses Loki results cache backend; set to 0 to disable.")
 	f.Int64Var(&c.HintCacheMaxSizeMB, prefix+".hint-cache-max-size-mb", 0,
 		"Max size in MB for embedded hint cache when no external backend is configured (default 100)")
+	f.IntVar(&c.MaxHintRangesPerRequest, prefix+".max-hint-ranges-per-request", defaultMaxHintRangesPerRequest,
+		"Maximum number of hint ranges attached to one split or shard sub-request. When a sub-request has more hint ranges than this limit, Loki merges the smallest gaps between each document shard's ranges until it fits. The merged ranges still cover every match. 0 disables the limit.")
 
 	// Cancel-and-rerun no longer reads these. Keep them so existing
 	// deployments still start, and remove them in a follow-up.
@@ -106,6 +124,12 @@ func (c *Config) Validate() error {
 	if c.MaxHintParallel <= 0 {
 		c.MaxHintParallel = defaultMaxHintParallel
 	}
+	if c.MaxConjunctions < 0 {
+		return fmt.Errorf("max_conjunctions must be >= 0")
+	}
+	if c.MaxConjunctions == 0 {
+		c.MaxConjunctions = defaultMaxConjunctions
+	}
 	if c.HintTimeout <= 0 {
 		c.HintTimeout = defaultHintTimeout
 	}
@@ -117,6 +141,9 @@ func (c *Config) Validate() error {
 	}
 	if c.HintCacheMaxSizeMB == 0 {
 		c.HintCacheMaxSizeMB = 100
+	}
+	if c.MaxHintRangesPerRequest < 0 {
+		return fmt.Errorf("max_hint_ranges_per_request must be >= 0")
 	}
 	return nil
 }

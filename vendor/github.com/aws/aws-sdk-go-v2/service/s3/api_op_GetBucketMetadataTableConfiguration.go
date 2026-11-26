@@ -11,7 +11,7 @@ import (
 	"github.com/aws/smithy-go/ptr"
 )
 
-//	We recommend that you retrieve your S3 Metadata configurations by using the V2 [GetBucketMetadataTableConfiguration]
+//	We recommend that you retrieve your S3 Metadata configurations by using the V2 [GetBucketMetadataConfiguration]
 //
 // API operation. We no longer recommend using the V1
 // GetBucketMetadataTableConfiguration API operation.
@@ -52,7 +52,7 @@ import (
 // [CreateBucketMetadataConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucketMetadataConfiguration.html
 // [Accelerating data discovery with S3 Metadata]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/metadata-tables-overview.html
 //
-// [GetBucketMetadataTableConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketMetadataTableConfiguration.html
+// [GetBucketMetadataConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketMetadataConfiguration.html
 func (c *Client) GetBucketMetadataTableConfiguration(ctx context.Context, params *GetBucketMetadataTableConfigurationInput, optFns ...func(*Options)) (*GetBucketMetadataTableConfigurationOutput, error) {
 	if params == nil {
 		params = &GetBucketMetadataTableConfigurationInput{}

@@ -130,6 +130,34 @@ func Test(t *testing.T) {
 	}
 }
 
+func TestBuilder_Type(t *testing.T) {
+	for _, sortOrder := range []struct {
+		name  string
+		order logs.SortOrder
+	}{
+		{"SortStreamASC", logs.SortStreamASC},
+		{"SortTimestampDESC", logs.SortTimestampDESC},
+		{"SortSchemaASC", logs.SortSchemaASC},
+	} {
+		t.Run(fmt.Sprintf("writes a section of version 4 when the sort order is %s", sortOrder.name), func(t *testing.T) {
+			builder := logs.NewBuilder(nil, logs.BuilderOptions{
+				PageSizeHint:     1024,
+				BufferSize:       256,
+				StripeMergeLimit: 2,
+				AppendStrategy:   logs.AppendOrdered,
+				SortOrder:        sortOrder.order,
+			})
+			builder.Append(logs.Record{StreamID: 1, Timestamp: time.Unix(10, 0), Metadata: labels.EmptyLabels(), Line: []byte("hello")})
+
+			obj, closer, err := buildObject(builder)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+			require.Equal(t, uint32(4), obj.Sections()[0].Type.Version)
+		})
+	}
+}
+
 func TestAppendOrdered(t *testing.T) {
 	records := []logs.Record{
 		{

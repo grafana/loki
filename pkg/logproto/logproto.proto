@@ -75,6 +75,11 @@ message HintTimeRange {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
+  // document_shard and document_shard_bits limit the range to the streams
+  // whose fingerprint has document_shard as its top document_shard_bits bits.
+  // Zero bits covers every stream.
+  uint32 document_shard = 3;
+  uint32 document_shard_bits = 4;
 }
 
 message HintTimeRanges {
@@ -459,10 +464,22 @@ message LoglineIndexRequest {
   string expr = 3;
   repeated IndexMeta indexes = 4 [(gogoproto.nullable) = false];
   // NgramLength and MaxParallel are the query-frontend's settings for this
-  // lookup so the querier does not need matching logline config. Zero means
-  // use the querier's configured defaults.
+  // lookup so the querier does not need matching logline config. Zero
+  // NgramLength or MaxParallel uses the querier's configured defaults.
   int32 ngram_length = 5 [(gogoproto.jsontag) = "ngram_length"];
   int32 max_parallel = 6 [(gogoproto.jsontag) = "max_parallel"];
+  reserved 7;
+  reserved "max_conjunctions";
+  // Conjunctions are the needles the query-frontend planned for expr, OR-ed
+  // together. The querier looks up these instead of planning expr itself.
+  // Empty means the request is from an older frontend.
+  repeated Conjunction conjunctions = 8 [(gogoproto.nullable) = false];
+}
+
+// Conjunction is a set of needles a line must all contain. It wraps the inner
+// list because protobuf can't express a list of lists.
+message Conjunction {
+  repeated string needles = 1;
 }
 
 // IndexMeta is the slim index descriptor on LoglineIndexRequest. Catalog identity is

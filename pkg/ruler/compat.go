@@ -150,7 +150,7 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		groupLoader := NewCachingGroupLoader(GroupLoader{})
 
 		mgr := rules.NewManager(&rules.ManagerOptions{
-			Appendable:               registry,
+			AppendableV2:             registry,
 			Queryable:                memStore,
 			QueryFunc:                queryFn,
 			Context:                  user.InjectOrgID(ctx, userID),

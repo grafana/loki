@@ -21,6 +21,7 @@ import (
 	promconfig "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/sigv4"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -294,14 +295,14 @@ func TestAppenderConcurrentAccess(t *testing.T) {
 			go func(reg *walRegistry) {
 				defer wg.Done()
 
-				_ = reg.Appender(user.InjectOrgID(context.Background(), enabledRWTenant))
+				_ = reg.AppenderV2(user.InjectOrgID(context.Background(), enabledRWTenant))
 			}(reg)
 
 			wg.Add(1)
 			go func(reg *walRegistry) {
 				defer wg.Done()
 
-				_ = reg.Appender(user.InjectOrgID(context.Background(), additionalHeadersRWTenant))
+				_ = reg.AppenderV2(user.InjectOrgID(context.Background(), additionalHeadersRWTenant))
 			}(reg)
 		}
 
@@ -495,12 +496,15 @@ func TestTenantRemoteWriteHeadersConcurrentRefresh(t *testing.T) {
 				case <-stop:
 					return
 				default:
-					app := reg.Appender(ctx)
+					app := reg.AppenderV2(ctx)
 					_, appendErr := app.Append(
 						0,
 						labels.FromStrings("__name__", "test_metric", "goroutine", fmt.Sprintf("%d", id), "iter", fmt.Sprintf("%d", j)),
+						0,
 						time.Now().UnixMilli(),
 						float64(j),
+						nil, nil,
+						storage.AppendV2Options{},
 					)
 					if appendErr == nil {
 						_ = app.Commit()

@@ -318,24 +318,25 @@ func (w *reachabilityWalk) addReferencedObjects(ctx context.Context, indexPath s
 	return nil
 }
 
-// addStatsObjectPaths adds the object paths of a stats section. It returns an
-// error if the section has no object_path column or more than one, because
-// reading only one of several columns could miss object paths.
+// addStatsObjectPaths adds the object paths of a stats section. It adds
+// nothing for an empty section, which has no rows. It returns an error for any
+// other section that has no object_path column or more than one, because a
+// missed object path makes its log object look unreachable.
 func (w *reachabilityWalk) addStatsObjectPaths(ctx context.Context, section *dataobj.Section) (err error) {
 	sec, err := stats.Open(ctx, section)
 	if err != nil {
 		return err
 	}
-	var columns []*stats.Column
-	for _, c := range sec.Columns() {
-		if c.Type == stats.ColumnTypeObjectPath {
-			columns = append(columns, c)
-		}
+	column, ok, err := sec.ObjectPathColumn()
+	if err != nil {
+		return err
 	}
-	if len(columns) != 1 {
-		return fmt.Errorf("stats section has %d object_path columns, want 1", len(columns))
+	if !ok {
+		// An empty section records only the layout of an index object of a
+		// run that holds no stats rows. It references no log objects.
+		return nil
 	}
-	reader := stats.NewReader(stats.ReaderOptions{Columns: columns})
+	reader := stats.NewReader(stats.ReaderOptions{Columns: []*stats.Column{column}})
 	defer util.CloseAndHandleError(reader, &err)
 	if err := reader.Open(ctx); err != nil {
 		return err

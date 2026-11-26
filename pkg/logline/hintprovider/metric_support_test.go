@@ -69,6 +69,16 @@ func TestSupportedMetricQuery(t *testing.T) {
 			expected: []string{"TIMEOUT"},
 		},
 		{
+			name:     "absent_over_time under a vector aggregation answers 1, not empty",
+			query:    `sum(absent_over_time({app="api"} |= "timeout" [5m]))`,
+			expected: nil,
+		},
+		{
+			name:     "absent_over_time under nested vector aggregations",
+			query:    `topk(1, sum by (app) (absent_over_time({app="api"} |= "timeout" [5m])))`,
+			expected: nil,
+		},
+		{
 			name:     "offset does not change eligibility",
 			query:    `count_over_time({app="api"} |= "timeout" [5m] offset 10m)`,
 			expected: []string{"TIMEOUT"},
@@ -176,7 +186,7 @@ func TestSupportedMetricQuery(t *testing.T) {
 			expr, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 
-			got := SupportedMetricQuery(expr, ngramLength)
+			got := literals(t, SupportedMetricQuery(expr, ngramLength, 1))
 			if tc.expected == nil {
 				require.Nil(t, got)
 				return

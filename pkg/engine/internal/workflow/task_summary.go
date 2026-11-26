@@ -6,6 +6,7 @@ import (
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/schedulerstat"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker/workerstat"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -78,7 +79,7 @@ func (wf *Workflow) printTaskSummary(task *Task, result TaskResult, onCriticalPa
 		"pages_pruned", xcap.Value[int64](capture, dataobj.StatDatasetPagesPruned),
 		"pages_downloaded", pagesDownloaded,
 		"pages_bytes_downloaded", bytesDownloaded,
-		"total_bytes_downloaded", xcap.Value[int64](capture, dataobj.StatObjectBytesDownloaded),
+		"total_bytes_downloaded", xcap.Value[int64](capture, bucketstat.StatObjectBytesDownloaded),
 
 		// Stage 10 counters.
 		"batches_emitted", xcap.Value[int64](capture, workerstat.TaskRecordsSent),

@@ -54,7 +54,7 @@ type Contents struct {
 func New(ctx context.Context, t *testing.T, window time.Time, sources []Source) *Scenario {
 	t.Helper()
 	require.Equal(t, window.Truncate(metastore.MetastoreWindowSize), window, "scenario window must be aligned")
-	bucket := objstore.NewInMemBucket()
+	bucket := NewBucket()
 	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	seen := make(map[string]struct{}, len(sources))
 	for i, source := range sources {

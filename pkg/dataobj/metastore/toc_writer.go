@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -60,6 +62,11 @@ var (
 // kept index objects would miss the postings of the removed ones.
 var errPartialRun = fmt.Errorf("%w: change removes only some index objects of a run", errUnrecoverable)
 
+// errRunPathInToC means a new run of more than one entry holds the path of a
+// pointer that the ToC keeps. The ToC holds one pointer for each path, so the
+// kept pointer would keep its own run ID and the new run would miss it.
+var errRunPathInToC = fmt.Errorf("%w: ToC already holds an index object of a new run", errUnrecoverable)
+
 // ErrWatermarkMismatch means the watermark in a ToC differs from the one the
 // caller expected.
 var ErrWatermarkMismatch = errors.New("ToC watermark differs from the expected value")
@@ -91,7 +98,19 @@ type TableOfContentsEntry struct {
 	// must equal [indexobj.TenantShardBuckets] of the object, because readers
 	// trust it.
 	ShardBuckets indexpointers.ShardBuckets
+
+	// PostingKeys bounds the posting keys of the index object. Queries skip
+	// an index object whose bounds hold no column that they read, so the
+	// bounds must hold every posting key of the object. The zero value means
+	// the bounds are unknown.
+	PostingKeys postings.KeyRange
 }
+
+// IndexRunEntries holds the entries of the index objects of one run. A
+// query reads the index objects of a run as one index. A run is never empty.
+// The entries of a run of more than one entry share one time range, and each
+// has posting key bounds.
+type IndexRunEntries []TableOfContentsEntry
 
 // WatermarkUpdate raises the watermark of a Kafka topic and partition in a
 // ToC, if the ToC holds the watermark the caller expects.
@@ -221,7 +240,7 @@ func (m *TableOfContentsWriter) writeEntry(ctx context.Context, tenant string, e
 	}
 
 	err = m.applyChange(ctx, opWriteEntry, tenant, window, tocChange{
-		add:       []TableOfContentsEntry{entry},
+		add:       []IndexRunEntries{{entry}},
 		watermark: watermark,
 	})
 	if errors.Is(err, errChangeAlreadyApplied) {
@@ -230,62 +249,62 @@ func (m *TableOfContentsWriter) writeEntry(ctx context.Context, tenant string, e
 	return err
 }
 
-// ReplaceIndexPointers swaps index pointers in the tenant's ToC of window in
-// one conditional write. It removes every pointer whose path is in oldPaths
-// and adds each entry of newEntries that the ToC does not hold.
+// ReplaceIndexPointers removes the pointers whose path is in oldPaths from
+// the tenant's ToC of window, and adds the entries of newRuns, in one
+// conditional write.
 //
-// The swap applies only if the ToC holds every path in oldPaths. Otherwise the
-// call writes nothing: no removals and no additions. A swap without every old
-// path would leave the ToC with both the remaining old paths and the new
-// entries that replace them, so it would point to the same data twice.
+// The swap applies only if the ToC holds every path in oldPaths. Otherwise it
+// writes nothing, so the ToC never points to the same data twice.
 //
-// ReplaceIndexPointers returns true if it wrote the swap. It returns false
-// and no error if it wrote nothing:
-//   - oldPaths and newEntries are both empty.
-//   - The ToC already holds the swap: it holds no path in oldPaths and every
-//     entry in newEntries. For example, an earlier attempt of this call wrote
-//     it and lost the response.
+// Each run of more than one entry gets a new run ID, and its pointers record
+// the length of the run. The writer picks the ID inside the conditional write,
+// so concurrent writers never share one. A run of one entry gets no run ID,
+// and the call skips it if the ToC already holds its path. Paths are content
+// hashes, so the same path means the same pointer.
 //
-// It returns an error if exactly one of oldPaths and newEntries is empty, if
-// an entry in newEntries has no valid time range or lies in another window,
-// after the last attempt, or once ctx is done. It returns an error without
-// retrying if the ToC holds a section of another tenant, if the ToC does not
-// exist, or if another writer removed a path in oldPaths first.
+// A path can be in oldPaths and in newRuns, for example when a merge writes a
+// copy of one of its sources. The swap replaces the old pointer of that path
+// with the pointer of its new entry. A retry after a lost response still sees
+// the swap as applied.
 //
-// Concurrent calls for the same ToC are safe on a bucket whose GetAndReplace
-// is a conditional write: a call that loses the race retries on the new ToC.
+// It returns true if it wrote the swap. It returns false and no error if
+// oldPaths and newRuns are both empty, or if the ToC already holds the swap,
+// for example after a lost response.
+//
+// A query filters the entries of a ToC by time. If every entry of a run has
+// the same time range, the time filter keeps all entries of the run or none.
+//
+// It returns an error without retrying if:
+//   - the arguments are not valid: exactly one of oldPaths and newRuns is
+//     empty, a run is empty or too long, an entry lies outside window, the
+//     entries of a run of more than one entry have different time ranges, an
+//     entry of such a run has no posting key bounds, or a path of such a run
+//     appears twice in newRuns,
+//   - the ToC does not exist, holds another tenant, or lacks a path in
+//     oldPaths,
+//   - the change removes only some index objects of a run,
+//   - the ToC keeps a path of a run of more than one entry.
+//
+// It retries other errors until its backoff ends or ctx is done.
 func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	ctx context.Context,
 	window time.Time,
 	tenant string,
 	oldPaths []string,
-	newEntries []TableOfContentsEntry,
+	newRuns []IndexRunEntries,
 ) (bool, error) {
 	switch {
-	case len(oldPaths) == 0 && len(newEntries) == 0:
+	case len(oldPaths) == 0 && len(newRuns) == 0:
 		return false, nil
 	case len(oldPaths) == 0:
 		return false, errors.New("replace-index-pointers: no old entries")
-	case len(newEntries) == 0:
-		return false, errors.New("replace-index-pointers: no new entries")
+	case len(newRuns) == 0:
+		return false, errors.New("replace-index-pointers: no new runs")
 	}
 
 	window = window.Truncate(MetastoreWindowSize).UTC()
-	for _, e := range newEntries {
-		entryWindow, err := e.TimeWindow()
-		if err != nil {
-			return false, err
-		}
-		// An entry outside the window would put a pointer in a ToC whose window
-		// does not hold the entry's data.
-		if !entryWindow.Equal(window) {
-			return false, fmt.Errorf(
-				"want window: %s, got ToC entry %s at %s",
-				window.Format(time.RFC3339),
-				e.Path,
-				entryWindow.Format(time.RFC3339),
-			)
-		}
+	if err := validateNewRuns(window, newRuns); err != nil {
+		return false, err
 	}
 
 	remove := make(map[string]struct{}, len(oldPaths))
@@ -295,7 +314,7 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 
 	err := m.applyChange(ctx, opReplace, tenant, window, tocChange{
 		remove: remove,
-		add:    newEntries,
+		add:    newRuns,
 	})
 	switch {
 	case err == nil:
@@ -307,8 +326,89 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 	}
 }
 
+// runLength returns the number of entries of run, as the run_length column of
+// its pointers records it. It returns an error if run is empty, or if its
+// length does not fit in an int32.
+func runLength(run IndexRunEntries) (int32, error) {
+	return runLengthOf(len(run))
+}
+
+func runLengthOf(entries int) (int32, error) {
+	switch {
+	case entries == 0:
+		return 0, errors.New("replace-index-pointers: empty new run")
+	case int64(entries) > math.MaxInt32:
+		return 0, fmt.Errorf("replace-index-pointers: new run of %d entries is too long", entries)
+	}
+	return int32(entries), nil
+}
+
+// validateNewRuns returns an error if a run of newRuns is empty or too long,
+// or if an entry has no valid time range or lies in another window. For a run
+// of more than one entry, it also returns an error if the entries have
+// different time ranges, if an entry has no posting key bounds, or if the path
+// of an entry appears twice in newRuns.
+//
+// A run splits its postings by posting key, and queries read only the index
+// objects whose key bounds hold the columns that they need. An entry without
+// bounds shows that the writer of the run did not record where it split.
+//
+// It does not compare newRuns with the paths that the change removes, because
+// a new run can reuse one of them.
+func validateNewRuns(window time.Time, newRuns []IndexRunEntries) error {
+	pathCounts := make(map[string]int)
+	for _, run := range newRuns {
+		if _, err := runLength(run); err != nil {
+			return err
+		}
+		for _, entry := range run[1:] {
+			if !entry.StartTime.Equal(run[0].StartTime) || !entry.EndTime.Equal(run[0].EndTime) {
+				return fmt.Errorf("replace-index-pointers: entry %s of a new run spans %s to %s, but entry %s spans %s to %s",
+					entry.Path, entry.StartTime, entry.EndTime, run[0].Path, run[0].StartTime, run[0].EndTime)
+			}
+		}
+		if len(run) > 1 {
+			for _, entry := range run {
+				if entry.PostingKeys.IsZero() {
+					return fmt.Errorf("replace-index-pointers: entry %s of a new run has no posting key bounds", entry.Path)
+				}
+			}
+		}
+		for _, entry := range run {
+			entryWindow, err := entry.TimeWindow()
+			if err != nil {
+				return err
+			}
+			// An entry outside the window would put a pointer in a ToC whose
+			// window does not hold the entry's data.
+			if !entryWindow.Equal(window) {
+				return fmt.Errorf(
+					"want window: %s, got ToC entry %s at %s",
+					window.Format(time.RFC3339),
+					entry.Path,
+					entryWindow.Format(time.RFC3339),
+				)
+			}
+			pathCounts[entry.Path]++
+		}
+	}
+	for _, run := range newRuns {
+		if len(run) == 1 {
+			continue
+		}
+		for _, entry := range run {
+			if pathCounts[entry.Path] > 1 {
+				return fmt.Errorf("replace-index-pointers: path %s of a new run appears more than once", entry.Path)
+			}
+		}
+	}
+	return nil
+}
+
 // tocChange is one change to a tenant's ToC. It removes the pointers whose
-// path is in remove, then adds the entries of add that the ToC does not hold.
+// path is in remove, then adds the runs of add. It gives each run of more than
+// one entry a new run ID, and fails if the ToC keeps a path of such a run. It
+// adds a run of one entry only if the ToC does not hold its path.
 //
 // If remove is not empty, the change applies only if the ToC holds every path
 // in remove. Otherwise it writes nothing. If a ToC doesn't exist yet and
@@ -318,8 +418,24 @@ func (m *TableOfContentsWriter) ReplaceIndexPointers(
 // the ToC holds the expected watermark.
 type tocChange struct {
 	remove    map[string]struct{}
-	add       []TableOfContentsEntry
+	add       []IndexRunEntries
 	watermark *WatermarkUpdate
+}
+
+// reusedPaths returns the paths that c removes and adds again. Paths are
+// content hashes, so a reused path names the same index object before and
+// after the change. A merge reuses a path when it writes a copy of one of its
+// source index objects.
+func (c tocChange) reusedPaths() map[string]struct{} {
+	reused := make(map[string]struct{})
+	for _, run := range c.add {
+		for _, entry := range run {
+			if _, ok := c.remove[entry.Path]; ok {
+				reused[entry.Path] = struct{}{}
+			}
+		}
+	}
+	return reused
 }
 
 // changeResult is the result of one attempt of applyChange, and of the whole
@@ -464,14 +580,30 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 	}
 
 	var (
-		kept    = make(map[string]struct{})
+		// kept maps the path of each kept pointer to its run ID.
+		kept = make(map[string]indexpointers.RunID)
+		// removed holds the paths of the removed pointers, except the reused
+		// paths.
 		removed = make(map[string]struct{}, len(change.remove))
+		// reused holds the paths that change removes and adds again, and
+		// reusedPresent maps each reused path in existing to the run ID of
+		// its first pointer.
+		//
+		// The other old paths show whether an earlier attempt applied the
+		// change. A reused path does not show it, because the ToC holds that
+		// path before and after the change. If every old path is reused, only
+		// the run structure shows it.
+		reused        = change.reusedPaths()
+		reusedPresent = make(map[string]indexpointers.RunID, len(reused))
 		// current is the watermark in existing that change.watermark raises.
 		current *int64
 
 		// runs counts the pointers of each run in existing, and the pointers
 		// of each run that change removes.
 		runs = make(map[indexpointers.RunID]struct{ total, removed int })
+		// maxRunID is the largest run ID in existing, removed pointers
+		// included. So no run ID in the new ToC also names a removed run.
+		maxRunID indexpointers.RunID
 	)
 	if buf.Len() > 0 {
 		tocObject, err := decodeTableOfContents(buf.Bytes())
@@ -484,6 +616,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 
 		err = forEachTocPointer(ctx, tocObject, func(pointer indexpointers.IndexPointer) error {
 			_, remove := change.remove[pointer.Path]
+			maxRunID = max(maxRunID, pointer.RunID)
 			if pointer.RunID != 0 {
 				run := runs[pointer.RunID]
 				run.total++
@@ -493,7 +626,13 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 				runs[pointer.RunID] = run
 			}
 			if remove {
-				removed[pointer.Path] = struct{}{}
+				if _, ok := reused[pointer.Path]; ok {
+					if _, seen := reusedPresent[pointer.Path]; !seen {
+						reusedPresent[pointer.Path] = pointer.RunID
+					}
+				} else {
+					removed[pointer.Path] = struct{}{}
+				}
 				return nil
 			}
 			// Keep one pointer for each path. The ToC can hold repeated paths
@@ -501,7 +640,7 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 			if _, ok := kept[pointer.Path]; ok {
 				return nil
 			}
-			kept[pointer.Path] = struct{}{}
+			kept[pointer.Path] = pointer.RunID
 			if err := builder.AppendIndexPointer(pointer); err != nil {
 				return fmt.Errorf("appending existing index pointer: %w", err)
 			}
@@ -526,22 +665,75 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 	}
 
+	// holdsRunOfOne reports whether existing holds the run of one entry at
+	// path, so the change has nothing to write for it.
+	//
+	// A run of one entry adds no pointer for a path that the ToC keeps, so a
+	// kept pointer holds it in any run. The change writes a reused path as a
+	// pointer with no run ID, so a reused pointer holds it only without a run
+	// ID. A reused pointer with a run ID means that the change did not apply
+	// yet, for example when it splits a run into runs of one entry.
+	holdsRunOfOne := func(path string) bool {
+		if _, ok := kept[path]; ok {
+			return true
+		}
+		runID, ok := reusedPresent[path]
+		return ok && runID == 0
+	}
+	// existingRunID returns the run ID of the kept or reused pointer of path.
+	// It returns false if existing holds no such pointer.
+	existingRunID := func(path string) (indexpointers.RunID, bool) {
+		if runID, ok := kept[path]; ok {
+			return runID, true
+		}
+		runID, ok := reusedPresent[path]
+		return runID, ok
+	}
+	// holdsRunOfSeveral reports whether existing holds run, a run of several
+	// entries, as one whole run: every path is kept or reused, all have one
+	// run ID, and that run has no other pointers. So a retry after a lost
+	// response sees the change as applied, but the same paths in another run
+	// structure do not count.
+	holdsRunOfSeveral := func(run IndexRunEntries) bool {
+		var runID indexpointers.RunID
+		for i, entry := range run {
+			entryRunID, ok := existingRunID(entry.Path)
+			if !ok || (i > 0 && entryRunID != runID) {
+				return false
+			}
+			runID = entryRunID
+		}
+		return runID != 0 && runs[runID].total == len(run)
+	}
 	holdsEveryEntry := true
-	for _, entry := range change.add {
-		if _, ok := kept[entry.Path]; !ok {
+	for _, run := range change.add {
+		var held bool
+		switch len(run) {
+		case 0:
+			held = true
+		case 1:
+			held = holdsRunOfOne(run[0].Path)
+		default:
+			held = holdsRunOfSeveral(run)
+		}
+		if !held {
 			holdsEveryEntry = false
-			break
 		}
 	}
 
-	if len(removed) < len(change.remove) {
+	// The change applies only if existing holds every old path, reused paths
+	// included. A missing path means that another writer removed its pointer
+	// first.
+	missingOld := len(change.remove) - len(reused) - len(removed)
+	missingReused := len(reused) - len(reusedPresent)
+	if missingOld > 0 || missingReused > 0 {
 		// Write nothing. An earlier attempt may have written the change and
 		// lost the response.
 		if len(removed) == 0 && holdsEveryEntry {
 			return nil, errChangeAlreadyApplied
 		}
 
-		return nil, fmt.Errorf("%w: %d of %d", errChangeSuperseded, len(change.remove)-len(removed), len(change.remove))
+		return nil, fmt.Errorf("%w: %d of %d", errChangeSuperseded, missingOld+missingReused, len(change.remove))
 	}
 
 	if len(removed) == 0 && holdsEveryEntry && change.watermark == nil {
@@ -560,18 +752,39 @@ func (m *TableOfContentsWriter) rebuildToc(ctx context.Context, builder *indexob
 		}
 	}
 
-	for _, entry := range change.add {
-		if _, ok := kept[entry.Path]; ok {
-			continue
+	nextRunID := maxRunID + 1
+	for _, run := range change.add {
+		var (
+			runID  indexpointers.RunID
+			length int32
+		)
+		if len(run) > 1 {
+			var err error
+			if length, err = runLength(run); err != nil {
+				return nil, err
+			}
+			runID = nextRunID
+			nextRunID++
 		}
-		kept[entry.Path] = struct{}{}
-		if err := builder.AppendIndexPointer(indexpointers.IndexPointer{
-			Path:         entry.Path,
-			StartTs:      entry.StartTime,
-			EndTs:        entry.EndTime,
-			ShardBuckets: entry.ShardBuckets,
-		}); err != nil {
-			return nil, fmt.Errorf("appending index pointer: %w", err)
+		for _, entry := range run {
+			if _, ok := kept[entry.Path]; ok {
+				if runID != 0 {
+					return nil, fmt.Errorf("%w: %s", errRunPathInToC, entry.Path)
+				}
+				continue
+			}
+			kept[entry.Path] = runID
+			if err := builder.AppendIndexPointer(indexpointers.IndexPointer{
+				Path:         entry.Path,
+				StartTs:      entry.StartTime,
+				EndTs:        entry.EndTime,
+				RunID:        runID,
+				RunLength:    length,
+				PostingKeys:  entry.PostingKeys,
+				ShardBuckets: entry.ShardBuckets,
+			}); err != nil {
+				return nil, fmt.Errorf("appending index pointer: %w", err)
+			}
 		}
 	}
 

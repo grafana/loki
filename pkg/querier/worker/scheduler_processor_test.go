@@ -128,6 +128,31 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 		assert.NotContains(t, logs.String(), "error")
 		assert.NotContains(t, logs.String(), schedulerpb.ErrSchedulerIsNotRunning)
 	})
+
+	t.Run("should reconnect without backoff when the query-scheduler cancels the stream", func(t *testing.T) {
+		sp, loopClient, _ := prepareSchedulerProcessor()
+		logs := &concurrency.SyncBuffer{}
+		sp.log = log.NewLogfmtLogger(logs)
+
+		workerCtx, workerCancel := context.WithCancel(context.Background())
+		var recvCount atomic.Int64
+		loopClient.On("Recv").Return(func() (*schedulerpb.SchedulerToQuerier, error) {
+			if recvCount.Inc() <= 5 {
+				return nil, status.Error(codes.Canceled, context.Canceled.Error())
+			}
+			workerCancel()
+			<-loopClient.Context().Done()
+			return nil, loopClient.Context().Err()
+		})
+
+		startTime := time.Now()
+		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1", "1")
+
+		// A single backoff would take at least processorBackoffConfig.MinBackoff.
+		assert.Less(t, time.Since(startTime), processorBackoffConfig.MinBackoff)
+		assert.Equal(t, int64(6), recvCount.Load())
+		assert.NotContains(t, logs.String(), "level=error")
+	})
 }
 
 func prepareSchedulerProcessor() (*schedulerProcessor, *querierLoopClientMock, *requestHandlerMock) {

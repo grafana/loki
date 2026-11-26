@@ -67,10 +67,40 @@ func TestIndexRun_String(t *testing.T) {
 	})
 }
 
+func TestIndexRun_CheckLength(t *testing.T) {
+	run := func(sizes ...int32) indexRun {
+		var r indexRun
+		for i, size := range sizes {
+			r.entries = append(r.entries, indexpointers.IndexPointer{Path: fmt.Sprintf("indexes/%d", i), RunID: 1, RunLength: size})
+		}
+		return r
+	}
+
+	t.Run("accepts a run whose index objects record the number of index objects in the ToC", func(t *testing.T) {
+		require.NoError(t, run(2, 2).checkLength())
+	})
+
+	t.Run("accepts a run whose index objects record no size", func(t *testing.T) {
+		require.NoError(t, run(0, 0).checkLength())
+	})
+
+	t.Run("returns a corrupt index error when the ToC lists fewer index objects than the run records", func(t *testing.T) {
+		require.ErrorIs(t, run(3, 3).checkLength(), errCorruptIndex)
+	})
+
+	t.Run("returns a corrupt index error when a later index object records another size than the first", func(t *testing.T) {
+		require.ErrorIs(t, run(2, 3).checkLength(), errCorruptIndex)
+	})
+
+	t.Run("returns a corrupt index error when the ToC lists more index objects than the run records", func(t *testing.T) {
+		require.ErrorIs(t, run(2, 2, 2).checkLength(), errCorruptIndex)
+	})
+}
+
 func TestLayoutGroup_CountRuns(t *testing.T) {
 	group := newLayoutGroup(streams.Layout{}, false)
-	group.add(indexRun{entries: []indexpointers.IndexPointer{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}})
-	group.add(indexRun{entries: []indexpointers.IndexPointer{{Path: "plain"}}})
+	group.add(indexRunRead{run: indexRun{entries: []indexpointers.IndexPointer{{Path: "run/a", RunID: 1}, {Path: "run/b", RunID: 1}}}})
+	group.add(indexRunRead{run: runOfPath("plain")})
 
 	t.Run("counts the index objects of one run as one run", func(t *testing.T) {
 		got, err := group.countRuns([]string{"run/a", "run/b", "plain"})
@@ -107,7 +137,7 @@ func TestExistsInToC(t *testing.T) {
 		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"), pointer("indexes/run/b"))
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
 
-		exists, err := c.existsInToC(ctx, "acme", window, run)
+		exists, err := existsInToC(ctx, c.bucket, "acme", window, run.paths())
 		require.NoError(t, err)
 		require.True(t, exists)
 	})
@@ -117,7 +147,7 @@ func TestExistsInToC(t *testing.T) {
 		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"))
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
 
-		exists, err := c.existsInToC(ctx, "acme", window, run)
+		exists, err := existsInToC(ctx, c.bucket, "acme", window, run.paths())
 		require.NoError(t, err)
 		require.False(t, exists)
 	})

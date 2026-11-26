@@ -209,12 +209,7 @@ func (b *Builder) Tenant() string { return b.tenant }
 func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
 
 // Type returns the [dataobj.SectionType] of the logs builder.
-func (b *Builder) Type() dataobj.SectionType {
-	if b.opts.SortOrder == SortSchemaASC {
-		return schemaSortSectionType
-	}
-	return sectionType
-}
+func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
@@ -236,14 +231,13 @@ func (b *Builder) Append(entry Record) {
 	}
 }
 
+// RecordOverhead is the number of bytes that [Builder.UncompressedSize] counts
+// for each record on top of [Record.UncompressedSize]: one byte for the
+// stream ID (as a uvarint) and eight bytes for the timestamp.
+const RecordOverhead = 9
+
 func recordSize(record Record) int {
-	var size int
-
-	size++    // One byte per stream ID (for uvarint).
-	size += 8 // Eight bytes for timestamp.
-	size += int(record.UncompressedSize())
-
-	return size
+	return RecordOverhead + int(record.UncompressedSize())
 }
 
 func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
@@ -367,8 +361,8 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	// column. This will reduce the number of columns in the section and thus the
 	// metadata size.
 
-	var logsEnc columnar.Encoder
-	if err := b.encodeSection(&logsEnc, section); err != nil {
+	logsEnc := columnar.NewEncoder()
+	if err := b.encodeSection(logsEnc, section); err != nil {
 		return 0, fmt.Errorf("encoding section: %w", err)
 	}
 

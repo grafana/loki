@@ -5,6 +5,7 @@
 package zstd
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -207,6 +208,10 @@ func (d *Decoder) Reset(r io.Reader) error {
 
 		dst, err := d.DecodeAll(b, dst)
 		if !errors.Is(err, ErrDecoderSizeExceeded) {
+			// Consume the input, as streaming from the buffer would.
+			if buf, ok := r.(*bytes.Buffer); ok {
+				buf.Next(len(b))
+			}
 			if err == nil {
 				err = io.EOF
 			}
@@ -829,7 +834,10 @@ func (d *Decoder) startStreamDecoder(ctx context.Context, r io.Reader, output ch
 				if debugDecoder && hasErr {
 					println("executeSequences returned:", do.err)
 				}
-				do.b = block.dst
+				// On error, block.dst still holds this block decoder's previous output.
+				if !hasErr {
+					do.b = block.dst
+				}
 			}
 			if !hasErr {
 				decodedFrame += uint64(len(do.b))

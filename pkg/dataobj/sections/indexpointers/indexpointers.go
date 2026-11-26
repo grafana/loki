@@ -12,7 +12,7 @@ import (
 var sectionType = dataobj.SectionType{
 	Namespace: format.SectionNamespace,
 	Kind:      format.IndexPointersSectionKind,
-	Version:   columnar.FormatVersion,
+	Version:   columnar.DefaultFormatVersion,
 }
 
 // CheckSection returns true if section is a indexpointers section.
@@ -30,8 +30,8 @@ type Section struct {
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
-	} else if section.Type.Version != columnar.FormatVersion {
-		return nil, fmt.Errorf("unsupported section version: got=%d want=%d", section.Type.Version, columnar.FormatVersion)
+	} else if !columnar.IsSupportedVersion(section.Type.Version) {
+		return nil, fmt.Errorf("unsupported section version: got=%d", section.Type.Version)
 	}
 
 	dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
@@ -91,6 +91,7 @@ const (
 	ColumnTypeMinPostingKey                   // ColumnTypeMinPostingKey is an optional column containing the encoded smallest posting key of the index object.
 	ColumnTypeMaxPostingKey                   // ColumnTypeMaxPostingKey is an optional column containing the encoded largest posting key of the index object.
 	ColumnTypeShardBuckets                    // ColumnTypeShardBuckets is an optional column containing the shard bucket count of the tenant's layout in the index object.
+	ColumnTypeRunLength                       // ColumnTypeRunLength is an optional column containing the number of index objects of the run that holds the index object.
 )
 
 var columnTypeNames = map[ColumnType]string{
@@ -102,6 +103,7 @@ var columnTypeNames = map[ColumnType]string{
 	ColumnTypeMinPostingKey: "min_posting_key",
 	ColumnTypeMaxPostingKey: "max_posting_key",
 	ColumnTypeShardBuckets:  "shard_buckets",
+	ColumnTypeRunLength:     "run_length",
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -124,6 +126,8 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeMaxPostingKey, nil
 	case "shard_buckets":
 		return ColumnTypeShardBuckets, nil
+	case "run_length":
+		return ColumnTypeRunLength, nil
 	}
 
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)

@@ -17,6 +17,7 @@
 package bitutil
 
 import (
+	"encoding/binary"
 	"math"
 	"math/bits"
 	"unsafe"
@@ -112,25 +113,79 @@ func CountSetBits(buf []byte, offset, n int) int {
 	return count
 }
 
-func countSetBitsWithOffset(buf []byte, offset, n int) int {
-	count := 0
-
-	beg := offset
-	begU8 := roundUp(beg, uint64SizeBits)
-
-	init := min(n, begU8-beg)
-	for i := offset; i < beg+init; i++ {
-		if BitIsSet(buf, i) {
-			count++
+// BitmapAllSet reports whether all bits in the requested range are set.
+// For n == 0, it returns true for any buf and offset. Otherwise, buf must
+// cover offset+n bits or BitmapAllSet panics, matching CountSetBits.
+func BitmapAllSet(buf []byte, offset, n int) bool {
+	if n == 0 {
+		return true
+	}
+	// Validate the full range before returning early for a clear bit.
+	_ = buf[(uint(offset)+uint(n)-1)/8]
+	// Preserve the cheapest early exit for a null at the start.
+	if !BitIsSet(buf, offset) {
+		return false
+	}
+	if offset&7 != 0 {
+		leading := min(8-(offset&7), n)
+		mask := byte((1<<leading)-1) << (offset & 7)
+		if buf[offset/8]&mask != mask {
+			return false
+		}
+		offset += leading
+		n -= leading
+	}
+	end := offset/8 + n/8
+	body := buf[offset/8 : end]
+	// One test per 512 bits keeps long all-valid scans branch-light.
+	if len(body) >= 64 {
+		bulkBytes := len(body) &^ 63
+		words := bytesToUint64(body[:bulkBytes])
+		for len(words) >= 8 {
+			if words[0]&words[1]&words[2]&words[3]&words[4]&words[5]&words[6]&words[7] != ^uint64(0) {
+				return false
+			}
+			words = words[8:]
+		}
+		body = body[bulkBytes:]
+	}
+	for len(body) >= 8 {
+		if binary.LittleEndian.Uint64(body) != ^uint64(0) {
+			return false
+		}
+		body = body[8:]
+	}
+	for _, v := range body {
+		if v != 255 {
+			return false
 		}
 	}
-
-	begU64 := BytesForBits(int64(beg + init))
-	return count + CountSetBits(buf[begU64:], 0, n-init)
+	if tail := n & 7; tail != 0 {
+		mask := byte(1<<tail) - 1
+		return buf[end]&mask == mask
+	}
+	return true
 }
 
-func roundUp(v, f int) int {
-	return (v + (f - 1)) / f * f
+func countSetBitsWithOffset(buf []byte, offset, n int) int {
+	if n == 0 {
+		return 0
+	}
+
+	byteOffset := offset / 8
+	bitOffset := offset & 7
+	if bitOffset == 0 {
+		return CountSetBits(buf[byteOffset:], 0, n)
+	}
+
+	// Count the partial first byte, then use the word-based path for the rest.
+	leading := min(n, 8-bitOffset)
+	mask := byte((1<<leading)-1) << bitOffset
+	count := bits.OnesCount8(buf[byteOffset] & mask)
+	if leading == n {
+		return count
+	}
+	return count + CountSetBits(buf[byteOffset+1:], 0, n-leading)
 }
 
 func min(a, b int) int {

@@ -19,13 +19,15 @@ const (
 )
 
 type CompressingReader struct {
-	state   crState
-	src     io.ReadCloser             // source reader
-	level   lz4block.CompressionLevel // how hard to try
-	frame   *lz4stream.Frame          // frame being built
-	in      []byte
-	out     ovWriter
-	handler func(int)
+	state      crState
+	src        io.ReadCloser             // source reader
+	level      lz4block.CompressionLevel // how hard to try
+	frame      *lz4stream.Frame          // frame being built
+	in         []byte
+	out        ovWriter
+	handler    func(int)
+	dict       []byte
+	compressor *lz4block.Compressor
 }
 
 // NewCompressingReader creates a reader which reads compressed data from
@@ -74,6 +76,9 @@ func (zrd *CompressingReader) Apply(options ...Option) (err error) {
 func (*CompressingReader) private() {}
 
 func (zrd *CompressingReader) init() error {
+	if len(zrd.dict) > 0 && zrd.compressor == nil {
+		zrd.compressor = new(lz4block.Compressor)
+	}
 	zrd.frame.InitW(&zrd.out, 1, false)
 	size := zrd.frame.BlockSizeIndex()
 	zrd.in = size.Get()
@@ -119,8 +124,8 @@ func (zrd *CompressingReader) Read(p []byte) (n int, err error) {
 		rCount, err = io.ReadFull(zrd.src, zrd.in)
 		switch err {
 		case nil:
-			err = block.Compress(
-				zrd.frame, zrd.in[:rCount], zrd.level,
+			err = block.CompressWithDict(
+				zrd.frame, zrd.in[:rCount], zrd.level, zrd.compressor, zrd.dict,
 			).Write(zrd.frame, &zrd.out)
 			zrd.handler(len(block.Data))
 			if err != nil {
@@ -135,8 +140,8 @@ func (zrd *CompressingReader) Read(p []byte) (n int, err error) {
 			}
 		case io.EOF, io.ErrUnexpectedEOF: // read may be partial
 			if rCount > 0 {
-				err = block.Compress(
-					zrd.frame, zrd.in[:rCount], zrd.level,
+				err = block.CompressWithDict(
+					zrd.frame, zrd.in[:rCount], zrd.level, zrd.compressor, zrd.dict,
 				).Write(zrd.frame, &zrd.out)
 				zrd.handler(len(block.Data))
 				if err != nil {

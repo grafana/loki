@@ -15,7 +15,7 @@ import (
 )
 
 type builderFactory interface {
-	NewBuilder() (*logsobj.Builder, error)
+	NewBuilder(tenant string) (*logsobj.Builder, error)
 }
 
 // MultiObjectBuilder keeps one [logsobj.Builder] per tenant and ToC window.
@@ -93,13 +93,13 @@ func (m *MultiObjectBuilder) Append(ctx context.Context, tenant string, stream l
 		}
 		b, exists := m.builders[scope]
 		if !exists {
-			nb, err := m.builderFactory.NewBuilder()
+			nb, err := m.builderFactory.NewBuilder(tenant)
 			if err != nil {
 				return res, fmt.Errorf("error creating logsobj builder for scope %s: %w", scope, err)
 			}
 			b = WatermarkedBuilder{logsBuilder: nb, initialWatermark: initialWatermark}
 		}
-		if err := b.Append(tenant, stream, recTime); err != nil {
+		if err := b.Append(stream, recTime); err != nil {
 			return res, fmt.Errorf("append for scope %s: %w", scope, err)
 		}
 

@@ -10,7 +10,7 @@ import (
 	"github.com/aws/smithy-go/ptr"
 )
 
-//	We recommend that you delete your S3 Metadata configurations by using the V2 [DeleteBucketMetadataTableConfiguration]
+//	We recommend that you delete your S3 Metadata configurations by using the V2 [DeleteBucketMetadataConfiguration]
 //
 // API operation. We no longer recommend using the V1
 // DeleteBucketMetadataTableConfiguration API operation.
@@ -51,7 +51,7 @@ import (
 // [CreateBucketMetadataConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucketMetadataConfiguration.html
 // [Accelerating data discovery with S3 Metadata]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/metadata-tables-overview.html
 //
-// [DeleteBucketMetadataTableConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketMetadataTableConfiguration.html
+// [DeleteBucketMetadataConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketMetadataConfiguration.html
 func (c *Client) DeleteBucketMetadataTableConfiguration(ctx context.Context, params *DeleteBucketMetadataTableConfigurationInput, optFns ...func(*Options)) (*DeleteBucketMetadataTableConfigurationOutput, error) {
 	if params == nil {
 		params = &DeleteBucketMetadataTableConfigurationInput{}

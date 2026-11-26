@@ -2,26 +2,52 @@ package columnar
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
+	"fmt"
+	"hash/crc32"
 	"math"
 
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/protocodec"
 )
 
-// FormatVersion is the current version the encoding format for dataset-derived
-// sections.
+// These are the encoding format versions of dataset-derived sections.
 //
-// FormatVersion started at 2 to help consolidate all the duplicated encoding
-// code across the original section implementations (which were all collectively
-// at v1).
-const FormatVersion = 2
+// Version 1 was the format of the original section implementations. Version 2
+// merged them into one format.
+//
+// Version 3 is not a format version. Older writers used it as the section
+// version of logs sections in schema sort order, which have format version 2.
+const (
+	// FormatVersionDescriptorChecksum keeps the CRC32C checksum of each page in
+	// the page descriptor.
+	FormatVersionDescriptorChecksum = format.ColumnarVersionDescriptorChecksum
+
+	// FormatVersionPageChecksum keeps the CRC32C checksum of each page in the
+	// last four bytes of the page, and leaves it out of the page descriptor.
+	// The data size of a page includes the four bytes.
+	FormatVersionPageChecksum = format.ColumnarVersionPageChecksum
+
+	// DefaultFormatVersion is the version that an [Encoder] writes unless the
+	// caller calls [Encoder.SetFormatVersion]. Section builders also use it as
+	// the version of their section type.
+	DefaultFormatVersion = FormatVersionPageChecksum
+)
+
+// IsSupportedVersion returns true if [NewDecoder] accepts the given format
+// version. It returns false for 3, because 3 is a section version, not a format
+// version. The logs Open function maps it to 2.
+func IsSupportedVersion(version uint32) bool {
+	return version == FormatVersionDescriptorChecksum || version == FormatVersionPageChecksum
+}
 
 var (
 	// errElementNoExist is used when a child element tries to notify its parent
@@ -30,14 +56,18 @@ var (
 	errElementNoExist = errors.New("open element does not exist")
 	errElementExist   = errors.New("open element already exists")
 	errClosed         = errors.New("element is closed")
+
+	errChecksumInPage     = errors.New("page has its checksum in its data")
+	errVersionAfterColumn = errors.New("format version set after opening a column")
 )
 
 // Encoder encodes an individual dataset-based section in a data object.
 //
-// The zero value of Encoder is ready for use.
+// Create an Encoder with [NewEncoder]. The zero value is not valid.
 type Encoder struct {
 	tenant   string
 	sortInfo *datasetmd.SortInfo
+	version  uint32
 
 	data     *bytes.Buffer
 	metadata *bytes.Buffer
@@ -49,6 +79,11 @@ type Encoder struct {
 	curColumn *datasetmd.ColumnDesc
 }
 
+// NewEncoder returns an [Encoder] that writes [DefaultFormatVersion].
+func NewEncoder() *Encoder {
+	return &Encoder{version: DefaultFormatVersion}
+}
+
 // SetTenant sets the tenant ID for the section. This must be called before
 // calling [Encoder.Flush]. The set tenant is reset after flushing or calling
 // [Encoder.Reset].
@@ -58,6 +93,25 @@ func (enc *Encoder) SetTenant(tenant string) { enc.tenant = tenant }
 // called before calling [Encoder.Flush]. The sort order information is reset
 // after flushing or calling [Encoder.Reset].
 func (enc *Encoder) SetSortInfo(info *datasetmd.SortInfo) { enc.sortInfo = info }
+
+// SetFormatVersion sets the format version of the section. It returns an error
+// if version is not supported. It also returns an error after the first call
+// to [Encoder.OpenColumn]. Flush and [Encoder.Reset] set the version back to
+// [DefaultFormatVersion].
+//
+// Readers take the format version from the section type. The section type must
+// carry the same version. Logs sections of version 3 are the exception: their
+// format version is 2.
+func (enc *Encoder) SetFormatVersion(version uint32) error {
+	if !IsSupportedVersion(version) {
+		return fmt.Errorf("unsupported format version %d", version)
+	}
+	if enc.curColumn != nil || len(enc.columns) > 0 {
+		return errVersionAfterColumn
+	}
+	enc.version = version
+	return nil
+}
 
 // NumColumns returns the number of columns committed to the section.
 func (enc *Encoder) NumColumns() int { return len(enc.columns) }
@@ -170,17 +224,15 @@ func (enc *Encoder) initBuffers() {
 	enc.data = bufpool.GetUnsized()
 	enc.metadata = bufpool.GetUnsized()
 
-	// Initialize the metadata buffer with the format version. Section
-	// implementations will use the version stored in the SectionType, but we
-	// write the format version to the metadata anyway as the first byte so that
-	// older versions of dataobj readers (where the version was encoded in
-	// metadata) recognizes that it's a newer format and abort.
+	// Format version 2 starts the metadata region with the format version. No
+	// current reader reads it: they take the version from the section type. It
+	// stays so that a reader of the first data object format, which kept the
+	// version in the metadata, sees a newer version and stops.
 	//
-	// TODO(rfratto): remove this once we've fully rolled out the new format,
-	// and there's no more instances of Loki which are reading the v1 format.
-	// Since this byte is written but never read, it can be removed without
-	// needing a new format version or a breaking change.
-	_ = streamio.WriteUvarint(enc.metadata, FormatVersion) // [bytes.Buffer.WriteByte] never returns an error.
+	// Format version 4 does not write it. The section type carries the version.
+	if enc.version == FormatVersionDescriptorChecksum {
+		_ = streamio.WriteUvarint(enc.metadata, uint64(FormatVersionDescriptorChecksum)) // [bytes.Buffer.WriteByte] never returns an error.
+	}
 }
 
 // Flush writes the section to the given [dataobj.SectionWriter]. Flush returns
@@ -240,6 +292,7 @@ func (enc *Encoder) buildSectionInfoExtension(offset, length int) *datasetmd.Sec
 func (enc *Encoder) Reset() {
 	enc.tenant = ""
 	enc.sortInfo = nil
+	enc.version = DefaultFormatVersion
 
 	bufpool.PutUnsized(enc.data)
 	bufpool.PutUnsized(enc.metadata)
@@ -258,8 +311,9 @@ func (enc *Encoder) Reset() {
 type ColumnEncoder struct {
 	parent *Encoder
 
-	dataOffset int  // Byte offset in the data region where column starts.
-	closed     bool // True if ColumnEncoder has been closed.
+	dataOffset    int    // Byte offset in the data region where column starts.
+	formatVersion uint32 // Format version of the section when the column opened.
+	closed        bool   // True if ColumnEncoder has been closed.
 
 	memPages      []*dataset.MemPage    // Pages to write.
 	pageDescs     []*datasetmd.PageDesc // Page descriptions.
@@ -270,37 +324,56 @@ func newColumnEncoder(parent *Encoder, dataOffset int) *ColumnEncoder {
 	return &ColumnEncoder{
 		parent: parent,
 
-		dataOffset: dataOffset,
+		dataOffset:    dataOffset,
+		formatVersion: parent.version,
 	}
 }
 
 // AppendPage appends a new page to enc. The page must not be modified after
 // passing to AppendPage.
 //
-// AppendPage fails if enc is closed.
+// The page must hold its checksum in page.Desc.CRC32, not in its data. In
+// format version 4, Commit writes the checksum after the data of the page.
+//
+// AppendPage fails if enc is closed or if the page has its checksum in its
+// data.
 func (enc *ColumnEncoder) AppendPage(page *dataset.MemPage) error {
 	if enc.closed {
 		return errClosed
 	}
+	// A page read from a section of format version 4 already ends with its
+	// checksum, and its CRC32 is zero. Commit would write the zero as a second
+	// checksum, or put zero in the descriptor. Either way, the page would fail
+	// its checksum check on read.
+	if format.ColumnarPageHasChecksum(page.Desc.FormatVersion) {
+		return errChecksumInPage
+	}
 
-	// NOTE(rfratto): The caller can pass invalid values for the page info, but
-	// these don't impact encoding so we don't provide any validation.
-	enc.pageDescs = append(enc.pageDescs, &datasetmd.PageDesc{
+	checksumInPage := format.ColumnarPageHasChecksum(enc.formatVersion)
+	pageSize := len(page.Data)
+	if checksumInPage {
+		pageSize += crc32.Size
+	}
+
+	// AppendPage does not validate the other fields of page.Desc.
+	desc := &datasetmd.PageDesc{
 		UncompressedSize: uint64(page.Desc.UncompressedSize),
-		CompressedSize:   uint64(page.Desc.CompressedSize),
-		Crc32:            page.Desc.CRC32,
 		RowsCount:        uint64(page.Desc.RowCount),
 		ValuesCount:      uint64(page.Desc.ValuesCount),
 		Encoding:         page.Desc.Encoding,
 
 		DataOffset: uint64(enc.dataOffset + enc.totalPageSize),
-		DataSize:   uint64(len(page.Data)),
+		DataSize:   uint64(pageSize),
 
 		Statistics: page.Desc.Stats,
-	})
+	}
+	if !checksumInPage {
+		desc.DeprecatedCrc32 = page.Desc.CRC32
+	}
 
+	enc.pageDescs = append(enc.pageDescs, desc)
 	enc.memPages = append(enc.memPages, page)
-	enc.totalPageSize += len(page.Data)
+	enc.totalPageSize += pageSize
 	return nil
 }
 
@@ -317,8 +390,13 @@ func (enc *ColumnEncoder) Commit() error {
 	columnData := bufpool.Get(enc.totalPageSize)
 	defer bufpool.PutUnsized(columnData)
 
+	var checksum [crc32.Size]byte
 	for _, p := range enc.memPages {
 		_, _ = columnData.Write(p.Data) // [bytes.Buffer.Write] never fails.
+		if format.ColumnarPageHasChecksum(enc.formatVersion) {
+			binary.LittleEndian.PutUint32(checksum[:], p.Desc.CRC32)
+			_, _ = columnData.Write(checksum[:])
+		}
 	}
 
 	metadata := enc.buildMetadata()

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/thanos-io/objstore"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
@@ -24,11 +23,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-const prefetchBytes = 2 * 1024 * 1024
+// prefetchBytes is the prefetch window that each opened index object reads
+// from its start and keeps. Each open object holds a buffer of this full size,
+// even when the object is smaller. The memory of a phase is about
+// prefetchBytes times its open objects.
+const prefetchBytes = 1 * 1024 * 1024
 
-// errCorruptIndex reports an index or index run whose sections of one tenant
-// do not share one stream layout, or whose layout cannot be read. No retry can
-// fix it, so compaction skips it.
+// errCorruptIndex reports an index or index run that breaks an invariant of
+// its format. Examples are a wrong run length, stream layouts that differ or
+// cannot be read, and postings sections without bounds. No retry can fix it,
+// so compaction skips it.
 var errCorruptIndex = errors.New("corrupt index")
 
 // logSortPrefix is the planner key for log sections. It orders by the shared
@@ -63,16 +67,6 @@ func compareIndexSortKey(a, b indexSortKey) int {
 	)
 }
 
-func indexKey(row postings.Row) indexSortKey {
-	return indexSortKey{
-		kind:         row.Kind,
-		columnName:   row.ColumnName,
-		labelValue:   row.LabelValue,
-		minTimestamp: row.MinTimestamp,
-		maxTimestamp: row.MaxTimestamp,
-	}
-}
-
 // loadTenantIndexes returns the entries of the tenant's ToC for the window.
 // Entry order reflects ToC enumeration order and is not part of the contract
 // — callers must not rely on it for correctness.
@@ -100,71 +94,122 @@ func loadTenantIndexes(ctx context.Context, bucket objstore.Bucket, window time.
 	return out, nil
 }
 
-const indexSectionReadConcurrency = 16
+// indexReadConcurrency is the number of index runs that IndexMerge planning
+// reads from the bucket at once.
+const indexReadConcurrency = 16
 
-func indexSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, entries []indexpointers.IndexPointer) ([]v2.Section[indexSortKey], error) {
-	type sectionRead struct {
-		objectPath   string
-		sectionIndex int64
-		section      *dataobj.Section
+// indexRunRead is what IndexMerge planning needs from the index objects of one
+// index run.
+type indexRunRead struct {
+	run indexRun
+
+	// layout is the stream layout of run. It has no meaning when hasLayout is
+	// false, because run has no stats sections of the tenant.
+	layout    streams.Layout
+	hasLayout bool
+
+	// sections has one bounded reference per postings section of the tenant
+	// that has rows. Every reference has the planning unit of run, so
+	// planning puts every index object of run in one task.
+	sections []v2.Section[indexSortKey]
+}
+
+// readIndexRun opens the index objects of run once, and reads both the stream
+// layout and the postings bounds of run for tenant. It keeps no reference to
+// the objects or to their decoded pages, so the garbage collector can free
+// them after it returns.
+//
+// It returns an error that wraps errCorruptIndex if an index object of run:
+//   - records a run length other than the number of index objects of run,
+//   - has stats sections that do not share one layout,
+//   - has a layout that cannot be read,
+//   - records no layout while another index object of run does,
+//   - records another layout than another index object of run,
+//   - has a postings section without a bound column, or with bounds out of
+//     order,
+//   - has no postings rows of tenant, while the ToC records it in a run.
+func readIndexRun(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) (indexRunRead, error) {
+	opened, err := openRunObjects(ctx, bucket, tenant, run)
+	if err != nil {
+		return indexRunRead{}, err
+	}
+	layout, hasLayout, err := indexLayoutOfRun(ctx, tenant, opened)
+	if err != nil {
+		return indexRunRead{}, err
 	}
 
-	var reads []sectionRead
-	for _, entry := range entries {
-		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
+	reader := newRunBoundsReader(tenant, run)
+	var sections []v2.Section[indexSortKey]
+	for _, index := range opened {
+		refs, err := reader.objectSectionRefs(ctx, index)
 		if err != nil {
-			return nil, fmt.Errorf("open index tenant=%s index=%s: %w", tenant, entry.Path, err)
+			return indexRunRead{}, err
 		}
-		for sectionIndex, section := range obj.Sections() {
-			if postings.CheckSection(section) && section.Tenant == tenant {
-				reads = append(reads, sectionRead{
-					objectPath:   entry.Path,
-					sectionIndex: int64(sectionIndex),
-					section:      section,
-				})
-			}
+		// Planning places an index object by its postings rows, so a task
+		// would leave out an object without them. The ToC writer refuses a
+		// swap that removes only part of a run.
+		if len(refs) == 0 && run.entries[0].RunID != 0 {
+			return indexRunRead{}, fmt.Errorf("%w: index %s has no postings rows", errCorruptIndex, index.path)
 		}
+		sections = append(sections, refs...)
 	}
+	return indexRunRead{run: run, layout: layout, hasLayout: hasLayout, sections: sections}, nil
+}
 
-	results := make([]*v2.Section[indexSortKey], len(reads))
-	group, groupCtx := errgroup.WithContext(ctx)
-	group.SetLimit(indexSectionReadConcurrency)
-	for i, read := range reads {
-		group.Go(func() error {
-			ref, err := indexSectionRef(groupCtx, read.objectPath, read.sectionIndex, read.section)
-			if err != nil {
-				return fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", tenant, read.objectPath, read.sectionIndex, err)
-			}
-			results[i] = ref
-			return nil
-		})
-	}
-	if err := group.Wait(); err != nil {
-		return nil, err
-	}
+// runBoundsReader reads the postings bounds of the index objects of one index
+// run. It is not safe for concurrent use.
+//
+// The strings of a decoded postings row point into the buffers of its page.
+// The reader interns the strings of each bound, so a bound does not keep a
+// page alive after the read. Planning holds the bounds of every run of a
+// window at once.
+type runBoundsReader struct {
+	tenant       string
+	planningUnit string
+	interned     map[string]string
+}
 
-	refs := make([]v2.Section[indexSortKey], 0, len(results))
-	for _, ref := range results {
-		if ref != nil {
-			refs = append(refs, *ref)
+func newRunBoundsReader(tenant string, run indexRun) *runBoundsReader {
+	return &runBoundsReader{tenant: tenant, planningUnit: run.planningUnit(), interned: make(map[string]string)}
+}
+
+// objectSectionRefs returns one bounded reference per postings section of the
+// tenant in index that has rows, in section order.
+func (r *runBoundsReader) objectSectionRefs(ctx context.Context, index openedIndex) ([]v2.Section[indexSortKey], error) {
+	var refs []v2.Section[indexSortKey]
+	for sectionIndex, section := range index.obj.Sections() {
+		if !postings.CheckSection(section) || section.Tenant != r.tenant {
+			continue
+		}
+		ref, hasRows, err := r.sectionRef(ctx, index.path, int64(sectionIndex), section)
+		if err != nil {
+			return nil, fmt.Errorf("read postings bounds tenant=%s index=%s section=%d: %w", r.tenant, index.path, sectionIndex, err)
+		}
+		if hasRows {
+			refs = append(refs, ref)
 		}
 	}
 	return refs, nil
 }
 
-func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section) (*v2.Section[indexSortKey], error) {
+// sectionRef returns the bounded reference of section. hasRows is false when
+// section has no postings rows.
+//
+// It returns an error that wraps errCorruptIndex if section has no bound
+// column or its bounds are out of order. No retry can fix either case.
+func (r *runBoundsReader) sectionRef(ctx context.Context, objectPath string, sectionIndex int64, section *dataobj.Section) (ref v2.Section[indexSortKey], hasRows bool, err error) {
 	postingsSection, err := postings.Open(ctx, section)
 	if err != nil {
-		return nil, fmt.Errorf("open postings section: %w", err)
+		return v2.Section[indexSortKey]{}, false, fmt.Errorf("open postings section: %w", err)
 	}
 	columns, err := postingsBoundColumns(postingsSection)
 	if err != nil {
-		return nil, err
+		return v2.Section[indexSortKey]{}, false, fmt.Errorf("%w: %w", errCorruptIndex, err)
 	}
 
 	reader := postings.NewReader(postings.ReaderOptions{Columns: columns})
 	if err := reader.Open(ctx); err != nil {
-		return nil, fmt.Errorf("open postings reader: %w", err)
+		return v2.Section[indexSortKey]{}, false, fmt.Errorf("open postings reader: %w", err)
 	}
 	rows := postings.NewRowReader(ctx, reader)
 	defer rows.Close()
@@ -172,36 +217,113 @@ func indexSectionRef(ctx context.Context, objectPath string, sectionIndex int64,
 	// Postings sections use CompareRows order. compareIndexSortKey is its prefix,
 	// so the first and last rows bound the section for run planning.
 	var first, last postings.Row
-	hasRows := rows.Next()
+	samples := keySamples{interned: r.interned}
+	hasRows = rows.Next()
 	if hasRows {
 		first = rows.At()
 		last = first
+		samples.add(first)
 	}
 	for rows.Next() {
 		last = rows.At()
+		samples.add(last)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read postings rows: %w", err)
+		return v2.Section[indexSortKey]{}, false, fmt.Errorf("read postings rows: %w", err)
 	}
 	if !hasRows {
-		return nil, nil
+		return v2.Section[indexSortKey]{}, false, nil
 	}
 
-	minKey, maxKey := indexKey(first), indexKey(last)
+	minKey, maxKey := r.key(first), r.key(last)
 	if compareIndexSortKey(minKey, maxKey) > 0 {
-		return nil, errors.New("postings section bounds are out of order")
+		return v2.Section[indexSortKey]{}, false, fmt.Errorf("%w: postings section bounds are out of order", errCorruptIndex)
 	}
-	// The index object is the unit of its sections. The caller joins the
-	// index objects of one index run into one unit.
-	return &v2.Section[indexSortKey]{
+	return v2.Section[indexSortKey]{
 		Ref: &compactionv2pb.SectionRef{
 			ObjectPath:   objectPath,
 			SectionIndex: sectionIndex,
 		},
 		Min:          minKey,
 		Max:          maxKey,
-		PlanningUnit: objectPath,
-	}, nil
+		Keys:         samples.sizes(postingsSection.UncompressedSize()),
+		PlanningUnit: r.planningUnit,
+	}, true, nil
+}
+
+// key returns the sort key of row, with interned strings.
+func (r *runBoundsReader) key(row postings.Row) indexSortKey {
+	return indexSortKey{
+		kind:         row.Kind,
+		columnName:   intern(r.interned, row.ColumnName),
+		labelValue:   intern(r.interned, row.LabelValue),
+		minTimestamp: row.MinTimestamp,
+		maxTimestamp: row.MaxTimestamp,
+	}
+}
+
+// indexKeySampleRows is the number of postings rows that one key sample of a
+// section stands for. A larger value saves planner memory, and a smaller one
+// lets a split of an index merge cut closer to its budget.
+const indexKeySampleRows = 4096
+
+// keySamples samples the posting keys of the rows of one postings section, in
+// row order. It keeps the key of the first row of each group of
+// indexKeySampleRows rows, so a split of an index merge can cut at real keys
+// without holding every key in memory.
+type keySamples struct {
+	samples   []keySample
+	totalRows uint64
+
+	// interned holds the strings of the keys, shared with the bounds of the
+	// run.
+	interned map[string]string
+}
+
+// keySample is the key of the first row of a group of rows.
+type keySample struct {
+	key indexSortKey
+
+	// rows is the number of rows in the group.
+	rows uint64
+}
+
+// add samples row if it starts a new group of indexKeySampleRows rows, and
+// counts it otherwise.
+func (s *keySamples) add(row postings.Row) {
+	s.totalRows++
+	if n := len(s.samples); n > 0 && s.samples[n-1].rows < indexKeySampleRows {
+		s.samples[n-1].rows++
+		return
+	}
+	// The decoded strings of row point into the buffers of a record batch, so
+	// the sample keeps interned copies.
+	s.samples = append(s.samples, keySample{
+		key: indexSortKey{
+			kind:       row.Kind,
+			columnName: intern(s.interned, row.ColumnName),
+			labelValue: intern(s.interned, row.LabelValue),
+		},
+		rows: 1,
+	})
+}
+
+// sizes returns the samples with their share of sectionBytes, the
+// uncompressed size of the section. Each sample gets a share by its number of
+// rows.
+//
+// Bloom rows and label rows never share a section, so the bloom filters weigh
+// only on bloom rows. Within a section the estimate treats every row as the
+// same size, although bloom filters of different columns differ in size.
+func (s keySamples) sizes(sectionBytes uint64) []v2.KeySize[indexSortKey] {
+	if s.totalRows == 0 {
+		return nil
+	}
+	sizes := make([]v2.KeySize[indexSortKey], len(s.samples))
+	for i, sample := range s.samples {
+		sizes[i] = v2.KeySize[indexSortKey]{Key: sample.key, UncompressedSize: sectionBytes * sample.rows / s.totalRows}
+	}
+	return sizes
 }
 
 func postingsBoundColumns(section *postings.Section) ([]*postings.Column, error) {
@@ -249,11 +371,16 @@ type openedIndex struct {
 	obj  *dataobj.Object
 }
 
-// openRunObjects opens the index objects of run, in the order of run.
+// openRunObjects opens the index objects of run, in the order of run. It
+// returns an error that wraps errCorruptIndex if an index object of run
+// records a run length other than the number of index objects of run.
 //
-// Each returned object keeps its prefetch buffer of up to prefetchBytes, so
+// Each returned object keeps its prefetch buffer of prefetchBytes, so
 // the memory grows with the number of index objects in run.
 func openRunObjects(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]openedIndex, error) {
+	if err := run.checkLength(); err != nil {
+		return nil, err
+	}
 	opened := make([]openedIndex, 0, len(run.entries))
 	for _, entry := range run.entries {
 		obj, err := dataobj.FromBucket(ctx, bucket, entry.Path, prefetchBytes)
@@ -302,28 +429,49 @@ func indexLayoutOfRun(ctx context.Context, tenant string, run []openedIndex) (la
 // stats rows of run, and the shard buckets of run.
 //
 // It returns no references and the zero ShardBuckets if run has no stats
-// section for tenant.
+// section for tenant. It returns the errors of [readLogSections].
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
+	read, err := readLogSections(ctx, bucket, tenant, run)
+	if err != nil || !read.hasLayout {
+		return nil, indexpointers.ShardBuckets{}, err
+	}
+	return read.sections, indexpointers.NewShardBuckets(read.layout.ShardLayout()), nil
+}
+
+// logSectionsRead is what the stats sections of one index run say about the
+// log sections that the run indexes.
+type logSectionsRead struct {
+	// layout is the stream layout of the run. It has no meaning when
+	// hasLayout is false. A run without a layout has no stats section for
+	// the tenant, and sections is empty.
+	layout    streams.Layout
+	hasLayout bool
+
+	// sections has one bounded reference per log section, sorted by log
+	// object path and section index.
+	sections []v2.Section[logSortPrefix]
+}
+
+// readLogSections reads the stats sections of run for tenant.
 //
 // It returns an error that wraps errCorruptIndex if an index object of run:
+//   - records a run length other than the number of index objects of run,
 //   - has stats sections that do not share one layout,
 //   - has a layout that cannot be read,
 //   - records no layout while another index object of run does,
 //   - records another layout than another index object of run.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
+func readLogSections(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) (logSectionsRead, error) {
 	opened, err := openRunObjects(ctx, bucket, tenant, run)
 	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, err
+		return logSectionsRead{}, err
 	}
 	layout, ok, err := indexLayoutOfRun(ctx, tenant, opened)
-	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, err
-	}
-	if !ok {
-		return nil, indexpointers.ShardBuckets{}, nil
+	if err != nil || !ok {
+		return logSectionsRead{}, err
 	}
 	labelNames, err := schemaLabelNames(layout.SchemaLabels())
 	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, run, err)
+		return logSectionsRead{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, run, err)
 	}
 
 	folder := newLogSectionFolder(labelNames)
@@ -333,11 +481,11 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant strin
 				continue
 			}
 			if err := folder.addSection(ctx, section); err != nil {
-				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("read stats section tenant=%s index=%s: %w", tenant, index.path, err)
+				return logSectionsRead{}, fmt.Errorf("read stats section tenant=%s index=%s: %w", tenant, index.path, err)
 			}
 		}
 	}
-	return folder.refs(), indexpointers.NewShardBuckets(layout.ShardLayout()), nil
+	return logSectionsRead{layout: layout, hasLayout: true, sections: folder.refs()}, nil
 }
 
 // logSectionID identifies one section of a logs object.

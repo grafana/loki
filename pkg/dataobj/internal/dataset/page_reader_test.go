@@ -1,14 +1,19 @@
 package dataset
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
+	"hash/crc32"
 	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/memory"
 )
@@ -26,121 +31,227 @@ var pageReaderTestStrings = []string{
 	"goodbye",
 }
 
+// readableFormatVersions are the columnar format versions that readers read.
+// Writers write the first one.
+var readableFormatVersions = []uint32{format.ColumnarVersionPageChecksum, format.ColumnarVersionDescriptorChecksum}
+
 func Test_pageReader(t *testing.T) {
-	var alloc memory.Allocator
+	for _, version := range readableFormatVersions {
+		t.Run(fmt.Sprintf("reads every row of a page of format version %d", version), func(t *testing.T) {
+			var alloc memory.Allocator
 
-	opts := BuilderOptions{
-		PageSizeHint: 1024,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+			opts := BuilderOptions{
+				PageSizeHint: 1024,
+				Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+				Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+				Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+			}
+
+			page := buildPage(t, version, opts, pageReaderTestStrings)
+			require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+			require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
+
+			t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+			t.Log("Compressed size: ", page.Desc.CompressedSize)
+
+			pr := newPageReader(page, opts.Type.Physical, opts.Compression)
+			actualValues, err := readPage(&alloc, pr, 4)
+			require.NoError(t, err)
+
+			actual := convertToStrings(t, actualValues)
+			require.Equal(t, pageReaderTestStrings, actual)
+		})
 	}
-
-	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
-	require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
-
-	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
-	t.Log("Compressed size: ", page.Desc.CompressedSize)
-
-	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
-	actualValues, err := readPage(&alloc, pr, 4)
-	require.NoError(t, err)
-
-	actual := convertToStrings(t, actualValues)
-	require.Equal(t, pageReaderTestStrings, actual)
 }
 
 func Test_pageReader_SeekToStart(t *testing.T) {
-	var alloc memory.Allocator
+	for _, version := range readableFormatVersions {
+		t.Run(fmt.Sprintf("reads every row again after seeking to the start of a page of format version %d", version), func(t *testing.T) {
+			var alloc memory.Allocator
 
-	opts := BuilderOptions{
-		PageSizeHint: 1024,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+			opts := BuilderOptions{
+				PageSizeHint: 1024,
+				Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+				Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+				Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+			}
+
+			page := buildPage(t, version, opts, pageReaderTestStrings)
+			require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+			require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
+
+			t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+			t.Log("Compressed size: ", page.Desc.CompressedSize)
+
+			pr := newPageReader(page, opts.Type.Physical, opts.Compression)
+			_, err := readPage(&alloc, pr, 4)
+			require.NoError(t, err)
+
+			// Seek back to the start of the page and read all values again.
+			_, err = pr.Seek(0, io.SeekStart)
+			require.NoError(t, err)
+
+			actualValues, err := readPage(&alloc, pr, 4)
+			require.NoError(t, err)
+
+			actual := convertToStrings(t, actualValues)
+			require.Equal(t, pageReaderTestStrings, actual)
+		})
 	}
-
-	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
-	require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
-
-	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
-	t.Log("Compressed size: ", page.Desc.CompressedSize)
-
-	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
-	_, err := readPage(&alloc, pr, 4)
-	require.NoError(t, err)
-
-	// Seek back to the start of the page and read all values again.
-	_, err = pr.Seek(0, io.SeekStart)
-	require.NoError(t, err)
-
-	actualValues, err := readPage(&alloc, pr, 4)
-	require.NoError(t, err)
-
-	actual := convertToStrings(t, actualValues)
-	require.Equal(t, pageReaderTestStrings, actual)
 }
 
 func Test_pageReader_Reset(t *testing.T) {
-	var alloc memory.Allocator
+	for _, version := range readableFormatVersions {
+		t.Run(fmt.Sprintf("reads every row again after resetting the reader on a page of format version %d", version), func(t *testing.T) {
+			var alloc memory.Allocator
 
-	opts := BuilderOptions{
-		PageSizeHint: 1024,
-		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+			opts := BuilderOptions{
+				PageSizeHint: 1024,
+				Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+				Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+				Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+			}
+
+			page := buildPage(t, version, opts, pageReaderTestStrings)
+			require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+			require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
+
+			t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+			t.Log("Compressed size: ", page.Desc.CompressedSize)
+
+			pr := newPageReader(page, opts.Type.Physical, opts.Compression)
+			_, err := readPage(&alloc, pr, 4)
+			require.NoError(t, err)
+
+			// Reset and read all values again.
+			pr.Reset(page, opts.Type.Physical, opts.Compression)
+
+			actualValues, err := readPage(&alloc, pr, 4)
+			require.NoError(t, err)
+
+			actual := convertToStrings(t, actualValues)
+			require.Equal(t, pageReaderTestStrings, actual)
+		})
 	}
-
-	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
-	require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
-
-	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
-	t.Log("Compressed size: ", page.Desc.CompressedSize)
-
-	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
-	_, err := readPage(&alloc, pr, 4)
-	require.NoError(t, err)
-
-	// Reset and read all values again.
-	pr.Reset(page, opts.Type.Physical, opts.Compression)
-
-	actualValues, err := readPage(&alloc, pr, 4)
-	require.NoError(t, err)
-
-	actual := convertToStrings(t, actualValues)
-	require.Equal(t, pageReaderTestStrings, actual)
 }
 
 func Test_pageReader_SkipRows(t *testing.T) {
-	var alloc memory.Allocator
-
-	opts := BuilderOptions{
-		PageSizeHint: 1024,
+	uncompressedOpts := BuilderOptions{
+		PageSizeHint: 4 * 1024 * 1024,
 		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
-		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
 
-	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
-	require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
+	for _, version := range readableFormatVersions {
+		t.Run(fmt.Sprintf("reads the rows after the skipped rows of a compressed page of format version %d without nulls", version), func(t *testing.T) {
+			var alloc memory.Allocator
 
-	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
-	t.Log("Compressed size: ", page.Desc.CompressedSize)
+			opts := BuilderOptions{
+				PageSizeHint: 1024,
+				Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
+				Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
+				Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+			}
 
-	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
+			page := buildPage(t, version, opts, pageReaderTestStrings)
+			require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+			require.Equal(t, len(pageReaderTestStrings), page.Desc.ValuesCount)
 
-	_, err := pr.Seek(4, io.SeekStart)
-	require.NoError(t, err)
+			t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+			t.Log("Compressed size: ", page.Desc.CompressedSize)
 
-	actualValues, err := readPage(&alloc, pr, 4)
-	require.NoError(t, err)
+			pr := newPageReader(page, opts.Type.Physical, opts.Compression)
 
-	actual := convertToStrings(t, actualValues)
-	require.Equal(t, pageReaderTestStrings[4:], actual)
+			_, err := pr.Seek(4, io.SeekStart)
+			require.NoError(t, err)
+
+			actualValues, err := readPage(&alloc, pr, 4)
+			require.NoError(t, err)
+
+			actual := convertToStrings(t, actualValues)
+			require.Equal(t, pageReaderTestStrings[4:], actual)
+		})
+	}
+
+	t.Run("reads the rows after skipped rows that hold values and nulls", func(t *testing.T) {
+		rows := nullableStrings("a", nil, nil, "d", nil, "f", "g", nil, "i", "j")
+		pr := newPageReader(buildNullablePage(t, format.ColumnarVersionPageChecksum, uncompressedOpts, rows), uncompressedOpts.Type.Physical, uncompressedOpts.Compression)
+
+		_, err := pr.Seek(5, io.SeekStart)
+		require.NoError(t, err)
+
+		var alloc memory.Allocator
+		first, err := pr.Read(t.Context(), &alloc, 2)
+		require.NoError(t, err)
+		require.Equal(t, rows[5:7], readNullableStrings(first))
+
+		rest, err := pr.Read(t.Context(), &alloc, 10)
+		require.NoError(t, err)
+		require.Equal(t, rows[7:], readNullableStrings(rest))
+	})
+
+	t.Run("reads the rows after skipped rows that are all null", func(t *testing.T) {
+		rows := nullableStrings(nil, nil, nil, "d", "e")
+		pr := newPageReader(buildNullablePage(t, format.ColumnarVersionPageChecksum, uncompressedOpts, rows), uncompressedOpts.Type.Physical, uncompressedOpts.Compression)
+
+		_, err := pr.Seek(3, io.SeekStart)
+		require.NoError(t, err)
+
+		var alloc memory.Allocator
+		first, err := pr.Read(t.Context(), &alloc, 1)
+		require.NoError(t, err)
+		require.Equal(t, rows[3:4], readNullableStrings(first))
+
+		rest, err := pr.Read(t.Context(), &alloc, 10)
+		require.NoError(t, err)
+		require.Equal(t, rows[4:], readNullableStrings(rest))
+	})
+
+	// truncatedPageReader returns a reader of a page of 5 values, each of 1 byte
+	// with a 1-byte length prefix, without the last n bytes of its value data. The
+	// checksum is recomputed, so the page still opens.
+	truncatedPageReader := func(t *testing.T, n int) *pageReader {
+		t.Helper()
+
+		page := buildPage(t, format.ColumnarVersionPageChecksum, uncompressedOpts, []string{"a", "b", "c", "d", "e"})
+		body := pageBody(page)
+		setPageBody(page, body[:len(body)-n])
+		return newPageReader(page, uncompressedOpts.Type.Physical, uncompressedOpts.Compression)
+	}
+
+	t.Run("returns an error when the page holds fewer values than its presence bitmap", func(t *testing.T) {
+		pr := truncatedPageReader(t, 2)
+
+		_, err := pr.Seek(5, io.SeekStart)
+		require.NoError(t, err)
+
+		var alloc memory.Allocator
+		arr, err := pr.Read(t.Context(), &alloc, 1)
+		require.EqualError(t, err, "unexpected number of skipped values: 4, expected: 5")
+		require.Nil(t, arr)
+	})
+
+	t.Run("returns an error when a read value runs past the end of the page", func(t *testing.T) {
+		pr := truncatedPageReader(t, 1)
+
+		var alloc memory.Allocator
+		arr, err := pr.Read(t.Context(), &alloc, 5)
+		require.EqualError(t, err, "plain: value of 1 bytes at offset 8 runs past the end of the data")
+		require.Nil(t, arr)
+	})
+
+	t.Run("returns an error when a skipped value runs past the end of the page", func(t *testing.T) {
+		pr := truncatedPageReader(t, 1)
+
+		_, err := pr.Seek(5, io.SeekStart)
+		require.NoError(t, err)
+
+		var alloc memory.Allocator
+		arr, err := pr.Read(t.Context(), &alloc, 1)
+		require.EqualError(t, err, "plain: value of 1 bytes at offset 8 runs past the end of the data")
+		require.Nil(t, arr)
+	})
 }
 
 func Test_pageReader_statsStability(t *testing.T) {
@@ -172,19 +283,95 @@ func Test_pageReader_statsStability(t *testing.T) {
 	require.Equal(t, BinaryValue([]byte("d")), b.maxValue)
 }
 
-func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
+// buildPage returns a page of the given columnar format version that holds the
+// strings in. See [buildNullablePage].
+func buildPage(t testing.TB, version uint32, opts BuilderOptions, in []string) *MemPage {
+	t.Helper()
+
+	rows := make([]*string, len(in))
+	for i := range in {
+		rows[i] = &in[i]
+	}
+	return buildNullablePage(t, version, opts, rows)
+}
+
+// buildNullablePage returns a page of the given columnar format version that
+// holds the rows in, where nil is a NULL. If the version has the checksum in
+// the page, the page ends with its checksum and CRC32 is zero, like a page that
+// a decoder reads.
+func buildNullablePage(t testing.TB, version uint32, opts BuilderOptions, in []*string) *MemPage {
 	t.Helper()
 
 	b, err := newPageBuilder(opts)
 	require.NoError(t, err)
 
 	for _, s := range in {
-		require.True(t, b.Append(BinaryValue([]byte(s))))
+		if s == nil {
+			require.True(t, b.AppendNull())
+			continue
+		}
+		require.True(t, b.Append(BinaryValue([]byte(*s))))
 	}
 
 	page, err := b.Flush()
 	require.NoError(t, err)
+
+	page.Desc.FormatVersion = version
+	if format.ColumnarPageHasChecksum(version) {
+		page.Data = binary.LittleEndian.AppendUint32(bytes.Clone(page.Data), page.Desc.CRC32)
+		page.Desc.CRC32 = 0
+		page.Desc.CompressedSize = len(page.Data)
+	}
 	return page
+}
+
+// pageBody returns the data of page without its checksum footer, if it has one.
+func pageBody(page *MemPage) []byte {
+	if format.ColumnarPageHasChecksum(page.Desc.FormatVersion) {
+		return page.Data[:len(page.Data)-crc32.Size]
+	}
+	return page.Data
+}
+
+// setPageBody replaces the body of page and sets the checksum of the page to
+// match: in the descriptor, or as the footer of the data, according to the
+// format version of the page.
+func setPageBody(page *MemPage, body []byte) {
+	checksum := crc32.Checksum(body, checksumTable)
+	if format.ColumnarPageHasChecksum(page.Desc.FormatVersion) {
+		page.Data = binary.LittleEndian.AppendUint32(bytes.Clone(body), checksum)
+		return
+	}
+	page.Data = body
+	page.Desc.CRC32 = checksum
+}
+
+// nullableStrings returns a pointer to each string in values and nil for each
+// value that is not a string.
+func nullableStrings(values ...any) []*string {
+	out := make([]*string, len(values))
+	for i, v := range values {
+		if s, ok := v.(string); ok {
+			out[i] = &s
+		}
+	}
+	return out
+}
+
+func readNullableStrings(arr columnar.Array) []*string {
+	utf8Arr, ok := arr.(*columnar.UTF8)
+	if !ok {
+		return nil
+	}
+
+	out := make([]*string, utf8Arr.Len())
+	for i := range out {
+		if utf8Arr.IsNull(i) {
+			continue
+		}
+		out[i] = new(string(utf8Arr.Get(i)))
+	}
+	return out
 }
 
 func readPage(alloc *memory.Allocator, pr *pageReader, batchSize int) (columnar.Array, error) {
