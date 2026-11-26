@@ -98,14 +98,14 @@ func (s *streamSymbols) Lookup(n uint32) (string, error) {
 		return "", fmt.Errorf("unknown symbol offset %d", n)
 	}
 
-	// n < size, so cacheIndex is within the cache's min(labelValueSymbolsCacheSize, size) entries.
-	cacheIndex := n % labelValueSymbolsCacheSize
 	s.labelValueSymbolsMtx.Lock()
-	if s.labelValueSymbolsCache != nil {
-		if entry := s.labelValueSymbolsCache[cacheIndex]; entry.ordinal == n && entry.symbol != "" {
-			s.labelValueSymbolsMtx.Unlock()
-			return entry.symbol, nil
-		}
+	if s.labelValueSymbolsCache == nil {
+		s.labelValueSymbolsCache = make([]labelValueSymbol, min(labelValueSymbolsCacheSize, s.size))
+	}
+	cacheIndex := n % uint32(len(s.labelValueSymbolsCache))
+	if entry := s.labelValueSymbolsCache[cacheIndex]; entry.ordinal == n && entry.symbol != "" {
+		s.labelValueSymbolsMtx.Unlock()
+		return entry.symbol, nil
 	}
 	s.labelValueSymbolsMtx.Unlock()
 
@@ -115,9 +115,6 @@ func (s *streamSymbols) Lookup(n uint32) (string, error) {
 	}
 
 	s.labelValueSymbolsMtx.Lock()
-	if s.labelValueSymbolsCache == nil {
-		s.labelValueSymbolsCache = make([]labelValueSymbol, min(labelValueSymbolsCacheSize, s.size))
-	}
 	s.labelValueSymbolsCache[cacheIndex] = labelValueSymbol{ordinal: n, symbol: symbol}
 	s.labelValueSymbolsMtx.Unlock()
 
