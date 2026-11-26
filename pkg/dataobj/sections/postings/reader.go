@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -189,28 +188,15 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 // The first len([ReaderOptions.Columns]) arrays of the batch hold those
 // columns, in the same order. Columns that only predicates read can follow.
 //
-// The arrays use memory that the Reader owns and reuses. They stay valid until
-// the next call to Read, readRecordBatch, or Reset. Read copies each batch
-// through a slice of dataset.Row and then into Arrow arrays that the caller
-// owns. readRecordBatch skips both copies.
-func (r *Reader) readRecordBatch(ctx context.Context, batchSize int) (*columnarv2.RecordBatch, error) {
+// The arrays use memory from alloc, so they stay valid until the caller
+// reclaims alloc. The read can also leave temporary memory in alloc, so the
+// caller should reclaim alloc after it consumes each batch.
+func (r *Reader) readRecordBatch(ctx context.Context, alloc *memoryv2.Allocator, batchSize int) (*columnarv2.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
 	}
-	ctx = r.readContext(ctx)
-
-	r.alloc.Reclaim()
-
-	rb, err := r.inner.ReadRecordBatch(ctx, r.alloc, batchSize)
-	// Only the bare io.EOF marks the end of the section. A caller that checks
-	// errors.Is(err, io.EOF) would take a wrapped io.EOF as the end too, and
-	// drop the rest of the rows without an error.
-	switch {
-	case err == io.EOF:
-		return nil, io.EOF
-	case errors.Is(err, io.EOF):
-		return nil, fmt.Errorf("%v: %w", err, io.ErrUnexpectedEOF)
-	case err != nil:
+	rb, err := r.inner.ReadRecordBatch(r.readContext(ctx), alloc, batchSize)
+	if err != nil {
 		return nil, err
 	}
 	return rb, nil
