@@ -11,9 +11,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/memory"
 )
 
-// ReaderAdapter reads [columnar.RecordBatch] values from a [dataset.RowReader].
-// Read builds each batch from a slice of [dataset.Row]. ReadRecordBatch reads
-// the batch directly from the inner reader.
+// ReaderAdapter is a temporary translation layer that allows the caller to read
+// [columnar.RecordBatch] values from a reader that only supports reads through
+// a slice of [dataset.Row].
 type ReaderAdapter struct {
 	inner    *dataset.RowReader
 	colTypes []datasetmd.PhysicalType
@@ -47,14 +47,6 @@ func (r *ReaderAdapter) Open(ctx context.Context) error {
 // Close closes the underlying reader.
 func (r *ReaderAdapter) Close() error {
 	return r.inner.Close()
-}
-
-// ReadRecordBatch reads the next rows that pass the predicates, at most
-// batchSize of them, directly as a [columnar.RecordBatch]. It has the contract
-// of [dataset.RowReader.ReadRecordBatch]. Unlike Read, it does not copy the
-// rows through a slice of [dataset.Row].
-func (r *ReaderAdapter) ReadRecordBatch(ctx context.Context, alloc *memory.Allocator, batchSize int) (*columnar.RecordBatch, error) {
-	return r.inner.ReadRecordBatch(ctx, alloc, batchSize)
 }
 
 // Read reads up to batchSize rows from the underlying dataset reader and
