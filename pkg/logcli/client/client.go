@@ -768,6 +768,11 @@ func (c *DefaultClient) wsConnect(ctx context.Context, path, query string, quiet
 		ws.Proxy = func(_ *http.Request) (*url.URL, error) {
 			return url.Parse(c.ProxyURL)
 		}
+	} else if c.EnvironmentProxy {
+		proxyConfig := config.ProxyConfig{
+			ProxyFromEnvironment: true,
+		}
+		ws.Proxy = proxyConfig.Proxy()
 	}
 
 	conn, resp, err := ws.DialContext(dialCtx, us, h)
