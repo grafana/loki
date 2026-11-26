@@ -13,7 +13,7 @@ The Full-Text Index is an [experimental feature](https://grafana.com/docs/releas
 
 This page explains specific messages logged by Full-Text Index builders and query components. Before you begin, ensure you can access component logs, inspect Kafka and object storage connectivity, and view the deployment's configuration.
 
-For high consumption lag without a specific error, refer to [Tune the Full-Text Index]({{< relref "../logline/tuning.md" >}}). If index coverage is uncertain, [disable live narrowing]({{< relref "../logline/tuning.md#protect-query-results-while-recovering" >}}) while investigating.
+For high consumption lag without a specific error, refer to [Tune the Full-Text Index]({{< relref "../full-text-index/tuning.md" >}}). If index coverage is uncertain, [disable live narrowing]({{< relref "../full-text-index/tuning.md#protect-query-results-while-recovering" >}}) while investigating.
 
 ## Builder errors
 
@@ -45,7 +45,7 @@ Use the `step` field and the underlying `err` to identify the failing operation:
 | `upload_flush_files` | Object storage connectivity, credentials, and permissions to list objects, check whether an index exists, and upload indexes and metadata. |
 | `commit_offsets` | Kafka connectivity, authorization, and consumer-group membership errors. |
 
-The builder retries failed flush steps. Fix the underlying error rather than increasing thread counts without identifying the bottleneck. Transient storage failures can recover on retry. Corrupt or truncated scratch files, or a latched extraction-worker I/O failure, can make `prepare_flush_files` fail repeatedly even after storage access is restored. In those cases, correct the storage problem and restart the builder: startup clears scratch state and the builder reconsumes from committed Kafka offsets. Index uploads must succeed before their Kafka offsets are committed. For slow merges without storage errors, refer to [merge parallelism]({{< relref "../logline/tuning.md#increase-merge-parallelism-when-flush-merging-is-slow" >}}).
+The builder retries failed flush steps. Fix the underlying error rather than increasing thread counts without identifying the bottleneck. Transient storage failures can recover on retry. Corrupt or truncated scratch files, or a latched extraction-worker I/O failure, can make `prepare_flush_files` fail repeatedly even after storage access is restored. In those cases, correct the storage problem and restart the builder: startup clears scratch state and the builder reconsumes from committed Kafka offsets. Index uploads must succeed before their Kafka offsets are committed. For slow merges without storage errors, refer to [merge parallelism]({{< relref "../full-text-index/tuning.md#increase-merge-parallelism-when-flush-merging-is-slow" >}}).
 
 **Properties:**
 
@@ -74,7 +74,7 @@ The builder cannot create or read its scratch directory, or cannot write an inte
 
 - Ensure `logline.builder.scratch_dir` is writable by the builder process and has sufficient free space.
 - Use a dedicated scratch directory: builder startup clears its contents.
-- Provision the headroom described in [Sizing and tuning]({{< relref "../logline/configure.md#sizing-and-tuning" >}}). Increasing parallelism is not a remedy for a full disk.
+- Provision the headroom described in [Sizing and tuning]({{< relref "../full-text-index/configure.md#sizing-and-tuning" >}}). Increasing parallelism is not a remedy for a full disk.
 - After correcting the storage problem, restart a failed builder so it can resume from committed Kafka offsets. Restarting without fixing the underlying problem can repeat the failure.
 
 **Properties:**
@@ -156,8 +156,8 @@ hint prefetch timeout, falling back to passthrough
 hint provider error, passing through
 ```
 
-For a timeout, investigate index lookup latency. For a provider error, inspect the attached error and index storage access. Also check the query integration switch, header or tenant mode, minimum query size, [supported query patterns]({{< relref "../logline/_index.md#query-examples" >}}), and trusted/recent time boundaries.
+For a timeout, investigate index lookup latency. For a provider error, inspect the attached error and index storage access. Also check the query integration switch, header or tenant mode, minimum query size, [supported query patterns]({{< relref "../full-text-index/_index.md#query-examples" >}}), and trusted/recent time boundaries.
 
 Any nonempty `X-Logline-Skip-Cache` header bypasses the hint cache for that request. It does not force index discovery or bypass Loki's normal query results cache. Account for the results cache when comparing accelerated and unaccelerated queries.
 
-A successful lookup against incomplete index coverage is different from a lookup error: it can omit matching logs without triggering fallback. If results are missing, disable live narrowing, investigate [high consumption lag]({{< relref "../logline/tuning.md#high-consumption-lag" >}}), and verify the trusted start date, Kafka coverage, storage location, reader discovery, and retention before re-enabling it.
+A successful lookup against incomplete index coverage is different from a lookup error: it can omit matching logs without triggering fallback. If results are missing, disable live narrowing, investigate [high consumption lag]({{< relref "../full-text-index/tuning.md#high-consumption-lag" >}}), and verify the trusted start date, Kafka coverage, storage location, reader discovery, and retention before re-enabling it.

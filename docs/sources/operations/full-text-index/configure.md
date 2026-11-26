@@ -195,4 +195,4 @@ Monitor both index coverage and query effectiveness:
 
 ## Next steps
 
-For high consumption lag or queries that do not accelerate, refer to [Tune the Full-Text Index]({{< relref "./tuning.md" >}}). For errors and missing results, refer to [Troubleshoot the Full-Text Index]({{< relref "../troubleshooting/troubleshoot-logline.md" >}}).
+For high consumption lag or queries that do not accelerate, refer to [Tune the Full-Text Index]({{< relref "./tuning.md" >}}). For errors and missing results, refer to [Troubleshoot the Full-Text Index]({{< relref "../troubleshooting/troubleshoot-full-text-index.md" >}}).

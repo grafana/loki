@@ -132,4 +132,4 @@ After catch-up, return temporary `extract_threads` and `merge_threads` changes t
 
 ## Troubleshoot errors
 
-For specific error messages from builders and query components, refer to [Troubleshoot the Full-Text Index]({{< relref "../troubleshooting/troubleshoot-logline.md" >}}).
+For specific error messages from builders and query components, refer to [Troubleshoot the Full-Text Index]({{< relref "../troubleshooting/troubleshoot-full-text-index.md" >}}).

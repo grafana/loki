@@ -141,4 +141,4 @@ Pipeline order also matters beyond the examples above. Label rewriting, `unpack`
 
 - [Configure the Full-Text Index]({{< relref "./configure.md" >}}) for prerequisites, deployment, tuning, retention, and monitoring.
 - [Tune the Full-Text Index]({{< relref "./tuning.md" >}}) for high consumption lag and extraction or merge performance.
-- [Troubleshoot the Full-Text Index]({{< relref "../troubleshooting/troubleshoot-logline.md" >}}) for Full-Text Index error messages.
+- [Troubleshoot the Full-Text Index]({{< relref "../troubleshooting/troubleshoot-full-text-index.md" >}}) for Full-Text Index error messages.
