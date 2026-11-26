@@ -22,7 +22,7 @@ import (
 
 func newTestSweepScheduler(maxConcurrent int, bucket objstore.BucketReader, limits Limits, run runFunc) *sweepScheduler {
 	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
-	return newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: maxConcurrent}, log.NewNopLogger(), bucket, limits, run, metrics.taskAttemptsTotal)
+	return newSweepScheduler(DeletionSweepConfig{MaxConcurrentSweeps: maxConcurrent, DryRun: true}, log.NewNopLogger(), bucket, limits, run, metrics.taskAttemptsTotal)
 }
 
 // sweepRecorder records the time and the plan of each sweep. Its respond
@@ -176,6 +176,29 @@ func TestSweepScheduler_Sweep(t *testing.T) {
 
 		require.Contains(t, logs.String(), fmt.Sprintf(`msg="dispatching deletion sweep" tenant=a minute=%d`, sweepMinute("a")))
 	})
+
+	for _, tc := range []struct {
+		name       string
+		dryRun     bool
+		wantDelete bool
+	}{
+		{"dispatches a plan that only logs the candidates when dry run is on", true, false},
+		{"dispatches a plan that deletes the candidates when dry run is off", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := &sweepRecorder{}
+			metrics := newCoordinatorMetrics(prometheus.NewRegistry())
+			cfg := DeletionSweepConfig{MaxConcurrentSweeps: 1, DryRun: tc.dryRun}
+			s := newSweepScheduler(cfg, log.NewNopLogger(), objstore.NewInMemBucket(), newFakeLimits(), recorder.run, metrics.taskAttemptsTotal)
+
+			s.sweep(t.Context(), "a")
+
+			require.Len(t, recorder.plans, 1)
+			root, err := recorder.plans[0].Root()
+			require.NoError(t, err)
+			require.Equal(t, &physical.DeletionSweep{NodeID: root.ID(), Tenant: "a", Delete: tc.wantDelete}, root)
+		})
+	}
 
 	t.Run("waits for a free slot when the maximum number of sweeps runs", func(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {

@@ -55,7 +55,7 @@ func TestRowReader_RoundTrip(t *testing.T) {
 	}
 	require.NotNil(t, sec)
 
-	reader := stats.NewRowReader(ctx, sec)
+	reader := stats.NewRowReader(ctx, sec, nil)
 	defer reader.Close()
 
 	var rows []stats.Stat
@@ -119,7 +119,7 @@ func TestRowReader_CloseIdempotent(t *testing.T) {
 	}
 	require.NotNil(t, sec)
 
-	reader := stats.NewRowReader(ctx, sec)
+	reader := stats.NewRowReader(ctx, sec, nil)
 	require.True(t, reader.Next())
 	require.NoError(t, reader.Close())
 	require.NoError(t, reader.Close(), "second Close must be a safe no-op")

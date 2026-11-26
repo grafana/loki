@@ -100,7 +100,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 				res := &result{
 					batchID: input.batchID,
 				}
-				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys)
+				res.found, res.bufs, res.missed, res.err = c.fetch(input.ctx, input.keys, input.opts)
 				input.resultCh <- res
 			}
 
@@ -112,6 +112,7 @@ func NewMemcached(cfg MemcachedConfig, client MemcachedClient, name string, reg 
 
 type work struct {
 	keys     []string
+	opts     Options
 	ctx      context.Context
 	resultCh chan<- *result
 	batchID  int // For ordering results.
@@ -150,24 +151,26 @@ func memcacheStatusCode(err error) string {
 // If the context is cancelled before all batches complete, Fetch returns
 // whatever results have been collected so far together with ctx.Err(). Keys
 // whose batch did not complete in time are reported as missed.
-func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+func (c *Memcached) Fetch(ctx context.Context, keys []string, opts ...Option) (found []string, bufs [][]byte, missed []string, err error) {
+	o := NewOptions(opts...)
+
 	if c.cfg.BatchSize == 0 {
-		found, bufs, missed, err = c.fetch(ctx, keys)
+		found, bufs, missed, err = c.fetch(ctx, keys, o)
 		return
 	}
 
 	start := time.Now()
-	found, bufs, missed, err = c.fetchKeysBatched(ctx, keys)
+	found, bufs, missed, err = c.fetchKeysBatched(ctx, keys, o)
 	c.requestDuration.After(ctx, "Memcache.GetBatched", memcacheStatusCode(err), start)
 	return
 }
 
-func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+func (c *Memcached) fetch(ctx context.Context, keys []string, o Options) (found []string, bufs [][]byte, missed []string, err error) {
 	var (
 		start = time.Now()
 		items map[string]*memcache.Item
 	)
-	items, err = c.memcache.GetMulti(ctx, keys)
+	items, err = c.memcache.GetMulti(ctx, keys, o.memcacheOptions()...)
 	c.requestDuration.After(ctx, "Memcache.GetMulti", memcacheStatusCode(err), start)
 
 	// GetMulti can return the items of the servers that answered together
@@ -186,7 +189,7 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 	return
 }
 
-func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string, o Options) (found []string, bufs [][]byte, missed []string, err error) {
 	batchSize := c.cfg.BatchSize
 	numBatches := (len(keys) + batchSize - 1) / batchSize
 
@@ -214,6 +217,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 		default:
 			c.inputCh <- &work{
 				keys:     keys[i:min(i+batchSize, len(keys))],
+				opts:     o,
 				ctx:      ctx,
 				resultCh: resultsCh,
 				batchID:  sent,
@@ -257,8 +261,11 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 }
 
 // Store stores the key in the cache.
-func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) error {
-	var err error
+func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte, opts ...Option) error {
+	var (
+		err          error
+		memcacheOpts = NewOptions(opts...).memcacheOptions()
+	)
 	for i := range keys {
 		cacheErr := instr.CollectedRequest(ctx, "Memcache.Put", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
 			item := memcache.Item{
@@ -266,7 +273,7 @@ func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) err
 				Value:      bufs[i],
 				Expiration: int32(c.cfg.Expiration.Seconds()),
 			}
-			return c.memcache.Set(&item)
+			return c.memcache.Set(&item, memcacheOpts...)
 		})
 		if cacheErr != nil {
 			err = cacheErr
@@ -287,6 +294,15 @@ func (c *Memcached) Stop() {
 
 func (c *Memcached) GetCacheType() stats.CacheType {
 	return c.cacheType
+}
+
+// memcacheOptions returns the options of the memcached client that o maps to.
+// It returns nil when o has no shard key, which avoids an allocation.
+func (o Options) memcacheOptions() []memcache.Option {
+	if o.ShardKey == "" {
+		return nil
+	}
+	return []memcache.Option{memcache.WithShardKey(o.ShardKey)}
 }
 
 // HashKey hashes key into something you can store in memcached.

@@ -562,6 +562,20 @@ func (r *PartitionRing) Partitions() []PartitionDesc {
 	return res
 }
 
+// InactivePartitions is like Partitions, but only returns inactive partitions.
+// The returned slice is a deep copy, so the caller can freely manipulate it.
+func (r *PartitionRing) InactivePartitions() []PartitionDesc {
+	res := make([]PartitionDesc, 0, len(r.desc.Partitions))
+
+	for _, partition := range r.desc.Partitions {
+		if partition.IsInactive() {
+			res = append(res, partition.Clone())
+		}
+	}
+
+	return res
+}
+
 // PartitionIDs returns a sorted list of all partition IDs in the ring.
 // The returned slice is a copy, so the caller can freely manipulate it.
 func (r *PartitionRing) PartitionIDs() []int32 {

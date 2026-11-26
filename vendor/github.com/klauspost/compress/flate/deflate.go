@@ -433,11 +433,18 @@ func (d *compressor) deflateLazy() {
 		if d.h == nil {
 			d.h = newHuffmanEncoder(maxFlateBlockTokens)
 		}
+		// Count every byte that findMatch can see, so that no literal ends up
+		// with a zero cost.
 		var tmp [256]uint16
 		toIndex := d.window[s.index:d.windowEnd]
-		toIndex = toIndex[:min(len(toIndex), maxFlateBlockTokens)]
-		for _, v := range toIndex {
-			tmp[v]++
+		if len(toIndex) <= math.MaxUint16 {
+			histogram(toIndex, tmp[:])
+		} else {
+			// Prevent overflow if all values match (#1114).
+			histogram(toIndex[:math.MaxUint16], tmp[:])
+			if last := toIndex[math.MaxUint16]; tmp[last] < math.MaxUint16 {
+				tmp[last]++
+			}
 		}
 		d.h.generate(tmp[:], 15)
 

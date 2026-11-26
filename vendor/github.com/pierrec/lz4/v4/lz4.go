@@ -72,12 +72,50 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 	return c.c.CompressBlock(src, dst)
 }
 
+// CompressBlockWithDict compresses the source buffer src into the destination dst using a dictionary.
+// Only the last 64 KiB of dict is used; decompress with UncompressBlockWithDict
+// and the same dict. Calling it again with the same, unmodified dict slice
+// reuses the Compressor's index of the dictionary; modifying dict in place
+// between calls only reduces compression.
+//
+// If compression is successful, the first return value is the size of the
+// compressed data, which is always >0.
+//
+// If dst has length at least CompressBlockBound(len(src)), compression always
+// succeeds. Otherwise, the first return value is zero. The error return is
+// non-nil if the compressed data does not fit in dst, but it might fit in a
+// larger buffer that is still smaller than CompressBlockBound(len(src)). The
+// return value (0, nil) means the data is likely incompressible and a buffer
+// of length CompressBlockBound(len(src)) should be passed in.
+func (c *Compressor) CompressBlockWithDict(src, dst, dict []byte) (int, error) {
+	return c.c.CompressBlockWithDict(src, dst, dict)
+}
+
 // CompressBlock is equivalent to Compressor.CompressBlock.
 // The final argument is ignored and should be set to nil.
 //
 // This function is deprecated. Use a Compressor instead.
 func CompressBlock(src, dst []byte, _ []int) (int, error) {
 	return lz4block.CompressBlock(src, dst)
+}
+
+// CompressBlockWithDict compresses the source buffer into the destination one using a
+// dictionary, and returns the compressed size. Only the last 64 KiB of dict is
+// used; decompress with UncompressBlockWithDict and the same dict. Use a
+// Compressor to compress several blocks with the same dict without indexing it
+// each time.
+//
+// If compression is successful, the first return value is the size of the
+// compressed data, which is always >0.
+//
+// If dst has length at least CompressBlockBound(len(src)), compression always
+// succeeds. Otherwise, the first return value is zero. The error return is
+// non-nil if the compressed data does not fit in dst, but it might fit in a
+// larger buffer that is still smaller than CompressBlockBound(len(src)). The
+// return value (0, nil) means the data is likely incompressible and a buffer
+// of length CompressBlockBound(len(src)) should be passed in.
+func CompressBlockWithDict(src, dst, dict []byte) (int, error) {
+	return lz4block.CompressBlockWithDict(src, dst, dict)
 }
 
 // A CompressorCCompat compresses data into the LZ4 block format with the

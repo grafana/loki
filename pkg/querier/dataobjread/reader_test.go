@@ -33,11 +33,10 @@ import (
 func TestLogReader(t *testing.T) {
 	metrics := NewMetrics(nil)
 
-	// bytes_over_time projects the message column, which these tests need: the line is the one
-	// field that a scan copies into recycled memory.
+	// bytes_over_time projects the message column, so a scan returns lines.
 	const queryReturningLine = `bytes_over_time({app=~".+"}[1m])`
 
-	t.Run("it yields every record of every planned section", func(t *testing.T) {
+	t.Run("it yields every row of every planned section", func(t *testing.T) {
 		fixture := newReaderFixture(t, queryReturningLine,
 			logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one"), entry(t, 2, "two")}},
 			logproto.Stream{Labels: `{app="b"}`, Entries: []push.Entry{entry(t, 1, "three")}},
@@ -115,11 +114,12 @@ func TestLogReader(t *testing.T) {
 
 		const maxConcurrency = 1
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), maxConcurrency, 1, metrics)
-		batches := make(map[*readBatch]struct{})
+		batches := make(map[*rowsBatch]struct{})
 		var read int
-		for reader.Next() {
-			batches[reader.currBatch] = struct{}{}
-			read++
+		for batch := reader.nextRowsBatch(); batch != nil; batch = reader.nextRowsBatch() {
+			batches[batch] = struct{}{}
+			read += batch.records.Rows
+			batch.release()
 		}
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())
@@ -127,20 +127,7 @@ func TestLogReader(t *testing.T) {
 		require.Less(t, len(batches), read/2)
 	})
 
-	t.Run("a reader that yields every record holds no batch", func(t *testing.T) {
-		var entries []push.Entry
-		for i := range 10 {
-			entries = append(entries, entry(t, i+1, fmt.Sprintf("line-%d", i)))
-		}
-		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
-
-		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 1, 1, metrics)
-		require.Len(t, drainReader(reader), len(entries))
-		require.Nil(t, reader.currBatch)
-		require.NoError(t, reader.Close())
-	})
-
-	t.Run("closing a reader before it yields every record drops the queued batches", func(t *testing.T) {
+	t.Run("closing a reader drops the queued batches and keeps the batch that the consumer holds", func(t *testing.T) {
 		var entries []push.Entry
 		for i := range 10 {
 			entries = append(entries, entry(t, i+1, fmt.Sprintf("line-%d", i)))
@@ -148,12 +135,36 @@ func TestLogReader(t *testing.T) {
 		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
 
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 4, 1, metrics)
-		require.True(t, reader.Next())
+		held := reader.nextRowsBatch()
+		require.NotNil(t, held)
+		require.Eventually(t, func() bool { return len(reader.batches) == cap(reader.batches) }, 10*time.Second, time.Millisecond)
+
 		require.NoError(t, reader.Close())
 		require.Empty(t, reader.batches)
 
-		require.False(t, reader.Next())
-		require.Nil(t, reader.currBatch)
+		require.Nil(t, reader.nextRowsBatch())
+
+		require.False(t, held.pooled)
+		held.release()
+		require.True(t, held.pooled)
+	})
+
+	t.Run("a reader overwrites the line of a real batch at its release in a test", func(t *testing.T) {
+		skipWithoutPoisoning(t)
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one line")}})
+
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 1, 1, metrics)
+		batch := reader.nextRowsBatch()
+		require.NotNil(t, batch)
+		line := batch.line(0)
+		require.Equal(t, "one line", string(line))
+
+		<-reader.stopped
+		batch.release()
+		for i, b := range line {
+			require.EqualValues(t, 0xA5, b, "byte %d", i)
+		}
+		require.NoError(t, reader.Close())
 	})
 
 	t.Run("a pushed line filter keeps only the rows that pass it at every batch size", func(t *testing.T) {
@@ -179,8 +190,11 @@ func TestLogReader(t *testing.T) {
 			reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, batchSize, metrics)
 
 			var timestamps []int64
-			for reader.Next() {
-				timestamps = append(timestamps, reader.At().timestamp)
+			for batch := reader.nextRowsBatch(); batch != nil; batch = reader.nextRowsBatch() {
+				for i := range batch.records.Rows {
+					timestamps = append(timestamps, batch.records.Timestamp.Get(i))
+				}
+				batch.release()
 			}
 			require.NoError(t, reader.Err())
 			require.NoError(t, reader.Close())
@@ -251,29 +265,31 @@ func TestLogReader(t *testing.T) {
 		require.ErrorIs(t, reader.Err(), wantErr)
 	})
 
-	t.Run("closing before the records are drained reports no error", func(t *testing.T) {
+	t.Run("closing before the rows are drained reports no error", func(t *testing.T) {
 		entries := []push.Entry{
 			entry(t, 1, "one"), entry(t, 2, "two"), entry(t, 3, "three"),
 			entry(t, 4, "four"), entry(t, 5, "five"),
 		}
 		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
 
-		// One batch per record and a batch channel of one, so the scan is certainly blocked on a
+		// One batch per row and a batch channel of one, so the scan is certainly blocked on a
 		// send when Close cancels it. At the default batch size the scan finishes first and
 		// reports nothing, so the suppression this asserts is never reached.
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 1, 1, metrics)
-		require.True(t, reader.Next())
+		first := reader.nextRowsBatch()
+		require.NotNil(t, first)
 
 		require.NoError(t, reader.Close(), "the cancellation Close causes is not a query failure")
 
 		// The read really was cut short, so a cancellation was reported and suppressed rather
-		// than never raised. Counting is all this does with the records: Close released the
-		// objects they were decoded from.
-		forwarded := 1
-		for reader.Next() {
-			forwarded++
+		// than never raised.
+		received := first.records.Rows
+		first.release()
+		for batch := reader.nextRowsBatch(); batch != nil; batch = reader.nextRowsBatch() {
+			received += batch.records.Rows
+			batch.release()
 		}
-		require.Less(t, forwarded, len(entries), "the scan finished, so nothing was suppressed")
+		require.Less(t, received, len(entries), "the scan finished, so nothing was suppressed")
 	})
 
 	t.Run("a cancellation the caller caused is still reported after Close", func(t *testing.T) {
@@ -336,8 +352,8 @@ func TestLogReader(t *testing.T) {
 	t.Run("a panic scanning a section fails the read rather than the process", func(t *testing.T) {
 		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: []push.Entry{entry(t, 1, "one")}})
 
-		// A task with no decoded streams makes the scan dereference a nil pointer as it turns
-		// rows into records, which is a panic on the scan's own goroutine.
+		// A task with no decoded streams makes the scan dereference a nil pointer as it looks up
+		// the stream of a run, which is a panic on the scan's own goroutine.
 		task := fixture.tasks[0]
 		task.streams = nil
 
@@ -348,7 +364,7 @@ func TestLogReader(t *testing.T) {
 		require.Error(t, reader.Close())
 	})
 
-	t.Run("a read that exhausted its plan keeps every record a later cancellation finds queued", func(t *testing.T) {
+	t.Run("a read that exhausted its plan keeps every row a later cancellation finds queued", func(t *testing.T) {
 		var entries []push.Entry
 		want := make([]string, 0, 20)
 		for i := range 20 {
@@ -361,8 +377,8 @@ func TestLogReader(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		reader := NewLogReader(ctx, fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
 
-		// Wait for the scan to finish, so every record is decoded and queued, then cancel.
-		// Dropping the queued records would under-count a query that read all it planned to.
+		// Wait for the scan to finish, so every row is decoded and queued, then cancel.
+		// Dropping the queued batches would under-count a query that read all it planned to.
 		<-reader.stopped
 		cancel()
 
@@ -439,7 +455,7 @@ func TestLogReader(t *testing.T) {
 		require.Error(t, reader.Close())
 	})
 
-	t.Run("it forwards batches of at most batchSize records", func(t *testing.T) {
+	t.Run("it sends batches of at most batchSize records", func(t *testing.T) {
 		var entries []push.Entry
 		for i := range 350 {
 			entries = append(entries, entry(t, i%90+1, fmt.Sprintf("line-%d", i)))
@@ -450,9 +466,10 @@ func TestLogReader(t *testing.T) {
 		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 1, batchSize, NewMetrics(nil))
 
 		var records int
-		for reader.Next() {
-			records++
-			require.LessOrEqual(t, len(reader.currBatch.records), batchSize)
+		for batch := reader.nextRowsBatch(); batch != nil; batch = reader.nextRowsBatch() {
+			records += batch.records.Rows
+			require.LessOrEqual(t, batch.records.Rows, batchSize)
+			batch.release()
 		}
 		require.NoError(t, reader.Close())
 		require.Equal(t, len(entries), records)
@@ -473,283 +490,153 @@ func TestLogReader(t *testing.T) {
 		require.Error(t, reader.Close())
 	})
 
-	t.Run("a scan reuses the memory of its allocator for every batch", func(t *testing.T) {
+	t.Run("a consumer that holds batches sees their lines intact while the scans go on", func(t *testing.T) {
 		var entries []push.Entry
-		for i := range 200 {
-			entries = append(entries, entry(t, i%90+1, fmt.Sprintf("line-%03d", i)))
+		for i := range 30 {
+			entries = append(entries, entry(t, i+1, fmt.Sprintf("line-%d", i)))
 		}
-		fixture := newReaderFixture(t, `bytes_over_time({app=~".+"}[1m])`, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
-		require.Len(t, fixture.tasks, 1)
-		task := fixture.tasks[0]
+		fixture := newReaderFixture(t, queryReturningLine, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
 
-		// allocatedBytes returns the memory that the allocator of a scan holds after the scan reads
-		// every record in batches of the given size.
-		allocatedBytes := func(batchSize int) int {
-			object, err := fixture.objects.get(t.Context(), task.objectPath)
-			require.NoError(t, err)
-			section, err := object.logsSection(t.Context(), task.sectionIdx)
-			require.NoError(t, err)
+		reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), 4, 1, metrics)
 
-			rowReader := logs.NewRowReader(section)
-			require.NoError(t, rowReader.SetProjectedColumns(task.columns, task.metadataNames))
-			require.NoError(t, rowReader.MatchStreams(slices.Values(task.streamIDs)))
-			require.NoError(t, rowReader.SetPredicates(task.rowPredicates()))
-			require.NoError(t, rowReader.Open(t.Context()))
-			t.Cleanup(func() { require.NoError(t, rowReader.Close()) })
-
-			reader := &LogReader{batchPool: newReadBatchPool(batchSize), batches: make(chan *readBatch, len(entries))}
-			var alloc memory.Allocator
-			batch, err := reader.sendBatches(t.Context(), rowReader, &alloc, task, batchSize)
-			require.NoError(t, err)
-			require.Nil(t, batch)
-			return alloc.AllocatedBytes()
-		}
-
-		// A scan that did not reclaim between batches would hold far more memory with a batch size of
-		// one than with one batch. Reclaiming keeps both close.
-		require.LessOrEqual(t, allocatedBytes(1), 2*allocatedBytes(len(entries)))
-	})
-}
-
-func TestReadBatch_Fill(t *testing.T) {
-	const streamID = int64(7)
-	task := lineTask(t, streamID)
-
-	t.Run("builds a record for each row with the identity of its stream", func(t *testing.T) {
-		in := batchOf(t, []int64{streamID, streamID}, []string{"one", "two"})
-		levels := columnar.NewUTF8Builder(memory.NewAllocator(nil))
-		levels.AppendValue([]byte("error"))
-		levels.AppendValue([]byte(""))
-		in.Metadata = append(in.Metadata, logs.MetadataColumn{Name: "level", Values: levels.BuildArray().(*columnar.UTF8)})
-
-		var batch readBatch
-		require.NoError(t, batch.fill(task, in))
-		require.Len(t, batch.records, 2)
-
-		stream := task.streams.admittedByID[streamID]
-		for i, line := range []string{"one", "two"} {
-			require.Equal(t, stream.streamHash, batch.records[i].streamHash)
-			require.Equal(t, stream.streamLabels, batch.records[i].streamLabels)
-			require.Equal(t, at(i+1).UnixNano(), batch.records[i].timestamp)
-			require.Equal(t, line, string(batch.records[i].line))
-		}
-		require.Equal(t, `{level="error"}`, batch.records[0].metadata.String())
-		require.Equal(t, `{level=""}`, batch.records[1].metadata.String())
-	})
-
-	t.Run("attaches the identity of the stream of each row when the streams interleave", func(t *testing.T) {
-		streams := newObjectStreams(
-			map[int64]labels.Labels{7: labels.FromStrings("app", "a"), 8: labels.FromStrings("app", "b")},
-			func(labels.Labels, uint64) bool { return true },
+		var (
+			held     []*rowsBatch
+			heldWant [][]string
 		)
-		interleaved := ReadTask{streamIDs: []int64{7, 8}, streams: streams, needReturningLine: true}
+		for range 3 {
+			batch := reader.nextRowsBatch()
+			require.NotNil(t, batch)
+			held = append(held, batch)
+			heldWant = append(heldWant, batchLines(batch))
+		}
+		rest := drainReader(reader)
+		require.NoError(t, reader.Err())
+		require.NoError(t, reader.Close())
 
-		ids := []int64{7, 8, 7, 8, 8}
-		in := batchOf(t, ids, []string{"a", "b", "c", "d", "e"})
-
-		var batch readBatch
-		require.NoError(t, batch.fill(interleaved, in))
-		require.Len(t, batch.records, len(ids))
-		for i, id := range ids {
-			require.Equal(t, streams.admittedByID[id].streamLabels, batch.records[i].streamLabels, "row %d", i)
-			require.Equal(t, streams.admittedByID[id].streamHash, batch.records[i].streamHash, "row %d", i)
+		require.Len(t, rest, len(entries)-len(held))
+		for i, batch := range held {
+			require.Equal(t, heldWant[i], batchLines(batch), "held batch %d", i)
+			batch.release()
 		}
 	})
 
-	t.Run("copies the lines into one region, so a later read does not change them", func(t *testing.T) {
-		in := batchOf(t, []int64{streamID, streamID}, []string{"one", "two"})
-
-		var batch readBatch
-		require.NoError(t, batch.fill(task, in))
-
-		copy(in.Message.Data(), "xxxxxx")
-		require.Equal(t, "one", string(batch.records[0].line))
-		require.Equal(t, "two", string(batch.records[1].line))
-	})
-
-	t.Run("sizes the region of the lines from the lines of a sliced array", func(t *testing.T) {
-		full := batchOf(t, []int64{streamID, streamID, streamID}, []string{"one", "two", "three"})
-		sliced := &logs.RecordBatch{
-			Rows:      2,
-			StreamID:  full.StreamID.Slice(1, 3).(*columnar.Number[int64]),
-			Timestamp: full.Timestamp.Slice(1, 3).(*columnar.Number[int64]),
-			Message:   full.Message.Slice(1, 3).(*columnar.UTF8),
-		}
-		require.Equal(t, len("two")+len("three"), task.forwardedLineBytes(sliced))
-
-		var batch readBatch
-		require.NoError(t, batch.fill(task, sliced))
-		require.Equal(t, "two", string(batch.records[0].line))
-		require.Equal(t, "three", string(batch.records[1].line))
-		require.Equal(t, len("two")+len("three"), batch.linesAlloc.AllocatedBytes())
-	})
-
-	t.Run("a second fill reuses the region of the first", func(t *testing.T) {
-		var batch readBatch
-		require.NoError(t, batch.fill(task, batchOf(t, []int64{streamID}, []string{"first"})))
-		allocated := batch.linesAlloc.AllocatedBytes()
-
-		require.NoError(t, batch.fill(task, batchOf(t, []int64{streamID}, []string{"other"})))
-		require.Equal(t, "other", string(batch.records[0].line))
-		require.Equal(t, allocated, batch.linesAlloc.AllocatedBytes())
-	})
-
-	t.Run("allocates no line memory when the task does not need the line", func(t *testing.T) {
-		noLine := task
-		noLine.needReturningLine = false
-
-		var batch readBatch
-		require.NoError(t, batch.fill(noLine, batchOf(t, []int64{streamID}, []string{"one"})))
-		require.Len(t, batch.records, 1)
-		require.Nil(t, batch.records[0].line)
-		require.Zero(t, batch.linesAlloc.AllocatedBytes())
-	})
-
-	t.Run("forwards no line for an empty line and a line for the others", func(t *testing.T) {
-		var batch readBatch
-		require.NoError(t, batch.fill(task, batchOf(t, []int64{streamID, streamID}, []string{"", "x"})))
-		require.Nil(t, batch.records[0].line)
-		require.Equal(t, "x", string(batch.records[1].line))
-	})
-
-	t.Run("caps each line at its own length, so an append does not overwrite the next line", func(t *testing.T) {
-		var batch readBatch
-		require.NoError(t, batch.fill(task, batchOf(t, []int64{streamID, streamID}, []string{"one", "two"})))
-
-		first := batch.records[0].line
-		require.Equal(t, len(first), cap(first))
-		_ = append(first, "xxxx"...)
-		require.Equal(t, "two", string(batch.records[1].line))
-	})
-
-	t.Run("forwards no line when the batch has no message column", func(t *testing.T) {
-		in := batchOf(t, []int64{streamID}, []string{"one"})
-		in.Message = nil
-
-		var batch readBatch
-		require.NoError(t, batch.fill(task, in))
-		require.Nil(t, batch.records[0].line)
-	})
-
-	t.Run("fails and leaves no records for a row of a stream that the task did not plan", func(t *testing.T) {
-		var batch readBatch
-		require.NoError(t, batch.fill(task, batchOf(t, []int64{streamID}, []string{"earlier"})))
-
-		err := batch.fill(task, batchOf(t, []int64{streamID, 9999}, []string{"one", "two"}))
-		require.ErrorContains(t, err, "unexpected stream ID 9999")
-		require.Empty(t, batch.records)
-	})
-
-	t.Run("fails for a batch without a stream ID array", func(t *testing.T) {
-		in := batchOf(t, []int64{streamID}, []string{"one"})
-		in.StreamID = nil
-
-		var batch readBatch
-		require.ErrorContains(t, batch.fill(task, in), "without the stream ID or timestamp column")
-	})
-
-	t.Run("fails for a batch without a timestamp array", func(t *testing.T) {
-		in := batchOf(t, []int64{streamID}, []string{"one"})
-		in.Timestamp = nil
-
-		var batch readBatch
-		require.ErrorContains(t, batch.fill(task, in), "without the stream ID or timestamp column")
-	})
-}
-
-func TestReadBatch_Reset(t *testing.T) {
-	const streamID = int64(7)
-	task := lineTask(t, streamID)
-
-	t.Run("it drops the records, including those past their length", func(t *testing.T) {
-		batch := readBatch{records: make([]LogRecord, 0, 4)}
-		batch.records = append(batch.records,
-			LogRecord{streamLabels: labels.FromStrings("app", "a"), metadata: labels.FromStrings("level", "error")},
-			LogRecord{streamLabels: labels.FromStrings("app", "b"), metadata: labels.FromStrings("level", "info")},
+	t.Run("a read yields every line when released batches are overwritten", func(t *testing.T) {
+		var (
+			streams []logproto.Stream
+			want    []string
 		)
-		batch.records = batch.records[:1]
-
-		batch.reset()
-		require.Empty(t, batch.records)
-		for _, record := range batch.records[:cap(batch.records)] {
-			require.Equal(t, LogRecord{}, record)
-		}
-	})
-
-	t.Run("it releases the line region that the last fill did not use", func(t *testing.T) {
-		var batch readBatch
-		require.NoError(t, batch.fill(task, batchOf(t, []int64{streamID}, []string{"short"})))
-		batch.reset()
-
-		long := strings.Repeat("x", 100)
-		require.NoError(t, batch.fill(task, batchOf(t, []int64{streamID}, []string{long})))
-		withBoth := batch.linesAlloc.AllocatedBytes()
-
-		batch.reset()
-		require.Less(t, batch.linesAlloc.AllocatedBytes(), withBoth)
-		require.GreaterOrEqual(t, batch.linesAlloc.AllocatedBytes(), len(long))
-	})
-
-	t.Run("it keeps the line region after a fill that copied no line", func(t *testing.T) {
-		var batch readBatch
-		require.NoError(t, batch.fill(task, batchOf(t, []int64{streamID}, []string{"first"})))
-		batch.reset()
-		allocated := batch.linesAlloc.AllocatedBytes()
-
-		require.NoError(t, batch.fill(task, batchOf(t, []int64{streamID}, []string{""})))
-		batch.reset()
-		require.Equal(t, allocated, batch.linesAlloc.AllocatedBytes())
-	})
-}
-
-func TestReadBatchPool_Get(t *testing.T) {
-	const batchSize = 4
-
-	t.Run("on an empty pool it returns a new batch with no records", func(t *testing.T) {
-		pool := newReadBatchPool(batchSize)
-
-		batch := pool.get()
-		require.Empty(t, batch.records)
-		require.Equal(t, batchSize, cap(batch.records))
-		require.False(t, batch.pooled)
-	})
-
-	t.Run("after a put a later get returns the put batch, though sync.Pool may drop some puts", func(t *testing.T) {
-		pool := newReadBatchPool(batchSize)
-
-		var reused bool
-		for range 100 {
-			batch := pool.get()
-			pool.put(batch)
-			if recycled := pool.get(); recycled == batch {
-				require.False(t, recycled.pooled)
-				reused = true
-				break
+		for s := range 4 {
+			stream := logproto.Stream{Labels: fmt.Sprintf(`{app="app-%d"}`, s)}
+			for i := range 40 {
+				line := fmt.Sprintf("stream-%d-line-%d", s, i)
+				stream.Entries = append(stream.Entries, entry(t, i+1, line))
+				want = append(want, line)
 			}
+			streams = append(streams, stream)
 		}
-		require.True(t, reused)
+		smallSections := []objtest.Option{objtest.WithTargetSectionSize(1 << 10)}
+		fixture := planReaderFixture(t, queryReturningLine, newObjectsFixtureWithOptions(t, smallSections, streams...))
+
+		for _, batchSize := range []int{1, 7, DefaultReadBatchSize} {
+			reader := NewLogReader(t.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, batchSize, metrics)
+			lines := drainReader(reader)
+			require.NoError(t, reader.Err())
+			require.NoError(t, reader.Close())
+			require.ElementsMatch(t, want, lines, "batch size %d", batchSize)
+		}
 	})
 }
 
-func TestReadBatchPool_Put(t *testing.T) {
-	const batchSize = 4
+func TestLogReader_SendBatches(t *testing.T) {
+	const batchSize = 1
 
-	t.Run("it resets the batch and marks it as pooled", func(t *testing.T) {
-		pool := newReadBatchPool(batchSize)
-		batch := pool.get()
-		batch.records = append(batch.records, LogRecord{streamLabels: labels.FromStrings("app", "a")})
+	entries := []push.Entry{entry(t, 1, "one"), entry(t, 2, "two"), entry(t, 3, "three")}
+	fixture := newReaderFixture(t, `bytes_over_time({app=~".+"}[1m])`, logproto.Stream{Labels: `{app="a"}`, Entries: entries})
+	require.Len(t, fixture.tasks, 1)
+	task := fixture.tasks[0]
 
-		pool.put(batch)
-		require.Empty(t, batch.records)
-		require.True(t, batch.pooled)
+	t.Run("it sends one batch for each read, and releases the batch that meets the end of the section", func(t *testing.T) {
+		reader := newTrackedReader(len(entries))
+
+		require.NoError(t, reader.sendBatches(t.Context(), openRowReader(t, fixture, task), task, batchSize))
+		require.Len(t, reader.batches, len(entries))
+
+		require.Len(t, reader.created, len(entries)+1)
+		for _, sent := range reader.created[:len(entries)] {
+			require.False(t, sent.pooled)
+		}
+		require.True(t, reader.created[len(entries)].pooled)
 	})
 
-	t.Run("it panics when the batch is already in the pool", func(t *testing.T) {
-		pool := newReadBatchPool(batchSize)
-		batch := pool.get()
-		pool.put(batch)
+	t.Run("it releases the batch when the read fails", func(t *testing.T) {
+		reader := newTrackedReader(len(entries))
+		rowReader := openRowReader(t, fixture, task)
 
-		require.PanicsWithValue(t, "dataobjread: read batch returned to the pool twice", func() { pool.put(batch) })
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		require.ErrorIs(t, reader.sendBatches(ctx, rowReader, task, batchSize), context.Canceled)
+
+		require.Len(t, reader.created, 1)
+		require.True(t, reader.created[0].pooled)
+		require.Empty(t, reader.batches)
+	})
+
+	t.Run("it releases the batch when it cannot split the records into runs", func(t *testing.T) {
+		reader := newTrackedReader(len(entries))
+		unplanned := task
+		unplanned.streams = newObjectStreams(nil, func(labels.Labels, uint64) bool { return true })
+
+		err := reader.sendBatches(t.Context(), openRowReader(t, fixture, task), unplanned, batchSize)
+
+		require.ErrorContains(t, err, "unexpected stream ID")
+		require.Len(t, reader.created, 1)
+		require.True(t, reader.created[0].pooled)
+		require.Empty(t, reader.batches)
+	})
+
+	t.Run("it releases the batch of a read that fails after a send, and not the batch that it sent", func(t *testing.T) {
+		reader := newTrackedReader(len(entries))
+
+		var reads int
+		failing := task
+		failing.predicates = []logs.RowPredicate{logs.LogMessageFilterRowPredicate{
+			Keep: func([]byte) bool { return true },
+			KeepBatch: func(_ []byte, offsets []int32, dst []int32) []int32 {
+				reads++
+				if reads == 2 {
+					return append(dst, 1000)
+				}
+				for i := 0; i+1 < len(offsets); i++ {
+					dst = append(dst, int32(i))
+				}
+				return dst
+			},
+		}}
+
+		err := reader.sendBatches(t.Context(), openRowReader(t, fixture, failing), failing, batchSize)
+
+		require.ErrorContains(t, err, "kept index 1000")
+		require.Len(t, reader.created, 2)
+		require.Len(t, reader.batches, 1)
+		sent := <-reader.batches
+		require.Same(t, reader.created[0], sent)
+		require.False(t, sent.pooled)
+		require.True(t, reader.created[1].pooled)
+	})
+
+	t.Run("it releases the batch when the context is cancelled during the send", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		cancelling := task
+		cancelling.predicates = []logs.RowPredicate{cancelOnFirstRow(cancel)}
+		reader := newTrackedReader(0)
+
+		err := reader.sendBatches(ctx, openRowReader(t, fixture, cancelling), cancelling, batchSize)
+
+		require.ErrorIs(t, err, context.Canceled)
+		require.Len(t, reader.created, 1)
+		require.True(t, reader.created[0].pooled)
 	})
 }
 
@@ -796,31 +683,7 @@ func BenchmarkLogReader(b *testing.B) {
 		streamCount      = 20
 		entriesPerStream = 10_000
 	)
-	levels := []string{"info", "warn", "error", "debug"}
-	paths := []string{"/api/v1/push", "/loki/api/v1/query_range", "/metrics", "/ready"}
-
-	var (
-		streams   []logproto.Stream
-		lineBytes int64
-	)
-	for s := range streamCount {
-		stream := logproto.Stream{Labels: fmt.Sprintf(`{app="app-%d"}`, s)}
-		for i := range entriesPerStream {
-			line := fmt.Sprintf(`level=%s caller=http.go:%d msg="request completed" method=GET path=%s status=%d duration=%dms trace_id=%016x`,
-				levels[i%len(levels)], i%500, paths[(i/7)%len(paths)], 200+(i%4)*100, (i*7919)%5000, uint64(i)*0x9e3779b97f4a7c15)
-			lineBytes += int64(len(line))
-			stream.Entries = append(stream.Entries, push.Entry{
-				Timestamp: at(1).Add(time.Duration(i) * 5 * time.Millisecond),
-				Line:      line,
-				StructuredMetadata: push.LabelsAdapter{
-					{Name: "pod", Value: fmt.Sprintf("pod-%d-%d", s, i/2500)},
-					{Name: "trace_id", Value: fmt.Sprintf("%016x", uint64(i)*0x9e3779b97f4a7c15)},
-					{Name: "detected_level", Value: levels[i%len(levels)]},
-				},
-			})
-		}
-		streams = append(streams, stream)
-	}
+	streams, lineBytes := benchmarkStreams(streamCount, entriesPerStream)
 	fixtures := []struct {
 		name    string
 		objects objectsFixture
@@ -833,6 +696,7 @@ func BenchmarkLogReader(b *testing.B) {
 		`sum(count_over_time({app=~".+"}[1m]))`,
 		`sum(bytes_over_time({app=~".+"}[1m]))`,
 		`sum(count_over_time({app=~".+"} |= "error" [1m]))`,
+		`sum(count_over_time({app=~".+"} |= "level=" [1m]))`,
 		`sum(count_over_time({app=~".+"} |= "trace_id=0000000000000fa0" [1m]))`,
 		`sum(count_over_time({app=~".+"} |= "error" | logfmt | status="500" [1m]))`,
 		`sum(count_over_time({app=~".+"} | detected_level="error" [1m]))`,
@@ -849,8 +713,8 @@ func BenchmarkLogReader(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
 					reader := NewLogReader(b.Context(), fixture.objects, queuedTasks(fixture.tasks...), DefaultMaxConcurrency, DefaultReadBatchSize, metrics)
-					for reader.Next() {
-						_ = reader.At()
+					for batch := reader.nextRowsBatch(); batch != nil; batch = reader.nextRowsBatch() {
+						batch.release()
 					}
 					require.NoError(b, reader.Close())
 				}
@@ -897,13 +761,73 @@ func planReaderFixture(t testing.TB, query string, fixture objectsFixture) reade
 	return readerFixture{objects: objects, tasks: tasks}
 }
 
-// drainReader collects every line the reader yields, as a set.
+// drainReader collects every line the reader yields, in no fixed order. It releases each batch
+// after it copies the lines.
 func drainReader(r *LogReader) []string {
 	var lines []string
-	for r.Next() {
-		lines = append(lines, string(r.At().line))
+	for batch := r.nextRowsBatch(); batch != nil; batch = r.nextRowsBatch() {
+		lines = append(lines, batchLines(batch)...)
+		batch.release()
 	}
 	return lines
+}
+
+// openRowReader returns a row reader that is open over the section of task, as a scan has it.
+func openRowReader(t *testing.T, fixture readerFixture, task ReadTask) *logs.RowReader {
+	t.Helper()
+
+	object, err := fixture.objects.get(t.Context(), task.objectPath)
+	require.NoError(t, err)
+	section, err := object.logsSection(t.Context(), task.sectionIdx)
+	require.NoError(t, err)
+
+	reader := logs.NewRowReader(section)
+	require.NoError(t, reader.SetProjectedColumns(task.columns, task.metadataNames))
+	require.NoError(t, reader.MatchStreams(slices.Values(task.streamIDs)))
+	require.NoError(t, reader.SetPredicates(task.rowPredicates()))
+	require.NoError(t, reader.Open(t.Context()))
+	t.Cleanup(func() { require.NoError(t, reader.Close()) })
+	return reader
+}
+
+// batchLines returns a copy of the line of each row of batch.
+func batchLines(batch *rowsBatch) []string {
+	lines := make([]string, batch.records.Rows)
+	for i := range lines {
+		lines[i] = string(batch.records.Message.Get(i))
+	}
+	return lines
+}
+
+// benchmarkStreams returns the streams of a benchmark fixture, and the number of line bytes they
+// hold. Every line carries three structured metadata labels.
+func benchmarkStreams(streamCount, entriesPerStream int) ([]logproto.Stream, int64) {
+	levels := []string{"info", "warn", "error", "debug"}
+	paths := []string{"/api/v1/push", "/loki/api/v1/query_range", "/metrics", "/ready"}
+
+	var (
+		streams   []logproto.Stream
+		lineBytes int64
+	)
+	for s := range streamCount {
+		stream := logproto.Stream{Labels: fmt.Sprintf(`{app="app-%d"}`, s)}
+		for i := range entriesPerStream {
+			line := fmt.Sprintf(`level=%s caller=http.go:%d msg="request completed" method=GET path=%s status=%d duration=%dms trace_id=%016x`,
+				levels[i%len(levels)], i%500, paths[(i/7)%len(paths)], 200+(i%4)*100, (i*7919)%5000, uint64(i)*0x9e3779b97f4a7c15)
+			lineBytes += int64(len(line))
+			stream.Entries = append(stream.Entries, push.Entry{
+				Timestamp: at(1).Add(time.Duration(i) * 5 * time.Millisecond),
+				Line:      line,
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: "pod", Value: fmt.Sprintf("pod-%d-%d", s, i/2500)},
+					{Name: "trace_id", Value: fmt.Sprintf("%016x", uint64(i)*0x9e3779b97f4a7c15)},
+					{Name: "detected_level", Value: levels[i%len(levels)]},
+				},
+			})
+		}
+		streams = append(streams, stream)
+	}
+	return streams, lineBytes
 }
 
 // holdBucket holds each Attributes, Get and GetRange call until release closes, then passes the
@@ -929,21 +853,20 @@ func (b *holdBucket) GetRange(ctx context.Context, name string, offset, length i
 	return b.Bucket.GetRange(ctx, name, offset, length)
 }
 
-// lineTask returns a task that forwards the lines of one admitted stream with the given ID.
-func lineTask(t *testing.T, streamID int64) ReadTask {
-	t.Helper()
-
-	streamLabels, err := syntax.ParseLabels(`{app="a"}`)
-	require.NoError(t, err)
-	streams := newObjectStreams(
-		map[int64]labels.Labels{streamID: streamLabels},
-		func(labels.Labels, uint64) bool { return true },
-	)
-	return ReadTask{streamIDs: []int64{streamID}, streams: streams, needReturningLine: true}
+// cancelOnFirstRow returns a row predicate that keeps every row and calls cancel each time it tests
+// a row. A read that uses it returns its rows after the cancellation, so the context is already
+// cancelled when the scan sends the batch.
+func cancelOnFirstRow(cancel context.CancelFunc) logs.RowPredicate {
+	return logs.LogMessageFilterRowPredicate{
+		Keep: func([]byte) bool {
+			cancel()
+			return true
+		},
+	}
 }
 
-// batchOf returns a batch with one row per line. Row i belongs to the stream streamIDs[i] and has
-// the timestamp at(i+1).
+// batchOf returns records with one record per line. Record i belongs to the stream streamIDs[i] and
+// has the timestamp at(i+1).
 func batchOf(t *testing.T, streamIDs []int64, lines []string) *logs.RecordBatch {
 	t.Helper()
 	require.Len(t, lines, len(streamIDs))
@@ -964,4 +887,24 @@ func batchOf(t *testing.T, streamIDs []int64, lines []string) *logs.RecordBatch 
 		Timestamp: timestamps.BuildArray().(*columnar.Number[int64]),
 		Message:   messages.BuildArray().(*columnar.UTF8),
 	}
+}
+
+// trackedReader is a LogReader that is not running. It records each batch that its pool creates,
+// so a test can check whether sendBatches released or sent the batch.
+type trackedReader struct {
+	*LogReader
+	created []*rowsBatch
+}
+
+// newTrackedReader returns a trackedReader whose channel holds capacity batches.
+func newTrackedReader(capacity int) *trackedReader {
+	reader := &trackedReader{LogReader: &LogReader{pool: newRowsBatchPool(), batches: make(chan *rowsBatch, capacity)}}
+
+	newBatch := reader.pool.free.New
+	reader.pool.free.New = func() any {
+		batch := newBatch().(*rowsBatch)
+		reader.created = append(reader.created, batch)
+		return batch
+	}
+	return reader
 }

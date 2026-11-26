@@ -1,14 +1,20 @@
 package deletion
 
 import (
+	"bytes"
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"iter"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 )
 
 func TestUnreachable(t *testing.T) {
@@ -148,6 +154,68 @@ func TestCandidates_Examples(t *testing.T) {
 		_, _, err := cands.examples(failingReader{})
 		require.ErrorContains(t, err, "picking random examples")
 	})
+}
+
+func TestLogCandidates(t *testing.T) {
+	modified := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	newLogger := func() (log.Logger, *bytes.Buffer) {
+		var logs bytes.Buffer
+		return log.NewLogfmtLogger(log.NewSyncWriter(&logs)), &logs
+	}
+
+	t.Run("logs every candidate with kind, last modification time and size, index objects first, when each kind has five or fewer", func(t *testing.T) {
+		bucket := newFileBucket(t)
+		bucket.put(t, "index/v0/indexes/tenants/a/00/orphan-index", []byte("12345"), modified)
+		bucket.put(t, "objects/tenants/a/01/orphan", []byte("123"), modified)
+		logger, logs := newLogger()
+
+		LogCandidates(t.Context(), bucket, []string{"index/v0/indexes/tenants/a/00/orphan-index", "objects/tenants/a/01/orphan"}, logger)
+		require.Equal(t, `level=info msg="deletion sweep candidate" kind=index path=index/v0/indexes/tenants/a/00/orphan-index last_modified=2026-11-04T10:00:00Z size=5`+"\n"+
+			`level=info msg="deletion sweep candidate" kind=log path=objects/tenants/a/01/orphan last_modified=2026-11-04T10:00:00Z size=3`+"\n", logs.String())
+	})
+
+	t.Run("logs five examples of each kind when each kind has more", func(t *testing.T) {
+		bucket := newFileBucket(t)
+		var paths []string
+		for i := range 8 {
+			for _, p := range []string{fmt.Sprintf("objects/tenants/a/aa/log-%d", i), fmt.Sprintf("index/v0/indexes/tenants/a/bb/index-%d", i)} {
+				bucket.put(t, p, []byte("x"), modified)
+				paths = append(paths, p)
+			}
+		}
+		slices.Sort(paths)
+		logger, logs := newLogger()
+
+		LogCandidates(t.Context(), bucket, paths, logger)
+		require.Equal(t, 5, strings.Count(logs.String(), `level=info msg="deletion sweep candidate" kind=log`))
+		require.Equal(t, 5, strings.Count(logs.String(), `level=info msg="deletion sweep candidate" kind=index`))
+		require.Equal(t, 10, strings.Count(logs.String(), "\n"))
+	})
+
+	t.Run("logs a warning with the error for each candidate whose attributes cannot be read", func(t *testing.T) {
+		bucket := &failingAttributesBucket{fileBucket: newFileBucket(t)}
+		logger, logs := newLogger()
+
+		LogCandidates(t.Context(), bucket, []string{"objects/tenants/a/00/orphan", "objects/tenants/a/01/orphan"}, logger)
+		require.Equal(t, `level=warn msg="deletion sweep candidate" kind=log path=objects/tenants/a/00/orphan err="attributes failed"`+"\n"+
+			`level=warn msg="deletion sweep candidate" kind=log path=objects/tenants/a/01/orphan err="attributes failed"`+"\n", logs.String())
+	})
+
+	t.Run("logs nothing when there are no paths", func(t *testing.T) {
+		logger, logs := newLogger()
+
+		LogCandidates(t.Context(), newFileBucket(t), nil, logger)
+		require.Empty(t, logs.String())
+	})
+}
+
+// failingAttributesBucket fails every Attributes call.
+type failingAttributesBucket struct {
+	fileBucket
+}
+
+func (failingAttributesBucket) Attributes(context.Context, string) (objstore.ObjectAttributes, error) {
+	return objstore.ObjectAttributes{}, errors.New("attributes failed")
 }
 
 func TestSample(t *testing.T) {

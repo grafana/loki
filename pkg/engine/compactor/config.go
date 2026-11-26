@@ -117,12 +117,21 @@ type Config struct {
 	// Intended for testing index compaction.
 	DryRun bool `yaml:"dry_run"`
 
-	// PlanVersion is hashed into IndexMerge output paths so a planner
-	// change invalidates previously-written outputs. Bump on any
-	// breaking change to the planner or merge semantics. Stored as uint
-	// because the standard library's flag package does not provide
+	// PlannerVersion selects the planner version of each tenant. Stored as
+	// uint because the standard library's flag package does not provide
 	// Uint32Var.
-	PlanVersion uint `yaml:"plan_version"`
+	//
+	//   - plannerVersionPhased, planner version 1, alternates IndexMerge and
+	//     LogMerge phases.
+	//   - plannerVersionCoupled, planner version 2, merges log and index pairs. Each merge rewrites
+	//     LogMaxRunsPerTask pairs of one size level into one pair. A LogMerge
+	//     runs first. An IndexMerge of its outputs follows only if the
+	//     LogMerge wrote more than one index.
+	PlannerVersion uint `yaml:"planner_version"`
+
+	// RescanInterval is how often the coupled planner scans the windows of
+	// a tenant and plans new merges. Only plannerVersionCoupled uses it.
+	RescanInterval time.Duration `yaml:"rescan_interval"`
 
 	// Scheduler holds the scheduler-side knobs: advertise_addr and
 	// endpoint for the embedded scheduler.
@@ -179,9 +188,9 @@ type DeletionSweepConfig struct {
 	// storage.
 	MaxConcurrentSweeps int `yaml:"max_concurrent_sweeps"`
 
-	// DryRun must be true when the sweep is enabled, so that no operator
-	// expects deletes. Sweeps log a summary and examples of the deletion
-	// candidates and delete nothing.
+	// DryRun makes sweeps log a summary and examples of the deletion
+	// candidates, and delete nothing. If DryRun is false, sweeps delete the
+	// candidates.
 	DryRun bool `yaml:"dry_run"`
 }
 
@@ -226,6 +235,12 @@ func (cfg *Config) taskRetryBackoff() backoff.Config {
 	return backoff.Config{MinBackoff: cfg.TaskRetryMinBackoff, MaxBackoff: cfg.TaskRetryMaxBackoff}
 }
 
+// Values of Config.PlannerVersion.
+const (
+	plannerVersionPhased  uint = 1
+	plannerVersionCoupled uint = 2
+)
+
 // Default values intentionally chosen conservative for the scaffold; the
 // real values get tuned alongside the coordinator in a follow-up change.
 const (
@@ -243,7 +258,8 @@ const (
 	defaultMaxRunsPerTask        = 8
 	defaultLogMaxRunsPerTask     = 8
 	defaultToCConsolidateTimeout = 30 * time.Second
-	defaultPlanVersion           = uint(1)
+	defaultPlannerVersion        = plannerVersionPhased
+	defaultRescanInterval        = 5 * time.Minute
 
 	defaultMaxConcurrentSweeps = 4
 )
@@ -261,10 +277,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Enable dataobj compaction modules (planner and worker targets when selected via -target).")
 	f.IntVar(&cfg.MaxRunningCompactionTasks, prefix+"max-running-compaction-tasks",
 		defaultMaxRunningCompactionTasks,
-		"Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks dispatched by the coordinator. 0 means unlimited (one goroutine per task with no admission throttle).")
+		"Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks dispatched by the coordinator. With planner version 2, the per-tenant cap on concurrent compaction tasks of every kind. 0 means unlimited (one goroutine per task with no admission throttle).")
 	f.IntVar(&cfg.LogMaxRunningCompactionTasks, prefix+"logs.max-running-compaction-tasks",
 		defaultLogMaxRunningCompactionTasks,
-		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited.")
+		"Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched by the coordinator. 0 means unlimited. Planner version 2 ignores this flag.")
 	f.IntVar(&cfg.TaskMaxRetries, prefix+"task-max-retries", defaultTaskMaxRetries,
 		"Experimental: Number of times the coordinator runs a failed compaction task again. 0 disables retries.")
 	f.DurationVar(&cfg.TaskRetryMinBackoff, prefix+"task-retry-min-backoff", defaultTaskRetryMinBackoff,
@@ -297,8 +313,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Coordinator-side timeout around the inline ToC ReplaceIndexPointers call. Not a task TTL.")
 	f.BoolVar(&cfg.DryRun, prefix+"dry-run", false,
 		"Experimental: Skip the post-compaction ToC ReplaceIndexPointers swap. Planning, IndexMerge task execution, and per-output audit logging still run, but the ToC is never mutated.")
-	f.UintVar(&cfg.PlanVersion, prefix+"plan-version", defaultPlanVersion,
-		"Experimental: Plan version hashed into IndexMerge output paths. Bump to invalidate previously-written outputs after a planner-algorithm change.")
+	f.UintVar(&cfg.PlannerVersion, prefix+"planner-version", defaultPlannerVersion,
+		"Experimental: Planner version of each tenant. Planner version 1 alternates IndexMerge and LogMerge phases. Planner version 2 merges log and index pairs: each merge rewrites logs.max-runs-per-task pairs of one size level into one pair. A LogMerge runs first. An IndexMerge of its outputs follows only if the LogMerge wrote more than one index. Planner version 2 compacts only tenants with log compaction enabled. Tenants with only index compaction enabled get no compaction.")
+	f.DurationVar(&cfg.RescanInterval, prefix+"rescan-interval", defaultRescanInterval,
+		"Experimental: How often planner version 2 scans the windows of a tenant and plans new merges. Merges planned by earlier scans keep running between scans.")
 	f.StringVar(&cfg.Scheduler.AdvertiseAddr, prefix+"scheduler.advertise-addr", "",
 		"Experimental: host:port the embedded compaction scheduler advertises to compaction workers. Empty string keeps the scheduler in-process-only.")
 	f.StringVar(&cfg.Scheduler.Endpoint, prefix+"scheduler.endpoint", defaultEndpoint,
@@ -309,7 +327,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.DeletionSweep.MaxConcurrentSweeps, prefix+"deletion-sweep.max-concurrent-sweeps", defaultMaxConcurrentSweeps,
 		"Experimental: Maximum number of deletion sweeps that run at the same time, across all tenants. Each sweep lists the tenant directories and reads the table of contents (ToC) files and index objects of the tenant.")
 	f.BoolVar(&cfg.DeletionSweep.DryRun, prefix+"deletion-sweep.dry-run", true,
-		"Experimental: Log a summary and examples of the deletion candidates, instead of deleting them. A candidate is an object that no table of contents (ToC) file could reach in two sweeps, at least 23 hours apart. Only true is supported.")
+		"Experimental: Log a summary and examples of the deletion candidates, instead of deleting them. If false, delete the candidates. A candidate is an object that no table of contents (ToC) file could reach in two sweeps, at least 23 hours apart.")
 
 	// These configs do not have defaults in the flagset so default values must be Set before registering
 	// the flags to be documented correctly.
@@ -397,11 +415,14 @@ func (cfg *Config) Validate() error {
 	if cfg.TaskRetryMaxBackoff < cfg.TaskRetryMinBackoff {
 		return errInvalidTaskRetryMaxBackoff
 	}
+	if cfg.PlannerVersion != plannerVersionPhased && cfg.PlannerVersion != plannerVersionCoupled {
+		return errInvalidPlannerVersion
+	}
+	if cfg.PlannerVersion == plannerVersionCoupled && cfg.RescanInterval <= 0 {
+		return errInvalidRescanInterval
+	}
 	if cfg.DeletionSweep.Enabled && cfg.DeletionSweep.MaxConcurrentSweeps < 1 {
 		return errInvalidMaxConcurrentSweeps
-	}
-	if cfg.DeletionSweep.Enabled && !cfg.DeletionSweep.DryRun {
-		return errDeletionSweepDryRunRequired
 	}
 
 	if err := cfg.IndexobjBuilder.Validate(); err != nil {
@@ -430,7 +451,8 @@ var (
 	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
 	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be at least 2 when compaction is enabled")
 	errInvalidLogMinCompactionSize         = errors.New("dataobj.compaction.logs.min_compaction_size must be > 0 when compaction is enabled")
+	errInvalidPlannerVersion               = errors.New("dataobj.compaction.planner_version must be 1 or 2")
+	errInvalidRescanInterval               = errors.New("dataobj.compaction.rescan_interval must be > 0 when planner_version is 2")
 	errInvalidMaxConcurrentSweeps          = errors.New("dataobj.compaction.deletion_sweep.max_concurrent_sweeps must be >= 1 when the deletion sweep is enabled")
 	errDeletionSweepRequiresCompaction     = errors.New("dataobj.compaction.deletion_sweep.enabled requires dataobj.compaction.enabled")
-	errDeletionSweepDryRunRequired         = errors.New("dataobj.compaction.deletion_sweep.dry_run must be true, because deletion sweeps do not delete objects")
 )

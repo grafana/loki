@@ -1018,7 +1018,7 @@ type fakeCache struct {
 
 func newFakeCache() *fakeCache { return &fakeCache{values: map[string][]byte{}} }
 
-func (s *fakeCache) Fetch(_ context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+func (s *fakeCache) Fetch(_ context.Context, keys []string, _ ...cache.Option) (found []string, bufs [][]byte, missing []string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1042,7 +1042,7 @@ func (s *fakeCache) Fetch(_ context.Context, keys []string) (found []string, buf
 	return found, bufs, missing, nil
 }
 
-func (s *fakeCache) Store(_ context.Context, keys []string, bufs [][]byte) error {
+func (s *fakeCache) Store(_ context.Context, keys []string, bufs [][]byte, _ ...cache.Option) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1125,8 +1125,8 @@ func (s *fakeCache) copyEntry(from, to string) {
 // loses a part of a multi-key lookup.
 type partialResultsCache struct{ *fakeCache }
 
-func (c partialResultsCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
-	found, bufs, missing, err := c.fakeCache.Fetch(ctx, keys)
+func (c partialResultsCache) Fetch(ctx context.Context, keys []string, opts ...cache.Option) ([]string, [][]byte, []string, error) {
+	found, bufs, missing, err := c.fakeCache.Fetch(ctx, keys, opts...)
 	if err != nil {
 		return nil, nil, nil, err
 	}

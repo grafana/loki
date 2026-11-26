@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
@@ -43,15 +44,18 @@ type RowReader struct {
 // reader is opened lazily on the first call to Next. The provided ctx governs
 // all subsequent I/O (Open and Read). A RowReader of an empty section reads no
 // rows.
-func NewRowReader(ctx context.Context, sec *Section) *RowReader {
+//
+// statsTracker is optional. The underlying reader reports its stats to it.
+func NewRowReader(ctx context.Context, sec *Section, statsTracker dataset.RowReaderStatsTracker) *RowReader {
 	if sec.Empty() {
 		return &RowReader{ctx: ctx, exhausted: true}
 	}
 	return &RowReader{
 		ctx: ctx,
 		reader: NewReader(ReaderOptions{
-			Columns:   sec.Columns(),
-			Allocator: memory.DefaultAllocator,
+			Columns:      sec.Columns(),
+			Allocator:    memory.DefaultAllocator,
+			StatsTracker: statsTracker,
 		}),
 	}
 }

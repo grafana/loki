@@ -51,7 +51,7 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 			return nil, fmt.Errorf("failed to open logs section: %w", err)
 		}
 
-		seq, err := openSectionSequence(ctx, sec, bufferSize, keepStreamIDs, nil)
+		seq, err := openSectionSequence(ctx, sec, bufferSize, keepStreamIDs, nil, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +98,7 @@ func SchemaSortedIterator(ctx context.Context, sections []*dataobj.Section, orde
 // skips the rows of those streams, as [RemappedSection.DropStreamIDs] does. The
 // caller sets at most one of them. openSectionSequence returns an error if both
 // are set.
-func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int, keepStreamIDs, dropStreamIDs []int64) (*sectionSequence, error) {
+func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int, keepStreamIDs, dropStreamIDs []int64, statsTracker dataset.RowReaderStatsTracker) (*sectionSequence, error) {
 	if keepStreamIDs != nil && len(dropStreamIDs) > 0 {
 		return nil, fmt.Errorf("a section sequence takes either streams to keep or streams to drop, not both")
 	}
@@ -110,7 +110,7 @@ func openSectionSequence(ctx context.Context, sec *logs.Section, bufferSize int,
 	if err != nil {
 		return nil, err
 	}
-	opts := dataset.RowReaderOptions{Dataset: ds, ProjectedColumns: columns, PrefetchAllOnOpen: false}
+	opts := dataset.RowReaderOptions{Dataset: ds, ProjectedColumns: columns, PrefetchAllOnOpen: false, StatsTracker: statsTracker}
 	switch {
 	case keepStreamIDs != nil:
 		predicate, err := streamIDsPredicate(sec, columns, keepStreamIDs, false)

@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -37,6 +38,12 @@ type Config struct {
 	// Optional; nil disables observation.
 	LogMergeObserver LogMergeObserver
 
+	// DeletionSweepMetrics counts the deletes of DeletionSweep tasks. Share
+	// it across tasks, so that the metrics are registered once. A
+	// DeletionSweep task that deletes fails if it is nil, so that no delete
+	// goes uncounted. A dry run does not use it.
+	DeletionSweepMetrics *deletion.SweepMetrics
+
 	Bucket objstore.Bucket
 
 	// DataBucket is the unprefixed dataobj root. LogMerge reads source log
@@ -53,8 +60,16 @@ type Config struct {
 	GetExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 }
 
+// IndexMergeObserver receives IndexMerge statistics.
 type IndexMergeObserver interface {
+	// ObserveIndexMergeOutput receives the size of the index objects of one
+	// finished task.
 	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
+
+	// ObserveIndexMergeInput receives the compressed and the uncompressed size
+	// of a batch of source pages that the task downloaded, while the task
+	// runs. Pages that the reader prunes are not counted.
+	ObserveIndexMergeInput(tenant string, compressedBytes, uncompressedBytes int64)
 }
 
 // LogMergeObserver receives LogMerge statistics from one worker thread.
@@ -62,17 +77,27 @@ type LogMergeObserver interface {
 	// ObserveLogMerge receives the summary of one finished task.
 	ObserveLogMerge(tenant string, stats LogMergeObservedStats, duration time.Duration)
 
-	// ObserveLogMergeInputBytes receives the size of a batch of merged records
-	// while the task runs. It reports during the task, not once at the end,
-	// so that rate() stays steady for tasks that run for many minutes.
-	ObserveLogMergeInputBytes(bytes int64)
+	// ObserveLogMergeInputBytesUncompressed receives the size of a batch of
+	// merged records while the task runs. The size is the line bytes plus the
+	// structured metadata value bytes. It reports during the task, not once at
+	// the end, so that rate() stays steady for tasks that run for many
+	// minutes.
+	ObserveLogMergeInputBytesUncompressed(bytes int64)
+
+	// ObserveLogMergeInputBytesCompressed receives the compressed size of a
+	// batch of source pages that the task downloaded, while the task runs.
+	//
+	// The reader downloads ahead of the merge. A batch can include pages that
+	// the merge has not consumed yet.
+	ObserveLogMergeInputBytesCompressed(bytes int64)
 }
 
 // nopLogMergeObserver discards LogMerge statistics.
 type nopLogMergeObserver struct{}
 
 func (nopLogMergeObserver) ObserveLogMerge(string, LogMergeObservedStats, time.Duration) {}
-func (nopLogMergeObserver) ObserveLogMergeInputBytes(int64)                              {}
+func (nopLogMergeObserver) ObserveLogMergeInputBytesUncompressed(int64)                  {}
+func (nopLogMergeObserver) ObserveLogMergeInputBytesCompressed(int64)                    {}
 
 // NewLogMergeObserverFunc returns the LogMergeObserver for the worker thread
 // with the given index.
@@ -91,6 +116,8 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		builderMetrics:     cfg.BuilderMetrics,
 		indexMergeObserver: cfg.IndexMergeObserver,
 		logMergeObserver:   cfg.LogMergeObserver,
+
+		deletionSweepMetrics: cfg.DeletionSweepMetrics,
 	}
 	if c.logMergeObserver == nil {
 		c.logMergeObserver = nopLogMergeObserver{}
@@ -122,6 +149,8 @@ type Context struct {
 
 	indexMergeObserver IndexMergeObserver
 	logMergeObserver   LogMergeObserver
+
+	deletionSweepMetrics *deletion.SweepMetrics
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {

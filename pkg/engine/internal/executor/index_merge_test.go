@@ -851,7 +851,7 @@ func TestDoIndexMerge(t *testing.T) {
 
 		_, runs, _, err := newTestExecutorContext(t, bucket).classifyRuns(t.Context(), node)
 		require.NoError(t, err)
-		require.Len(t, postingsSequences(t.Context(), runs, postings.KeySpan{}), 2, "one sequence for each run, not for each index object")
+		require.Len(t, postingsSequences(t.Context(), runs, postings.KeySpan{}, nil), 2, "one sequence for each run, not for each index object")
 
 		_, rows, _ := readRows(t, bucket, node)
 		require.Equal(t, []postings.Key{labelKey("app", "v"), labelKey("env", "v"), labelKey("zone", "v")}, postingKeys(rows))
@@ -1352,7 +1352,7 @@ func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.
 
 	require.NotNil(t, sec, "expected stats section in output object")
 
-	reader := stats.NewRowReader(ctx, sec)
+	reader := stats.NewRowReader(ctx, sec, nil)
 	defer reader.Close()
 
 	var rows []stats.Stat
@@ -1780,7 +1780,7 @@ func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	require.NotNil(t, sec)
 
 	// Create a reader and read the row
-	reader := stats.NewRowReader(ctx, sec)
+	reader := stats.NewRowReader(ctx, sec, nil)
 	defer reader.Close()
 
 	if !reader.Next() {
@@ -2007,10 +2007,14 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.True(t, sawStats, "output must contain a stats section")
 }
 
-// recordingIndexMergeObserver records every ObserveIndexMergeOutput call.
+// recordingIndexMergeObserver records every ObserveIndexMergeOutput and
+// ObserveIndexMergeInput call.
 type recordingIndexMergeObserver struct {
 	tenants                            []string
 	compressedSizes, uncompressedSizes []int64
+
+	inputTenants                                 []string
+	inputCompressedSizes, inputUncompressedSizes []int64
 }
 
 func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64) {
@@ -2019,8 +2023,14 @@ func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, com
 	o.uncompressedSizes = append(o.uncompressedSizes, uncompressedBytes)
 }
 
-func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
-	t.Run("reports the tenant and the compressed size of the uploaded index once", func(t *testing.T) {
+func (o *recordingIndexMergeObserver) ObserveIndexMergeInput(tenant string, compressedBytes, uncompressedBytes int64) {
+	o.inputTenants = append(o.inputTenants, tenant)
+	o.inputCompressedSizes = append(o.inputCompressedSizes, compressedBytes)
+	o.inputUncompressedSizes = append(o.inputUncompressedSizes, uncompressedBytes)
+}
+
+func TestExecuteIndexMerge_ObservesSizes(t *testing.T) {
+	t.Run("reports the source page sizes, and the tenant and compressed size of the uploaded index once", func(t *testing.T) {
 		ctx := context.Background()
 		bucket := objstore.NewInMemBucket()
 		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
@@ -2040,6 +2050,42 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		require.Equal(t, []int64{attrs.Size}, observer.compressedSizes)
 		require.Len(t, observer.uncompressedSizes, 1)
 		require.Positive(t, observer.uncompressedSizes[0])
+
+		sourceCompressed, sourceUncompressed := indexPageBytes(t, bucket, "tenant-1", "source/index-0.dat")
+		require.Positive(t, sourceCompressed)
+		require.Equal(t, sourceCompressed, totalBytes(observer.inputCompressedSizes))
+		require.Equal(t, sourceUncompressed, totalBytes(observer.inputUncompressedSizes))
+		require.Equal(t, []string{"tenant-1"}, slices.Compact(observer.inputTenants))
+	})
+
+	t.Run("reports fewer source bytes when the key span rules out postings pages", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		postingsBuilder := postings.NewBuilder(nil, 1, 4, math.MaxInt)
+		postingsBuilder.SetTenant("tenant-1")
+		for i := range 300 {
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath: "log-0", ColumnName: fmt.Sprintf("c%04d", i), LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+		}
+		uploadSections(t, bucket, "source/index-0.dat", postingsBuilder)
+		start := postings.Key{Kind: postings.KindLabel, ColumnName: "c0000"}
+		end := postings.Key{Kind: postings.KindLabel, ColumnName: "c0010"}
+		keySpan, err := postings.NewKeySpan(&start, &end)
+		require.NoError(t, err)
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newTestExecutorContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		_, err = execCtx.doIndexMerge(t.Context(), &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1", KeySpan: keySpan,
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
+		})
+		require.NoError(t, err)
+
+		sourceCompressed, _ := indexPageBytes(t, bucket, "tenant-1", "source/index-0.dat")
+		require.Positive(t, totalBytes(observer.inputCompressedSizes))
+		require.Less(t, totalBytes(observer.inputCompressedSizes), sourceCompressed)
 	})
 
 	t.Run("reports the summed compressed size of every index object of a run once", func(t *testing.T) {
@@ -2259,4 +2305,50 @@ func oneArtifact(t testing.TB) func([]v2.ResultArtifact, error) (v2.ResultArtifa
 		require.Len(t, artifacts, 1)
 		return artifacts[0], nil
 	}
+}
+
+// indexPageBytes returns the total compressed and uncompressed size of the pages in the
+// postings and stats sections of tenant in the object at path.
+func indexPageBytes(t *testing.T, bucket objstore.Bucket, tenant, path string) (compressed, uncompressed int64) {
+	t.Helper()
+	obj, err := dataobj.FromBucket(t.Context(), bucket, path, 0)
+	require.NoError(t, err)
+	for _, section := range obj.Sections() {
+		if section.Tenant != tenant {
+			continue
+		}
+		switch {
+		case postings.CheckSection(section):
+			opened, err := postings.Open(t.Context(), section)
+			require.NoError(t, err)
+			sectionStats, err := postings.ReadStats(t.Context(), opened)
+			require.NoError(t, err)
+			for _, column := range sectionStats.Columns {
+				for _, page := range column.Pages {
+					compressed += int64(page.CompressedSize)
+					uncompressed += int64(page.UncompressedSize)
+				}
+			}
+		case stats.CheckSection(section):
+			opened, err := stats.Open(t.Context(), section)
+			require.NoError(t, err)
+			sectionStats, err := stats.ReadStats(t.Context(), opened)
+			require.NoError(t, err)
+			for _, column := range sectionStats.Columns {
+				for _, page := range column.Pages {
+					compressed += int64(page.CompressedSize)
+					uncompressed += int64(page.UncompressedSize)
+				}
+			}
+		}
+	}
+	return compressed, uncompressed
+}
+
+func totalBytes(values []int64) int64 {
+	var total int64
+	for _, value := range values {
+		total += value
+	}
+	return total
 }

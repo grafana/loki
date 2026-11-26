@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 )
@@ -21,12 +22,12 @@ type mockCache struct {
 	data   map[string]string
 }
 
-func (m *mockCache) Store(_ context.Context, _ []string, _ [][]byte) error {
+func (m *mockCache) Store(_ context.Context, _ []string, _ [][]byte, _ ...cache.Option) error {
 	m.called++
 	return nil
 }
 
-func (m *mockCache) Fetch(_ context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+func (m *mockCache) Fetch(_ context.Context, keys []string, _ ...cache.Option) (found []string, bufs [][]byte, missing []string, err error) {
 	for _, key := range keys {
 		val, ok := m.data[key]
 		if !ok {

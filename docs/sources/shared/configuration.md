@@ -1201,13 +1201,15 @@ dataobj:
     [enabled: <boolean> | default = false]
 
     # Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks
-    # dispatched by the coordinator. 0 means unlimited (one goroutine per task
-    # with no admission throttle).
+    # dispatched by the coordinator. With planner version 2, the per-tenant cap
+    # on concurrent compaction tasks of every kind. 0 means unlimited (one
+    # goroutine per task with no admission throttle).
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
 
     # Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched
-    # by the coordinator. 0 means unlimited.
+    # by the coordinator. 0 means unlimited. Planner version 2 ignores this
+    # flag.
     # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
     [logs_max_running_compaction_tasks: <int> | default = 16]
 
@@ -1307,10 +1309,21 @@ dataobj:
     # CLI flag: -dataobj.compaction.dry-run
     [dry_run: <boolean> | default = false]
 
-    # Experimental: Plan version hashed into IndexMerge output paths. Bump to
-    # invalidate previously-written outputs after a planner-algorithm change.
-    # CLI flag: -dataobj.compaction.plan-version
-    [plan_version: <int> | default = 1]
+    # Experimental: Planner version of each tenant. Planner version 1 alternates
+    # IndexMerge and LogMerge phases. Planner version 2 merges log and index
+    # pairs: each merge rewrites logs.max-runs-per-task pairs of one size level
+    # into one pair. A LogMerge runs first. An IndexMerge of its outputs follows
+    # only if the LogMerge wrote more than one index. Planner version 2 compacts
+    # only tenants with log compaction enabled. Tenants with only index
+    # compaction enabled get no compaction.
+    # CLI flag: -dataobj.compaction.planner-version
+    [planner_version: <int> | default = 1]
+
+    # Experimental: How often planner version 2 scans the windows of a tenant
+    # and plans new merges. Merges planned by earlier scans keep running between
+    # scans.
+    # CLI flag: -dataobj.compaction.rescan-interval
+    [rescan_interval: <duration> | default = 5m]
 
     scheduler:
       # Experimental: host:port the embedded compaction scheduler advertises to
@@ -1341,9 +1354,9 @@ dataobj:
       [max_concurrent_sweeps: <int> | default = 4]
 
       # Experimental: Log a summary and examples of the deletion candidates,
-      # instead of deleting them. A candidate is an object that no table of
-      # contents (ToC) file could reach in two sweeps, at least 23 hours apart.
-      # Only true is supported.
+      # instead of deleting them. If false, delete the candidates. A candidate
+      # is an object that no table of contents (ToC) file could reach in two
+      # sweeps, at least 23 hours apart.
       # CLI flag: -dataobj.compaction.deletion-sweep.dry-run
       [dry_run: <boolean> | default = true]
 
@@ -4708,9 +4721,9 @@ shard_streams:
 # Experimental. Whether the dataobj deletion sweep runs for the tenant. A sweep
 # finds the objects of the tenant that no table of contents (ToC) file can
 # reach. An object that two sweeps, at least 23 hours apart, both find
-# unreachable is a deletion candidate. Sweeps log a summary and examples of the
-# candidates, and delete nothing. The sweep also needs
-# -dataobj.compaction.deletion-sweep.enabled.
+# unreachable is a deletion candidate. Sweeps delete the candidates, or only log
+# them if -dataobj.compaction.deletion-sweep.dry-run is true. The sweep also
+# needs -dataobj.compaction.deletion-sweep.enabled.
 # CLI flag: -dataobj-compaction.deletion-sweep.enable
 [dataobj_deletion_sweep_enabled: <boolean> | default = false]
 

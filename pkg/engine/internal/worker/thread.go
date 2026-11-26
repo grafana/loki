@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
@@ -100,6 +101,10 @@ type thread struct {
 
 	// LogMergeObserver is optional; nil disables observation.
 	LogMergeObserver executor.LogMergeObserver
+
+	// DeletionSweepMetrics is optional. A DeletionSweep task that deletes
+	// fails if it is nil.
+	DeletionSweepMetrics *deletion.SweepMetrics
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -218,8 +223,9 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		LogsobjCfg:     t.LogsobjCfg,
 		BuilderMetrics: t.BuilderMetrics,
 
-		IndexMergeObserver: t.IndexMergeObserver,
-		LogMergeObserver:   t.LogMergeObserver,
+		IndexMergeObserver:   t.IndexMergeObserver,
+		LogMergeObserver:     t.LogMergeObserver,
+		DeletionSweepMetrics: t.DeletionSweepMetrics,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]

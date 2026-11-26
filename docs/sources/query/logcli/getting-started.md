@@ -129,6 +129,7 @@ Flags:
       --[no-]version          Show application version.
   -q, --[no-]quiet            Suppress query metadata
       --[no-]stats            Show query statistics
+      --[no-]warnings         Show query warnings
   -o, --output=default        Specify output mode [default, raw, jsonl].
                               raw suppresses log labels and timestamp.
   -z, --timezone=Local        Specify the timezone to use when formatting output
@@ -2101,6 +2102,11 @@ Batching lets you query for a results set that is larger than this server-side l
 
 Query metadata is output to `stderr` for each batch.
 To suppress the output of the query metadata, set the `--quiet` option on the `logcli query` command line.
+
+Loki can return warnings with the results, for example when the results are partial.
+To output the warnings to `stderr`, set the `--warnings` option on the `logcli query` command line.
+If several batches of a query return the same warning, logcli outputs it once.
+The `--quiet` option doesn't suppress the warnings.
 
 ## logcli example queries
 

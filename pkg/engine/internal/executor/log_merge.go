@@ -93,7 +93,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	)
 	batchRecords := 1000
 	observeBatch := func() {
-		c.logMergeObserver.ObserveLogMergeInputBytes(inputBytesBatch)
+		c.logMergeObserver.ObserveLogMergeInputBytesUncompressed(inputBytesBatch)
 		inputBytesTotal += inputBytesBatch
 	}
 	for res := range merged {
@@ -431,6 +431,9 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 		index int64
 	}
 	seen := make(map[sectionID]struct{})
+	tracker := sortmerge.NewOnPagesDownloadedFunc(func(compressedBytes, _ int64) {
+		c.logMergeObserver.ObserveLogMergeInputBytesCompressed(compressedBytes)
+	})
 	for _, ref := range node.Runs {
 		var run sortmerge.Run
 		for _, section := range ref.Sections {
@@ -455,7 +458,12 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 			if len(source.streams) == 0 && len(source.droppedStreamIDs) > 0 {
 				continue
 			}
-			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap, DropStreamIDs: source.droppedStreamIDs})
+			run = append(run, sortmerge.RemappedSection{
+				Section:       sec,
+				Remap:         source.remap,
+				DropStreamIDs: source.droppedStreamIDs,
+				StatsTracker:  tracker,
+			})
 		}
 		if len(run) > 0 {
 			inputs.runs = append(inputs.runs, run)

@@ -13,6 +13,10 @@ By default the `compactor.retention-enabled` flag is not set, so the logs sent t
 If you have a lifecycle policy configured on the object store, please ensure that it is longer than the retention period.
 {{< /admonition >}}
 
+{{< admonition type="note" >}}
+TSDB is the only index type that supports retention. It is also the only index type supported by Loki as of version 4.0. The legacy BoltDB Shipper index and the Table Manager, which provided retention through object store TTLs, were removed in Loki 4.0.
+{{< /admonition >}}
+
 Granular retention policies to apply retention at per tenant or per stream level are also supported by the Compactor.
 
 ## Compactor
@@ -20,7 +24,7 @@ Granular retention policies to apply retention at per tenant or per stream level
 The Compactor is responsible for compaction of index files and applying log retention.
 
 {{< admonition type="note" >}}
-Run the Compactor as a singleton (a single instance).
+By default, run the Compactor as a singleton (a single instance). An experimental horizontal scaling mode is also available; refer to [Horizontal scaling of Compactor](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/compactor-horizontal-scaling/) if a single Compactor instance cannot keep up with your workload.
 {{< /admonition >}}
 
 The Compactor runs compaction and retention on two independent schedules:
@@ -31,8 +35,10 @@ The Compactor runs compaction and retention on two independent schedules:
 If the Compactor falls behind on either schedule, it runs the corresponding operation as soon as possible.
 Both compaction and retention are idempotent, which means once the action has been performed, if the action is performed multiple times, it has no further effect on logs after the first time it is performed. If the Compactor restarts, it continues from where it left off.
 
-{{< admonition type="note" >}}
-Changes to your retention period are not retroactive, that is, they are not applied to logs that have already been ingested.
+{{< admonition type="warning" >}}
+Changing your retention period applies to all data currently stored, not just logs ingested after the change. If you lower your retention period, the Compactor deletes existing logs that fall outside the new, shorter period the next time it runs, even logs that were ingested long before you made the change.
+
+Deletion is irreversible: if you later raise the retention period again, logs that were already deleted under a shorter period cannot be recovered.
 {{< /admonition >}}
 
 The Compactor's algorithm to apply retention is as follows:
@@ -91,7 +97,7 @@ storage_config:
 ```
 
 {{< admonition type="note" >}}
-Retention is only available if the index period is 24h. Single store TSDB requires a 24h index period.
+Retention is only available if the index period is 24h. TSDB requires a 24h index period.
 {{< /admonition >}}
 
 `retention_enabled` should be set to true. Without this, the Compactor will only compact tables.
@@ -111,7 +117,7 @@ Retention is only available if the index period is 24h. Single store TSDB requir
 A few other options are also relevant when tuning retention:
 
 - `retention_table_timeout` bounds how long the Compactor spends applying retention and processing delete requests on any single table. It defaults to `0s`, meaning no timeout. If the work on a table exceeds this timeout, the Compactor logs a warning and stops early rather than failing, and the remaining work is picked up again on a later run.
-- `retention_backoff_config` controls the retry behavior (minimum and maximum backoff, and number of retries) used by the sweeper when it fails to delete a marked chunk.
+- `retention_backoff_config` controls the retry behavior used by the sweeper when it fails to delete a marked chunk: `min_period` (minimum backoff, default `100ms`), `max_period` (maximum backoff, default `10s`), and `max_retries` (number of retries before giving up, default `10`).
 - `delete_request_store_key_prefix` sets the path prefix used to store delete requests within `delete_request_store` (default `index/`).
 - `delete_request_store_db_type` sets the type of database used to store delete requests (default `boltdb`).
 
@@ -125,6 +131,10 @@ There are two ways of setting retention policies:
 
 - `retention_period` which is applied globally for all log streams.
 - `retention_stream` which is only applied to log streams matching the selector.
+
+{{< admonition type="tip" >}}
+If you want to enable the [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) API without enforcing automatic retention, set `retention_enabled: true` and configure `delete_request_store` while leaving `retention_period` at its default of `0s`. The deletion API endpoints are only registered when `retention_enabled` is `true`.
+{{< /admonition >}}
 
 {{< admonition type="note" >}}
 Each `retention_stream` rule's `period` must be at least 24h. Loki rejects configuration with a shorter value, both in the global `retention_stream` list and in any per-tenant override. This minimum does not apply to the `retention_period` setting, either globally or per tenant.
@@ -198,11 +208,11 @@ The example configurations defined above will result in the following retention 
   - Streams that have the label `nginx` and level `debug` will have a retention period of `24h`.
   - For the rest of the streams in this tenant the global retention period of `744h`, since there is no override specified.
 - All tenants except `29` and `30`:
-  - Streams that have the namespace label `dev` will have a retention period of `24h` hours.
+  - Streams that have the namespace label `dev` will have a retention period of `24h`.
   - Streams except those with the namespace label `dev` will have the retention period of `744h`.
 
 {{< admonition type="note" >}}
-If you are a Grafana Cloud customer, you can use the [config self-serve API](https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve/#configure-retention) to configure your tenant retention.
+If you are a Grafana Cloud customer, use the [Grafana Database Configuration app](https://grafana.com/docs/grafana-cloud/platform/security-and-account-management/account-management/cloud-stacks/grafana-dbcfg-app/logs/) to configure your tenant retention. The [config self-serve API](https://grafana.com/docs/grafana-cloud/send-data/logs/config-self-serve/#configure-retention) is deprecated and will be removed in a future release.
 {{< /admonition >}}
 
 ## Example Configuration
@@ -254,7 +264,7 @@ The following objects are written to the configured bucket. The exact prefixes d
 | Object or prefix | Content | Safe to expire with a lifecycle policy? |
 |---|---|---|
 | `<tenant_id>/` (for example, `fake/` in single-tenant mode, or your org ID per tenant) | Chunk objects (the log data). | Yes. These are the only objects a lifecycle rule should target. |
-| Index objects (under the index path prefix, `index/` by default, set by `index.path_prefix` in `schema_config`) | TSDB or BoltDB index files, written by ingesters and rewritten by the Compactor. The `index.prefix` value (for example `index_` or `loki_index_`) is the table-name prefix used inside this path, not the path itself, so match a lifecycle rule against the path prefix. | No. Loki manages the index lifecycle internally. Deleting index objects removes references to live chunks and breaks queries. |
+| Index objects (under the index path prefix, `index/` by default, set by `index.path_prefix` in `schema_config`) | TSDB index files, written by ingesters and rewritten by the Compactor. The `index.prefix` value (for example `index_` or `loki_index_`) is the table-name prefix used inside this path, not the path itself, so match a lifecycle rule against the path prefix. | No. Loki manages the index lifecycle internally. Deleting index objects removes references to live chunks and breaks queries. |
 | `loki_cluster_seed.json` | A small file at the bucket root holding the cluster seed used by usage reporting. It is written once and never rotated. | No. A blanket age-based rule will delete it once it ages past the time to live (TTL). |
 | Delete-request store objects (a `delete_requests/` table under `delete_request_store_key_prefix`, `index/` by default, in the bucket configured by `delete_request_store`) | The Compactor's database of delete requests submitted through the [Log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) API, and their processing status. | No. Removing these makes the Compactor lose track of pending delete requests. |
 | Deletion marker objects (only present if you set `deletion_marker_object_store_prefix`; otherwise markers are kept on the Compactor's local disk and never appear in the bucket) | The Compactor's record of chunks that are marked for deletion but not yet swept. Written under the configured prefix in the same per-period bucket used for chunks. | No. Removing these makes the Compactor lose track of chunks pending deletion. |

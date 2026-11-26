@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 func TestMemcached_fetchKeysBatched(t *testing.T) {
@@ -113,6 +114,67 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 		found = found[1:]
 		bufs = bufs[1:]
 	}
+}
+
+func TestMemcached_WithShardKey(t *testing.T) {
+	keys := []string{"a", "b", "c", "d", "e"}
+	bufs := [][]byte{[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5")}
+
+	// newCache wraps Memcached like the production cache does: stats, background
+	// writes and instrumentation. It returns the cache, the background cache to
+	// flush, and the mock client.
+	newCache := func(t *testing.T, cfg cache.MemcachedConfig) (c, background cache.Cache, client *mockMemcache) {
+		client = newMockMemcache()
+		memcached := cache.NewMemcached(cfg, client, "test", nil, log.NewNopLogger(), "test")
+		background = cache.NewBackground("test", cache.BackgroundConfig{
+			WriteBackGoroutines: 1,
+			WriteBackBuffer:     10,
+			WriteBackSizeLimit:  flagext.ByteSize(1 << 20),
+		}, cache.Instrument("test", memcached, nil), nil)
+		c = cache.CollectStats(background)
+		t.Cleanup(c.Stop)
+		return c, background, client
+	}
+
+	t.Run("a fetch finds the items that a store wrote with the same shard key", func(t *testing.T) {
+		c, background, _ := newCache(t, cache.MemcachedConfig{})
+
+		require.NoError(t, c.Store(t.Context(), keys, bufs, cache.WithShardKey("object-1")))
+		cache.Flush(background)
+
+		found, got, missing, err := c.Fetch(t.Context(), keys, cache.WithShardKey("object-1"))
+		require.NoError(t, err)
+		require.Equal(t, keys, found)
+		require.Equal(t, bufs, got)
+		require.Empty(t, missing)
+	})
+
+	t.Run("a fetch with another shard key, or with none, misses the items", func(t *testing.T) {
+		c, background, _ := newCache(t, cache.MemcachedConfig{})
+
+		require.NoError(t, c.Store(t.Context(), keys, bufs, cache.WithShardKey("object-1")))
+		cache.Flush(background)
+
+		_, _, missing, err := c.Fetch(t.Context(), keys, cache.WithShardKey("object-2"))
+		require.NoError(t, err)
+		require.Equal(t, keys, missing)
+
+		_, _, missing, err = c.Fetch(t.Context(), keys)
+		require.NoError(t, err)
+		require.Equal(t, keys, missing)
+	})
+
+	t.Run("a fetch with a shard key finds the items in every batch of BatchSize", func(t *testing.T) {
+		c, background, client := newCache(t, cache.MemcachedConfig{BatchSize: 2, Parallelism: 2})
+
+		require.NoError(t, c.Store(t.Context(), keys, bufs, cache.WithShardKey("object-1")))
+		cache.Flush(background)
+
+		found, _, _, err := c.Fetch(t.Context(), keys, cache.WithShardKey("object-1"))
+		require.NoError(t, err)
+		require.Equal(t, keys, found)
+		require.Equal(t, []int{1, 2, 2}, client.getMultiBatchSizes())
+	})
 }
 
 func TestMemcached_fetchKeysBatched_contextCancellation(t *testing.T) {

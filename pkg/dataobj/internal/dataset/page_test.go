@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -121,16 +122,7 @@ func logsTestPage(t testing.TB) *MemPage {
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
-	builder, err := newPageBuilder(opts)
-	require.NoError(t, err)
-
-	for line := range strings.Lines(sb.String()) {
-		require.True(t, builder.Append(BinaryValue([]byte(line))))
-	}
-
-	page, err := builder.Flush()
-	require.NoError(t, err)
-	return page
+	return buildPage(t, format.ColumnarVersionPageChecksum, opts, slices.Collect(strings.Lines(sb.String())))
 }
 
 func Test_pageBuilder_WriteRead(t *testing.T) {
@@ -153,42 +145,38 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
-	b, err := newPageBuilder(opts)
-	require.NoError(t, err)
+	for _, version := range readableFormatVersions {
+		t.Run(fmt.Sprintf("reads every value written to a page of format version %d", version), func(t *testing.T) {
+			page := buildPage(t, version, opts, in)
+			require.Equal(t, len(in), page.Desc.RowCount)
+			require.Equal(t, len(in), page.Desc.ValuesCount)
 
-	for _, s := range in {
-		require.True(t, b.Append(BinaryValue([]byte(s))))
+			t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+			t.Log("Compressed size: ", page.Desc.CompressedSize)
+
+			var actual []string
+
+			r := newPageReader(page, opts.Type.Physical, opts.Compression)
+
+			var alloc memory.Allocator
+			for {
+				arr, err := r.Read(t.Context(), &alloc, 1)
+				if err != nil && !errors.Is(err, io.EOF) {
+					require.NoError(t, err)
+				} else if arr == nil && errors.Is(err, io.EOF) {
+					break
+				}
+
+				if arr.IsNull(0) {
+					actual = append(actual, "")
+				} else {
+					val := arr.(*columnar.UTF8).Get(0)
+					actual = append(actual, string(val))
+				}
+			}
+			require.Equal(t, in, actual)
+		})
 	}
-
-	page, err := b.Flush()
-	require.NoError(t, err)
-	require.Equal(t, len(in), page.Desc.RowCount)
-	require.Equal(t, len(in), page.Desc.ValuesCount)
-
-	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
-	t.Log("Compressed size: ", page.Desc.CompressedSize)
-
-	var actual []string
-
-	r := newPageReader(page, opts.Type.Physical, opts.Compression)
-
-	var alloc memory.Allocator
-	for {
-		arr, err := r.Read(t.Context(), &alloc, 1)
-		if err != nil && !errors.Is(err, io.EOF) {
-			require.NoError(t, err)
-		} else if arr == nil && errors.Is(err, io.EOF) {
-			break
-		}
-
-		if arr.IsNull(0) {
-			actual = append(actual, "")
-		} else {
-			val := arr.(*columnar.UTF8).Get(0)
-			actual = append(actual, string(val))
-		}
-	}
-	require.Equal(t, in, actual)
 }
 
 func TestMemPage_open(t *testing.T) {
@@ -204,7 +192,7 @@ func TestMemPage_open(t *testing.T) {
 		}
 	}
 
-	uncompressed, closer, err := buildPage(t, format.ColumnarVersionDescriptorChecksum, newOptions(datasetmd.COMPRESSION_TYPE_NONE), values).open(datasetmd.COMPRESSION_TYPE_NONE)
+	uncompressed, closer, err := buildPage(t, format.ColumnarVersionPageChecksum, newOptions(datasetmd.COMPRESSION_TYPE_NONE), values).open(datasetmd.COMPRESSION_TYPE_NONE)
 	require.NoError(t, err)
 	require.NoError(t, closer.Close())
 
@@ -220,7 +208,7 @@ func TestMemPage_open(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			page := buildPage(t, format.ColumnarVersionDescriptorChecksum, newOptions(tc.compression), values)
+			page := buildPage(t, format.ColumnarVersionPageChecksum, newOptions(tc.compression), values)
 			page.Desc.UncompressedSize = tc.uncompressedSize
 
 			got, closer, err := page.open(tc.compression)
@@ -231,30 +219,32 @@ func TestMemPage_open(t *testing.T) {
 		})
 	}
 
-	t.Run("decompresses a zstd page whose frame checksum is wrong but whose page CRC32 is valid", func(t *testing.T) {
-		page := buildPage(t, format.ColumnarVersionDescriptorChecksum, newOptions(datasetmd.COMPRESSION_TYPE_ZSTD), values)
-		page.Data = bytes.Clone(page.Data)
+	for _, version := range readableFormatVersions {
+		t.Run(fmt.Sprintf("decompresses a zstd page of format version %d whose frame checksum is wrong but whose page checksum is valid", version), func(t *testing.T) {
+			page := buildPage(t, version, newOptions(datasetmd.COMPRESSION_TYPE_ZSTD), values)
+			body := bytes.Clone(pageBody(page))
 
-		// The page holds one zstd frame, so the frame checksum is the last 4 bytes of the page.
-		for i := len(page.Data) - 4; i < len(page.Data); i++ {
-			page.Data[i] ^= 0xff
-		}
-		page.Desc.CRC32 = crc32.Checksum(page.Data, checksumTable)
+			// The page holds one zstd frame, so the frame checksum is the last 4 bytes of the body.
+			for i := len(body) - 4; i < len(body); i++ {
+				body[i] ^= 0xff
+			}
+			setPageBody(page, body)
 
-		bitmapSize, n := binary.Uvarint(page.Data)
-		require.Positive(t, n)
-		decoder, err := zstd.NewReader(nil)
-		require.NoError(t, err)
-		t.Cleanup(decoder.Close)
-		_, err = decoder.DecodeAll(page.Data[n+int(bitmapSize):], nil)
-		require.EqualError(t, err, zstd.ErrCRCMismatch.Error(), "the corrupted frame must fail a decoder that checks the frame checksum")
+			bitmapSize, n := binary.Uvarint(body)
+			require.Positive(t, n)
+			decoder, err := zstd.NewReader(nil)
+			require.NoError(t, err)
+			t.Cleanup(decoder.Close)
+			_, err = decoder.DecodeAll(body[n+int(bitmapSize):], nil)
+			require.EqualError(t, err, zstd.ErrCRCMismatch.Error(), "the corrupted frame must fail a decoder that checks the frame checksum")
 
-		got, closer, err := page.open(datasetmd.COMPRESSION_TYPE_ZSTD)
+			got, closer, err := page.open(datasetmd.COMPRESSION_TYPE_ZSTD)
 
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, closer.Close()) })
-		require.True(t, bytes.Equal(uncompressed.ValueData, got.ValueData), "the values of the page differ from the values of the uncompressed page")
-	})
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+			require.True(t, bytes.Equal(uncompressed.ValueData, got.ValueData), "the values of the page differ from the values of the uncompressed page")
+		})
+	}
 
 	for _, version := range []uint32{format.ColumnarVersionDescriptorChecksum, format.ColumnarVersionPageChecksum} {
 		for _, compression := range []datasetmd.CompressionType{datasetmd.COMPRESSION_TYPE_NONE, datasetmd.COMPRESSION_TYPE_ZSTD} {

@@ -464,7 +464,7 @@ func TestCalculator_Calculate_SectionIndexesCountOnlyLogs(t *testing.T) {
 	for _, section := range obj.Sections().Filter(stats.CheckSection) {
 		sec, err := stats.Open(ctx, section)
 		require.NoError(t, err)
-		reader := stats.NewRowReader(ctx, sec)
+		reader := stats.NewRowReader(ctx, sec, nil)
 		for reader.Next() {
 			row := reader.At()
 			require.Equal(t, path, row.ObjectPath)
