@@ -571,9 +571,8 @@ func formatLogQL(r io.Reader, w io.Writer) error {
 		return fmt.Errorf("failed to parse the query: %w", err)
 	}
 
-	fmt.Fprintf(w, "%s\n", syntax.Prettify(expr))
-
-	return nil
+	_, err = fmt.Fprintf(w, "%s\n", syntax.Prettify(expr))
+	return err
 }
 
 func newQueryClient(app *kingpin.Application) client.Client {
