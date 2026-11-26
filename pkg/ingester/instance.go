@@ -242,29 +242,7 @@ func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) e
 
 	var appendErr error
 	for _, reqStream := range req.Streams {
-
-		s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
-			func() (*stream, error) {
-				// need format in push request.
-				s, err := i.createStream(ctx, reqStream, record, req.Format)
-				// Lock before adding to maps
-				if err == nil {
-					s.chunkMtx.Lock()
-				}
-				return s, err
-			},
-			func(s *stream) error {
-				s.chunkMtx.Lock()
-				return nil
-			},
-		)
-		if err != nil {
-			appendErr = err
-			continue
-		}
-
-		_, appendErr = s.Push(ctx, reqStream.Entries, record, rateLimitWholeStream, i.customStreamsTracker, req.Format, req.IngestedAt)
-		s.chunkMtx.Unlock()
+		appendErr = i.pushStream(ctx, reqStream, record, rateLimitWholeStream, req.Format, req.IngestedAt)
 	}
 
 	if !record.IsEmpty() {
@@ -284,6 +262,38 @@ func (i *instance) PushWithTimestamp(ctx context.Context, req TimestampedPush) e
 	}
 
 	return appendErr
+}
+
+func (i *instance) pushStream(
+	ctx context.Context,
+	reqStream logproto.Stream,
+	record *wal.Record,
+	rateLimitWholeStream bool,
+	format string,
+	ingestedAt time.Time,
+) error {
+	s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
+		func() (*stream, error) {
+			// need format in push request.
+			s, err := i.createStream(ctx, reqStream, record, format)
+			// Lock before adding to maps
+			if err == nil {
+				s.chunkMtx.Lock()
+			}
+			return s, err
+		},
+		func(s *stream) error {
+			s.chunkMtx.Lock()
+			return nil
+		},
+	)
+	if err != nil {
+		return err
+	}
+	defer s.chunkMtx.Unlock()
+
+	_, err = s.Push(ctx, reqStream.Entries, record, rateLimitWholeStream, i.customStreamsTracker, format, ingestedAt)
+	return err
 }
 
 func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stream, record *wal.Record, format string) (*stream, error) {
@@ -897,29 +907,31 @@ func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest
 
 	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
 		// Consider streams which overlap our time range
-		if shouldConsiderStream(s, from, through) {
-			s.chunkMtx.RLock()
-			var hasChunkOverlap bool
-			for _, chk := range s.chunks {
-				// Consider chunks which overlap our time range
-				// and haven't been flushed.
-				// Flushed chunks will already be counted
-				// by the TSDB manager+shipper
-				chkFrom, chkThrough := chk.chunk.Bounds()
+		if !shouldConsiderStream(s, from, through) {
+			return nil
+		}
 
-				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
-					hasChunkOverlap = true
-					res.Chunks++
-					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
-					res.Entries += uint64(factor * float64(chk.chunk.Size()))
-					res.Bytes += uint64(factor * float64(chk.chunk.UncompressedSize()))
-				}
+		s.chunkMtx.RLock()
+		defer s.chunkMtx.RUnlock()
 
+		var hasChunkOverlap bool
+		for _, chk := range s.chunks {
+			// Consider chunks which overlap our time range
+			// and haven't been flushed.
+			// Flushed chunks will already be counted
+			// by the TSDB manager+shipper
+			chkFrom, chkThrough := chk.chunk.Bounds()
+
+			if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
+				hasChunkOverlap = true
+				res.Chunks++
+				factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+				res.Entries += uint64(factor * float64(chk.chunk.Size()))
+				res.Bytes += uint64(factor * float64(chk.chunk.UncompressedSize()))
 			}
-			if hasChunkOverlap {
-				res.Streams++
-			}
-			s.chunkMtx.RUnlock()
+		}
+		if hasChunkOverlap {
+			res.Streams++
 		}
 		return nil
 	}); err != nil {
@@ -966,60 +978,62 @@ func (i *instance) getVolume(ctx context.Context, req *logproto.VolumeRequest) (
 
 	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
 		// Consider streams which overlap our time range
-		if shouldConsiderStream(s, from, through) {
-			s.chunkMtx.RLock()
+		if !shouldConsiderStream(s, from, through) {
+			return nil
+		}
 
-			var size uint64
-			for _, chk := range s.chunks {
-				// Consider chunks which overlap our time range
-				// and haven't been flushed.
-				// Flushed chunks will already be counted
-				// by the TSDB manager+shipper
-				chkFrom, chkThrough := chk.chunk.Bounds()
+		s.chunkMtx.RLock()
+		defer s.chunkMtx.RUnlock()
 
-				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
-					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
-					size += uint64(float64(chk.chunk.UncompressedSize()) * factor)
-				}
+		var size uint64
+		for _, chk := range s.chunks {
+			// Consider chunks which overlap our time range
+			// and haven't been flushed.
+			// Flushed chunks will already be counted
+			// by the TSDB manager+shipper
+			chkFrom, chkThrough := chk.chunk.Bounds()
+
+			if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
+				factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+				size += uint64(float64(chk.chunk.UncompressedSize()) * factor)
 			}
+		}
 
-			var labelVolumes map[string]uint64
-			if aggregateBySeries {
-				seriesLabelsBuilder.Reset()
-				s.labels.Range(func(l labels.Label) {
+		var labelVolumes map[string]uint64
+		if aggregateBySeries {
+			seriesLabelsBuilder.Reset()
+			s.labels.Range(func(l labels.Label) {
+				if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+					seriesLabelsBuilder.Add(l.Name, l.Value)
+				}
+			})
+		} else {
+			labelVolumes = make(map[string]uint64, s.labels.Len())
+			s.labels.Range(func(l labels.Label) {
+				if len(targetLabels) > 0 {
 					if _, ok := labelsToMatch[l.Name]; matchAny || ok {
-						seriesLabelsBuilder.Add(l.Name, l.Value)
-					}
-				})
-			} else {
-				labelVolumes = make(map[string]uint64, s.labels.Len())
-				s.labels.Range(func(l labels.Label) {
-					if len(targetLabels) > 0 {
-						if _, ok := labelsToMatch[l.Name]; matchAny || ok {
-							labelVolumes[l.Name] += size
-						}
-					} else {
 						labelVolumes[l.Name] += size
 					}
-				})
-			}
-
-			// If the labels are < 1k, this does not alloc
-			// https://github.com/prometheus/prometheus/pull/8025
-			seriesLabels := seriesLabelsBuilder.Labels()
-			hash := labels.StableHash(seriesLabels)
-			if _, ok := seriesNames[hash]; !ok {
-				seriesNames[hash] = seriesLabels.String()
-			}
-
-			if aggregateBySeries {
-				volumes[seriesNames[hash]] += size
-			} else {
-				for k, v := range labelVolumes {
-					volumes[k] += v
+				} else {
+					labelVolumes[l.Name] += size
 				}
+			})
+		}
+
+		// If the labels are < 1k, this does not alloc
+		// https://github.com/prometheus/prometheus/pull/8025
+		seriesLabels := seriesLabelsBuilder.Labels()
+		hash := labels.StableHash(seriesLabels)
+		if _, ok := seriesNames[hash]; !ok {
+			seriesNames[hash] = seriesLabels.String()
+		}
+
+		if aggregateBySeries {
+			volumes[seriesNames[hash]] += size
+		} else {
+			for k, v := range labelVolumes {
+				volumes[k] += v
 			}
-			s.chunkMtx.RUnlock()
 		}
 		return nil
 	}); err != nil {

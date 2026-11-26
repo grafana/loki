@@ -2186,3 +2186,220 @@ func TestPushRecordTimestamp(t *testing.T) {
 		})
 	}
 }
+
+type panicUsageTracker struct {
+	mockUsageTracker
+	shouldPanic bool
+}
+
+func (p *panicUsageTracker) DiscardedBytesAdd(ctx context.Context, tenant, reason string, ls labels.Labels, value float64, format string) {
+	if p.shouldPanic {
+		panic("simulated usage tracker panic")
+	}
+	p.mockUsageTracker.DiscardedBytesAdd(ctx, tenant, reason, ls, value, format)
+}
+
+func TestInstance_PanicReleasesChunkMtx(t *testing.T) {
+	recoverPanic := func(fn func()) (recovered any) {
+		defer func() {
+			recovered = recover()
+		}()
+		fn()
+		return nil
+	}
+
+	newTrackedInstance := func(t *testing.T, tracker *panicUsageTracker) (*instance, Config) {
+		t.Helper()
+		ingesterConfig := defaultIngesterTestConfig(t)
+		overrides, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+		limiter := NewLimiter(overrides, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: overrides})
+		inst, err := newInstance(
+			&ingesterConfig,
+			defaultPeriodConfigs,
+			"fake",
+			limiter,
+			loki_runtime.DefaultTenantConfigs(),
+			noopWAL{},
+			NilMetrics,
+			&OnceSwitch{},
+			nil,
+			nil,
+			nil,
+			NewStreamRateCalculator(),
+			nil,
+			tracker,
+			retention.NewTenantsRetention(overrides),
+		)
+		require.NoError(t, err)
+		return inst, ingesterConfig
+	}
+
+	assertStreamWritable := func(t *testing.T, inst *instance, s *stream, sameLabels, newLabels string, ts time.Time) {
+		t.Helper()
+		require.True(t, s.chunkMtx.TryLock(), "chunkMtx remained locked after recovered panic")
+		s.chunkMtx.Unlock()
+
+		inst.streams.WithLock(func() {})
+
+		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{Labels: sameLabels, Entries: []logproto.Entry{{Timestamp: ts, Line: "after-panic"}}},
+				{Labels: newLabels, Entries: []logproto.Entry{{Timestamp: ts, Line: "new-stream"}}},
+			},
+		}))
+	}
+
+	t.Run("Push existing stream", func(t *testing.T) {
+		tracker := &panicUsageTracker{}
+		inst, cfg := newTrackedInstance(t, tracker)
+		t0 := time.Now().Add(-5 * time.Minute)
+		labelsStr := `{app="push-existing"}`
+
+		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{
+			Streams: []logproto.Stream{{Labels: labelsStr, Entries: []logproto.Entry{{Timestamp: t0, Line: "init"}}}},
+		}))
+		s, ok := inst.streams.Load(labelsStr)
+		require.True(t, ok)
+
+		tracker.shouldPanic = true
+		recovered := recoverPanic(func() {
+			_ = inst.Push(context.Background(), &logproto.PushRequest{
+				Streams: []logproto.Stream{{
+					Labels:  labelsStr,
+					Entries: []logproto.Entry{{Timestamp: t0.Add(-(cfg.MaxChunkAge + time.Hour)), Line: "too-old"}},
+				}},
+			})
+		})
+		require.NotNil(t, recovered)
+
+		tracker.shouldPanic = false
+		assertStreamWritable(t, inst, s, labelsStr, `{app="push-existing-other"}`, t0.Add(time.Second))
+
+		_, err := inst.GetStats(context.Background(), &logproto.IndexStatsRequest{
+			From:     model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
+			Through:  model.TimeFromUnixNano(t0.Add(time.Minute).UnixNano()),
+			Matchers: labelsStr,
+		})
+		require.NoError(t, err)
+
+		_, err = inst.GetVolume(context.Background(), &logproto.VolumeRequest{
+			From:        model.TimeFromUnixNano(t0.Add(-time.Minute).UnixNano()),
+			Through:     model.TimeFromUnixNano(t0.Add(time.Minute).UnixNano()),
+			Matchers:    labelsStr,
+			Limit:       5,
+			AggregateBy: seriesvolume.Series,
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("Push new stream", func(t *testing.T) {
+		tracker := &panicUsageTracker{}
+		inst, cfg := newTrackedInstance(t, tracker)
+		t0 := time.Now().Add(-5 * time.Minute)
+		labelsStr := `{app="push-new"}`
+
+		tracker.shouldPanic = true
+		recovered := recoverPanic(func() {
+			_ = inst.Push(context.Background(), &logproto.PushRequest{
+				Streams: []logproto.Stream{{
+					Labels: labelsStr,
+					Entries: []logproto.Entry{
+						{Timestamp: t0, Line: "first"},
+						{Timestamp: t0.Add(-(cfg.MaxChunkAge + time.Hour)), Line: "too-old"},
+					},
+				}},
+			})
+		})
+		require.NotNil(t, recovered)
+
+		s, ok := inst.streams.Load(labelsStr)
+		require.True(t, ok)
+
+		tracker.shouldPanic = false
+		assertStreamWritable(t, inst, s, labelsStr, `{app="push-new-other"}`, t0.Add(time.Second))
+	})
+
+	setupCorruptMiddleChunk := func(t *testing.T, inst *instance, labelsStr string) *stream {
+		t.Helper()
+		t1 := time.Unix(0, 1e6)
+		t2 := time.Unix(0, 2e6)
+
+		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{
+			Streams: []logproto.Stream{{Labels: labelsStr, Entries: []logproto.Entry{{Timestamp: t1, Line: "chunk-0"}}}},
+		}))
+		s, ok := inst.streams.Load(labelsStr)
+		require.True(t, ok)
+
+		s.chunkMtx.Lock()
+		s.chunks[0].closed = true
+		s.chunkMtx.Unlock()
+
+		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{
+			Streams: []logproto.Stream{{Labels: labelsStr, Entries: []logproto.Entry{{Timestamp: t2, Line: "chunk-2"}}}},
+		}))
+		require.Len(t, s.chunks, 2)
+
+		s.chunkMtx.Lock()
+		s.chunks = []chunkDesc{s.chunks[0], {chunk: nil}, s.chunks[1]}
+		s.chunkMtx.Unlock()
+
+		return s
+	}
+
+	t.Run("getStats", func(t *testing.T) {
+		inst := newEmptyInstance(t)
+		labelsStr := `{app="stats-panic"}`
+		otherLabels := `{app="stats-other"}`
+		s := setupCorruptMiddleChunk(t, inst, labelsStr)
+
+		recovered := recoverPanic(func() {
+			_, _ = inst.GetStats(context.Background(), &logproto.IndexStatsRequest{
+				From:     0,
+				Through:  100,
+				Matchers: labelsStr,
+			})
+		})
+		require.NotNil(t, recovered)
+
+		assertStreamWritable(t, inst, s, labelsStr, otherLabels, time.Unix(0, 3e6))
+
+		resp, err := inst.GetStats(context.Background(), &logproto.IndexStatsRequest{
+			From:     0,
+			Through:  100,
+			Matchers: otherLabels,
+		})
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), resp.Streams)
+	})
+
+	t.Run("getVolume", func(t *testing.T) {
+		inst := newEmptyInstance(t)
+		labelsStr := `{app="volume-panic"}`
+		otherLabels := `{app="volume-other"}`
+		s := setupCorruptMiddleChunk(t, inst, labelsStr)
+
+		recovered := recoverPanic(func() {
+			_, _ = inst.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     100,
+				Matchers:    labelsStr,
+				Limit:       5,
+				AggregateBy: seriesvolume.Series,
+			})
+		})
+		require.NotNil(t, recovered)
+
+		assertStreamWritable(t, inst, s, labelsStr, otherLabels, time.Unix(0, 3e6))
+
+		resp, err := inst.GetVolume(context.Background(), &logproto.VolumeRequest{
+			From:        0,
+			Through:     100,
+			Matchers:    otherLabels,
+			Limit:       5,
+			AggregateBy: seriesvolume.Series,
+		})
+		require.NoError(t, err)
+		require.Len(t, resp.Volumes, 1)
+	})
+}
