@@ -404,6 +404,9 @@ type Postings interface {
 
 	// Err returns the last error of the iterator.
 	Err() error
+
+	// Close returns any pooled buffers held by the postings.
+	Close()
 }
 
 // errPostings is an empty iterator that always errors.
@@ -415,6 +418,7 @@ func (e errPostings) Next() bool                  { return false }
 func (e errPostings) Seek(storage.SeriesRef) bool { return false }
 func (e errPostings) At() storage.SeriesRef       { return 0 }
 func (e errPostings) Err() error                  { return e.err }
+func (e errPostings) Close()                      {}
 
 var emptyPostings = errPostings{}
 
@@ -448,6 +452,7 @@ func Intersect(its ...Postings) Postings {
 	}
 	for _, p := range its {
 		if p == EmptyPostings() {
+			closeAll(its)
 			return EmptyPostings()
 		}
 	}
@@ -510,6 +515,14 @@ func (it *intersectPostings) Err() error {
 	return nil
 }
 
+func (it *intersectPostings) Close() { closeAll(it.arr) }
+
+func closeAll(its []Postings) {
+	for _, p := range its {
+		p.Close()
+	}
+}
+
 // Merge returns a new iterator over the union of the input iterators.
 func Merge(its ...Postings) Postings {
 	if len(its) == 0 {
@@ -525,6 +538,7 @@ func Merge(its ...Postings) Postings {
 
 type mergedPostings struct {
 	h   *loser.Tree[storage.SeriesRef, Postings]
+	its []Postings // the inputs, kept to close them
 	cur storage.SeriesRef
 	err error
 	// started is set by the first Next or Seek. newMergedPostings calls
@@ -546,13 +560,15 @@ func newMergedPostings(p []Postings) (m Postings) {
 	// have already reported their error.
 	for _, it := range p {
 		if err := it.Err(); err != nil {
+			closeAll(p)
 			return ErrPostings(err)
 		}
 	}
 	if lt.IsEmpty() {
+		closeAll(p)
 		return EmptyPostings()
 	}
-	return &mergedPostings{h: lt}
+	return &mergedPostings{h: lt, its: p}
 }
 
 func (it *mergedPostings) Next() bool {
@@ -613,14 +629,19 @@ func (it *mergedPostings) Err() error {
 	return it.err
 }
 
+func (it *mergedPostings) Close() { closeAll(it.its) }
+
 // Without returns a new postings list that contains all elements from the full list that
 // are not in the drop list.
 func Without(full, drop Postings) Postings {
 	if full == EmptyPostings() {
+		full.Close()
+		drop.Close()
 		return EmptyPostings()
 	}
 
 	if drop == EmptyPostings() {
+		drop.Close()
 		return full
 	}
 	return newRemovedPostings(full, drop)
@@ -699,6 +720,11 @@ func (rp *removedPostings) Err() error {
 	return rp.remove.Err()
 }
 
+func (rp *removedPostings) Close() {
+	rp.full.Close()
+	rp.remove.Close()
+}
+
 // ListPostings implements the Postings interface over a plain list.
 type ListPostings struct {
 	list []storage.SeriesRef
@@ -716,6 +742,8 @@ func newListPostings(list ...storage.SeriesRef) *ListPostings {
 func (it *ListPostings) At() storage.SeriesRef {
 	return it.cur
 }
+
+func (it *ListPostings) Close() {}
 
 func (it *ListPostings) Next() bool {
 	if len(it.list) > 0 {
@@ -801,6 +829,8 @@ func (it *BigEndianPostings) Err() error {
 	return nil
 }
 
+func (it *BigEndianPostings) Close() {}
+
 // seriesRefSlice attaches the methods of sort.Interface to []storage.SeriesRef, sorting in increasing order.
 type seriesRefSlice []storage.SeriesRef
 
@@ -876,3 +906,5 @@ func (sp *ShardedPostings) At() storage.SeriesRef {
 func (sp *ShardedPostings) Err() (err error) {
 	return sp.p.Err()
 }
+
+func (sp *ShardedPostings) Close() { sp.p.Close() }
