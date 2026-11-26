@@ -54,6 +54,11 @@ type RowReaderOptions struct {
 
 type RowReaderStatsTracker interface {
 	OnColumnPredicateBuilt(column Column, stats ColumnReadPageStats)
+
+	// OnPagesDownloaded receives the compressed and the uncompressed size of
+	// each batch of pages that the reader downloads. The reader does not report
+	// the pages that it prunes.
+	OnPagesDownloaded(compressedBytes, uncompressedBytes int64)
 }
 
 type ColumnReadPageStats struct {
@@ -724,6 +729,7 @@ func (r *RowReader) initDownloader(ctx context.Context) error {
 		r.dl.Reset(r.opts.Dataset)
 	}
 
+	r.dl.statsTracker = r.opts.StatsTracker
 	r.dl.targetCompressedBytes = defaultTargetDownloadedBytes
 	if r.opts.PrefetchAllOnOpen {
 		r.dl.targetCompressedBytes = 0

@@ -1350,7 +1350,7 @@ func readIndexRows(ctx context.Context, t *testing.T, bucket objstore.Bucket, te
 		case stats.CheckSection(section):
 			opened, err := stats.Open(ctx, section)
 			require.NoError(t, err)
-			rows := stats.NewRowReader(ctx, opened)
+			rows := stats.NewRowReader(ctx, opened, nil)
 			for rows.Next() {
 				statRows = append(statRows, rows.At())
 			}
