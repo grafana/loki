@@ -377,7 +377,7 @@ type workerMetrics struct {
 
 	logMergeTasksTotal                      *prometheus.CounterVec   // tenant, outcome
 	logMergeDurationSeconds                 *prometheus.HistogramVec // tenant
-	logMergeOutputBytesCompressed           *prometheus.HistogramVec // tenant
+	logMergeTaskOutputBytesCompressed       *prometheus.HistogramVec // tenant
 	logMergeTaskInputBytesUncompressed      *prometheus.HistogramVec // tenant
 	logMergeTaskInputBytesCompressedTotal   *prometheus.CounterVec   // thread
 	logMergeTaskInputBytesUncompressedTotal *prometheus.CounterVec   // thread
@@ -428,7 +428,7 @@ func newWorkerMetrics(reg prometheus.Registerer) *workerMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{labelTenant}),
-		logMergeOutputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
+		logMergeTaskOutputBytesCompressed: f.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "loki_dataobj_compaction_log_merge_output_bytes_compressed",
 			Help:    "Total encoded bytes uploaded across all compacted log objects for a successful LogMerge task.",
 			Buckets: byteBuckets,
@@ -522,7 +522,7 @@ func (m *workerMetrics) ObserveLogMerge(tenant string, stats executor.LogMergeOb
 		return
 	}
 	if stats.OutputBytesCompressed > 0 {
-		m.logMergeOutputBytesCompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesCompressed))
+		m.logMergeTaskOutputBytesCompressed.WithLabelValues(tenant).Observe(float64(stats.OutputBytesCompressed))
 	}
 	m.logMergeDuplicateRecordsTotal.WithLabelValues(tenant).Add(float64(stats.DuplicateRecords))
 }
