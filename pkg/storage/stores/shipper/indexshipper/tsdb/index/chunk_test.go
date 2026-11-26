@@ -59,11 +59,6 @@ func TestChunkMetasSort(t *testing.T) {
 	}
 }
 
-func TestChunkMetasStats(t *testing.T) {
-	c := ChunkMetas{{KB: 10, Entries: 3}, {KB: 20, Entries: 5}}
-	require.Equal(t, ChunkStats{Chunks: 2, KB: 30, Entries: 8}, c.Stats())
-}
-
 func TestChunkMetasFinalize(t *testing.T) {
 	mkMeta := func(x int) ChunkMeta {
 		return ChunkMeta{

@@ -43,10 +43,6 @@ func NewIndexCompactorWithDedupeMetrics(r prometheus.Registerer) compactor.Index
 	return indexProcessor{dedupe: newDedupeMetrics(r)}
 }
 
-// sizeNote is appended to the help text of the byte counters. The index records chunk sizes only in
-// whole KB, so that is all the compactor can count.
-const sizeNote = " Sizes come from the index, rounded to whole KB per chunk, so chunks under 512 bytes count as 0."
-
 // dedupeMetrics counts the chunk entries that the compactor adds to the compacted index after
 // dedupe. A nil *dedupeMetrics counts nothing.
 type dedupeMetrics struct {
@@ -61,7 +57,7 @@ func newDedupeMetrics(reg prometheus.Registerer) *dedupeMetrics {
 			Namespace: "loki",
 			Subsystem: "compactor",
 			Name:      "tsdb_distinct_chunk_uncompressed_bytes_total",
-			Help:      "Total uncompressed bytes of chunk entries from ingester index files that were new in the compacted index after deduplication." + sizeNote,
+			Help:      "Total uncompressed bytes of chunk entries from ingester index files that were new in the compacted index after deduplication. Sizes come from the index, rounded to whole KB per chunk, so chunks under 512 bytes count as 0.",
 		}),
 		distinctLines: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Namespace: "loki",
