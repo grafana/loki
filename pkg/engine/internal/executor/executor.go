@@ -19,12 +19,20 @@ import (
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
 
+// BloomDenyLister returns the names of the structured metadata columns of a
+// tenant that get no bloom filter in the index.
+type BloomDenyLister interface {
+	DataObjBloomDenyList(tenant string) []string
+}
+
 type Config struct {
 	// ScratchStore holds the temporary data of compaction tasks. Optional; nil
 	// keeps the data in memory.
 	ScratchStore scratch.Store
 	// IndexobjCfg is the builder config for index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
+	// BloomDenyList gives the per-tenant bloom deny list of index objects.
+	BloomDenyList BloomDenyLister
 	// LogsobjCfg is the builder config for log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
 	// BuilderMetrics is shared by logs object builders across worker tasks.
@@ -112,6 +120,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		getExternalInputs:  cfg.GetExternalInputs,
 		scratchStore:       cfg.ScratchStore,
 		indexobjCfg:        cfg.IndexobjCfg,
+		bloomDenyList:      cfg.BloomDenyList,
 		logsobjCfg:         cfg.LogsobjCfg,
 		builderMetrics:     cfg.BuilderMetrics,
 		indexMergeObserver: cfg.IndexMergeObserver,
@@ -144,6 +153,7 @@ type Context struct {
 
 	scratchStore   scratch.Store
 	indexobjCfg    logsobj.BuilderBaseConfig
+	bloomDenyList  BloomDenyLister
 	logsobjCfg     logsobj.BuilderBaseConfig
 	builderMetrics *logsobj.BuilderMetrics
 

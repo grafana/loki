@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -51,6 +52,9 @@ type Builder struct {
 	postings      *postings.Builder
 	watermarks    *watermarks.Builder
 
+	// bloomDenyList holds the names of the columns that are not bloom-indexed.
+	bloomDenyList []string
+
 	state builderState
 }
 
@@ -65,7 +69,7 @@ const (
 )
 
 // NewBuilder returns a [Builder] that builds index objects for tenant.
-func NewBuilder(tenant string, cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics) (*Builder, error) {
+func NewBuilder(tenant string, cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, metrics *BuilderMetrics, bloomDenyList []string) (*Builder, error) {
 	if tenant == "" {
 		return nil, errors.New("tenant must not be empty")
 	}
@@ -79,6 +83,8 @@ func NewBuilder(tenant string, cfg logsobj.BuilderBaseConfig, scratchStore scrat
 		tenant:  tenant,
 		cfg:     cfg,
 		metrics: metrics,
+
+		bloomDenyList: bloomDenyList,
 
 		// The watermarks section comes first so that a reader finds it in its first request.
 		builder: dataobj.NewBuilder(scratchStore, dataobj.WithPrioritySections(watermarks.SectionType())),
@@ -189,6 +195,7 @@ func (b *Builder) ObserveLabelPosting(obs postings.LabelObservation) {
 }
 
 // PrepareBloomColumn initializes the bloom filter for a specific column.
+// A column on the bloom deny list is not bloom-indexed.
 // Must be called before any ObserveBloomPosting calls for the given (objectPath, sectionIdx, columnName).
 // shardBuckets is stored on the entry immediately so a prepared-but-unobserved
 // column still records the object's shard factor.
@@ -199,7 +206,11 @@ func (b *Builder) PrepareBloomColumn(
 	estimatedCardinality uint,
 	shardBuckets int64,
 ) {
-	b.getPostingsBuilder().PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality, shardBuckets)
+	if slices.Contains(b.bloomDenyList, columnName) {
+		b.getPostingsBuilder().PreparePassAllBloomColumn(objectPath, sectionIdx, columnName, shardBuckets)
+	} else {
+		b.getPostingsBuilder().PrepareBloomColumn(objectPath, sectionIdx, columnName, estimatedCardinality, shardBuckets)
+	}
 
 	// The prepared column gives a bloom posting even without observations, so
 	// the builder has data to flush.

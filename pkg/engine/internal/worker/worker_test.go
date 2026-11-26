@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -85,6 +86,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		defer cancel()
 
 		w, err := worker.New(worker.Config{
+			BloomDenyList:    indexobjtest.NoBloomDenyList{},
 			Logger:           log.NewNopLogger(),
 			Bucket:           bucket,
 			Dialer:           wire.NewLocalDialer(schedulerListener, workerListener),

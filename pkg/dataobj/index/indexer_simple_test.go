@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
@@ -48,7 +49,7 @@ func newTestSimpleIndexerWithMetrics(t *testing.T, bucket objstore.Bucket, reg p
 	metrics := NewIndexerMetrics(reg)
 
 	return NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
-		metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
+		metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg), indexobjtest.NoBloomDenyList{})
 }
 
 func TestSimpleIndexer_Index(t *testing.T) {
@@ -301,7 +302,7 @@ func TestSimpleIndexer_MultipleInstances(t *testing.T) {
 	obj := createTestLogObject(t, 1)
 	for i := range 2 {
 		idx, err := NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
-			metrics, builderMetrics, calculatorMetrics)
+			metrics, builderMetrics, calculatorMetrics, indexobjtest.NoBloomDenyList{})
 		require.NoError(t, err)
 
 		_, err = idx.Index(t.Context(), obj, fmt.Sprintf("objects/test-%d", i))
@@ -319,7 +320,7 @@ func TestSimpleIndexer_RejectsInvalidConfig(t *testing.T) {
 	metrics := NewIndexerMetrics(reg)
 
 	_, err := NewSimpleIndexer(logsobj.BuilderBaseConfig{}, nil, log.NewNopLogger(),
-		objstore.NewInMemBucket(), metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
+		objstore.NewInMemBucket(), metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg), indexobjtest.NoBloomDenyList{})
 	require.Error(t, err)
 }
 

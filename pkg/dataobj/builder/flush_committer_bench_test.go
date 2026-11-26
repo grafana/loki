@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -147,7 +148,7 @@ func newBenchFlush(tb testing.TB, latency benchBucketLatency, concurrency int) *
 		tb.Fatal(err)
 	}
 	indexobjMetrics := indexobj.NewBuilderMetrics(reg)
-	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg))
+	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg), indexobjtest.NoBloomDenyList{})
 	if err != nil {
 		tb.Fatal(err)
 	}

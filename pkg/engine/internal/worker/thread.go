@@ -93,6 +93,7 @@ type thread struct {
 	Logger         log.Logger
 	ScratchStore   scratch.Store
 	IndexobjCfg    logsobj.BuilderBaseConfig
+	BloomDenyList  executor.BloomDenyLister
 	LogsobjCfg     logsobj.BuilderBaseConfig
 	BuilderMetrics *logsobj.BuilderMetrics
 
@@ -220,6 +221,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		DataBucket:     t.DataBucket,
 		ScratchStore:   t.ScratchStore,
 		IndexobjCfg:    t.IndexobjCfg,
+		BloomDenyList:  t.BloomDenyList,
 		LogsobjCfg:     t.LogsobjCfg,
 		BuilderMetrics: t.BuilderMetrics,
 

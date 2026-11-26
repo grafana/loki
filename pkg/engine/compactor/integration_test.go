@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections"
@@ -893,6 +894,7 @@ func newIntegrationCoordinatorWithIndexConfig(ctx context.Context, t *testing.T,
 	require.NoError(t, compactionCfg.Validate())
 
 	w, err := worker.New(worker.Config{
+		BloomDenyList:    indexobjtest.NoBloomDenyList{},
 		Logger:           log.NewNopLogger(),
 		Bucket:           bucket,
 		DataBucket:       bucket,
@@ -1306,7 +1308,7 @@ func TestLogSectionRefsFor_KeysMatchWorkerSortPrefixes(t *testing.T) {
 // writeToCWithIndexes, it can write pointers of a run.
 func writeToCWithPointers(ctx context.Context, t *testing.T, bucket objstore.Bucket, tenant string, window time.Time, pointers ...indexpointers.IndexPointer) {
 	t.Helper()
-	builder, err := indexobj.NewBuilder(tenant, metastore.DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	builder, err := indexobj.NewBuilder(tenant, metastore.DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 	for _, pointer := range pointers {
 		require.NoError(t, builder.AppendIndexPointer(pointer))

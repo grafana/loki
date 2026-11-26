@@ -161,7 +161,7 @@ func buildIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, objec
 	if len(object.stats) == 0 {
 		layout = object.layoutWithoutStats
 	}
-	builder, err := indexobj.NewMergeBuilder(cfg, nil, object.tenant, layout)
+	builder, err := indexobj.NewMergeBuilder(cfg, nil, object.tenant, layout, nil)
 	require.NoError(t, err)
 	for _, stat := range object.stats {
 		require.NoError(t, builder.AppendStat(object.tenant, stat))

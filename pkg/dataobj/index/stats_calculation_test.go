@@ -26,7 +26,7 @@ var fakeSchema = []string{"label:service_name"}
 
 func newTestIndexBuilder(t *testing.T) *indexobj.Builder {
 	t.Helper()
-	builder, err := indexobj.NewBuilder("tenant-1", testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil))
+	builder, err := indexobj.NewBuilder("tenant-1", testCalculatorConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 	return builder
 }

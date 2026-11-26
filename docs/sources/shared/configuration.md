@@ -4906,6 +4906,11 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Experimental: Comma-separated names of structured metadata columns that get no
+# bloom filter in the data object index. An empty value denies no column.
+# CLI flag: -limits.dataobj-bloom-deny-list
+[dataobj_bloom_deny_list: <string> | default = "observed_timestamp"]
 ```
 
 ### local_storage_config

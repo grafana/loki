@@ -482,7 +482,7 @@ func (m *TableOfContentsWriter) applyChange(ctx context.Context, op tocOp, tenan
 	}()
 
 	tocPath := TableOfContentsPath(tenant, window)
-	builder, err := indexobj.NewBuilder(tenant, m.builderCfg, nil, m.builderMetrics)
+	builder, err := indexobj.NewBuilder(tenant, m.builderCfg, nil, m.builderMetrics, nil)
 	if err != nil {
 		return err
 	}

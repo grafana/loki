@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -703,7 +704,7 @@ func newRealStack(t *testing.T) *realStack {
 	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, logsobj.NoTenantOverrides{})
 	require.NoError(t, err)
 	indexobjMetrics := indexobj.NewBuilderMetrics(reg)
-	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg))
+	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg), indexobjtest.NoBloomDenyList{})
 	require.NoError(t, err)
 	var (
 		uploader  = dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, bucket, logger)

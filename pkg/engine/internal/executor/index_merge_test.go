@@ -25,6 +25,7 @@ import (
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -1165,6 +1166,7 @@ func newTestExecutorContext(t testing.TB, bucket objstore.Bucket) *Context {
 		bucket:         bucket,
 		scratchStore:   scratch.NewMemory(),
 		indexobjCfg:    testBuilderCfg,
+		bloomDenyList:  indexobjtest.NoBloomDenyList{},
 		logsobjCfg:     testBuilderCfg,
 		builderMetrics: logsobj.NewBuilderMetrics(),
 

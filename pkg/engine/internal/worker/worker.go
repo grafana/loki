@@ -80,6 +80,10 @@ type Config struct {
 	// IndexobjCfg is the builder config for compacted index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
+	// BloomDenyList gives the per-tenant bloom deny list of compacted index
+	// objects.
+	BloomDenyList executor.BloomDenyLister
+
 	// LogsobjCfg is the builder config for compacted log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
 
@@ -143,6 +147,9 @@ func New(config Config) (*Worker, error) {
 	if config.SchedulerAddress == nil && config.SchedulerLookupAddress == "" {
 		return nil, errors.New("at least one of scheduler address or lookup address is required")
 	}
+	if config.BloomDenyList == nil {
+		return nil, errors.New("bloom deny list is required")
+	}
 	if config.BuilderMetrics == nil {
 		config.BuilderMetrics = logsobj.NewBuilderMetrics()
 	}
@@ -202,6 +209,7 @@ func (w *Worker) run(ctx context.Context) error {
 			DataBucket:     w.config.DataBucket,
 			ScratchStore:   w.config.ScratchStore,
 			IndexobjCfg:    w.config.IndexobjCfg,
+			BloomDenyList:  w.config.BloomDenyList,
 			LogsobjCfg:     w.config.LogsobjCfg,
 			BuilderMetrics: w.config.BuilderMetrics,
 

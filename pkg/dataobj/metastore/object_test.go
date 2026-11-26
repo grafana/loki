@@ -233,7 +233,8 @@ func TestObjectMetastore_Sections_StreamMatchers(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
+	}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 	require.NoError(t, err)
 
 	for i, ts := range testStreams {
@@ -356,7 +357,8 @@ func TestObjectMetastore_Sections_PredicateMatchers(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
+	}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 	require.NoError(t, err)
 
 	observeLabelPostings(builder, "test-path", 0, 1, labels.FromStrings("app", "foo"), now.Add(-3*time.Hour), 5)
@@ -627,7 +629,8 @@ func addIndexObject(t *testing.T, bucket objstore.Bucket, lines []indexedLine) s
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
+	}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 	require.NoError(t, err)
 
 	for _, line := range lines {
@@ -1306,7 +1309,8 @@ func TestObjectMetastore_Sections_LabelsByStreamID(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
+	}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 	require.NoError(t, err)
 
 	// Stream 1: app=foo, env=prod
@@ -1433,7 +1437,8 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
+	}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 	require.NoError(t, err)
 
 	// Index a stream with label app=foo

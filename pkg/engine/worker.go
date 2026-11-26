@@ -57,6 +57,10 @@ type WorkerParams struct {
 	// IndexobjCfg is the builder config for compacted index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
+	// BloomDenyList gives the per-tenant bloom deny list of compacted index
+	// objects.
+	BloomDenyList executor.BloomDenyLister
+
 	// LogsobjCfg is the builder config for compacted log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
 
@@ -104,6 +108,10 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		return nil, errors.New("an advertise address must be provided")
 	}
 
+	if params.BloomDenyList == nil {
+		return nil, errors.New("a bloom deny list must be provided")
+	}
+
 	listener := wire.NewHTTP2Listener(
 		params.AdvertiseAddr,
 		wire.WithHTTP2ListenerLogger(params.Logger),
@@ -130,6 +138,7 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 
 		ScratchStore:   params.ScratchStore,
 		IndexobjCfg:    params.IndexobjCfg,
+		BloomDenyList:  params.BloomDenyList,
 		LogsobjCfg:     params.LogsobjCfg,
 		BuilderMetrics: builderMetrics,
 
