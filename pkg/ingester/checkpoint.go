@@ -201,6 +201,7 @@ type streamInstance struct {
 type streamIterator struct {
 	instances []streamInstance
 	retired   []retiredWALStreamRef
+	count     int
 
 	current Series
 	buffer  []chunkWithBuffer
@@ -213,6 +214,7 @@ func newStreamsIterator(ing ingesterInstances) *streamIterator {
 	instances := ing.getInstances()
 	streamInstances := make([]streamInstance, len(instances))
 	var retired []retiredWALStreamRef
+	var count int
 	for i, inst := range instances {
 		streams := make([]*stream, 0, inst.streams.Len())
 		_ = inst.forAllStreams(context.Background(), func(s *stream) error {
@@ -223,6 +225,7 @@ func newStreamsIterator(ing ingesterInstances) *streamIterator {
 			streams: streams,
 			id:      inst.instanceID,
 		}
+		count += len(streams)
 		inst.retiredWALStreams.Range(func(key, value any) bool {
 			retired = append(retired, retiredWALStreamRef{instance: inst, fp: key.(model.Fingerprint), state: value.(*retiredWALStream)})
 			return true
@@ -231,6 +234,7 @@ func newStreamsIterator(ing ingesterInstances) *streamIterator {
 	return &streamIterator{
 		instances: streamInstances,
 		retired:   retired,
+		count:     count,
 	}
 }
 
@@ -696,7 +700,8 @@ func (c *Checkpointer) PerformCheckpoint() (err error) {
 	}()
 	// signal whether checkpoint writes should be amortized or burst
 	var immediate bool
-	n := c.iter.Count()
+	// Count the pinned snapshot, not live streams: a stream flushed since prepare must still be written.
+	n := iter.count
 	if n < 1 {
 		err = c.writer.Close(false)
 		committed = err == nil && c.supersededSegmentsDeleted()
