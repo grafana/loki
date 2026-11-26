@@ -335,22 +335,9 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 	}
 
 	// finalize the chunks to remove the duplicates and sort them
-	beforeKB, beforeLines := chunkStats(builder)
-	builder.FinalizeChunks()
-	afterKB, afterLines := chunkStats(builder)
-	droppedKB, droppedLines := beforeKB-afterKB, beforeLines-afterLines
+	droppedKB, droppedLines := builder.FinalizeChunks()
 
 	return builder, listedKB - min(droppedKB, listedKB), listedLines - min(droppedLines, listedLines), nil
-}
-
-// chunkStats sums the KB and lines of the chunk entries in b.
-func chunkStats(b *Builder) (kb, lines uint64) {
-	for s := range b.allStreams() {
-		st := s.chunks.Stats()
-		kb += st.KB
-		lines += st.Entries
-	}
-	return kb, lines
 }
 
 type compactedIndex struct {
