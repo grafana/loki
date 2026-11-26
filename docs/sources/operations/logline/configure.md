@@ -1,35 +1,35 @@
 ---
-title: Configure Logline
+title: Configure the Full-Text Index
 menuTitle: Configure
-description: Prerequisites and configuration for enabling, tuning, and monitoring Logline query acceleration in Grafana Loki.
+description: Prerequisites and configuration for enabling, tuning, and monitoring Full-Text Index query acceleration in Grafana Loki.
 weight: 10
 ---
 
-# Configure Logline
+# Configure the Full-Text Index
 
 {{< admonition type="warning" >}}
-Logline is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. Logline requires [Kafka-based ingestion]({{< relref "../kafka.md" >}}). Configuration options, index formats, and behavior can change. Validate index coverage and query results before enabling live acceleration.
+The Full-Text Index is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. The Full-Text Index requires [Kafka-based ingestion]({{< relref "../kafka.md" >}}). Configuration options, index formats, and behavior can change. Validate index coverage and query results before enabling live acceleration.
 {{< /admonition >}}
 
-This page covers the prerequisites, deployment steps, tuning, retention, and monitoring for Logline. For an introduction to its architecture and query behavior, refer to [Logline](../).
+This page covers the prerequisites, deployment steps, tuning, retention, and monitoring for the Full-Text Index. For an introduction to its architecture and query behavior, refer to [Full-Text Index](../).
 
 ## Prerequisites
 
-Before enabling Logline, you need:
+Before enabling the Full-Text Index, you need:
 
-- [Kafka-based ingestion]({{< relref "../kafka.md" >}}) enabled, with a Kafka log topic populated by Loki's distributor. Logline builders must be able to read every partition containing the logs to be indexed.
+- [Kafka-based ingestion]({{< relref "../kafka.md" >}}) enabled, with a Kafka log topic populated by Loki's distributor. The Full-Text Index builders must be able to read every partition containing the logs to be indexed.
 - Access to the ingester partition ring through the same `ingester.kafka_ingestion.partition_ring.kvstore` configuration and KV prefix as the ingesters. With memberlist, configure `memberlist.join_members` so builders join the existing cluster. Builders fail startup if the ring remains empty.
-- Object storage configured through `storage_config.object_store`, or `common.storage.object_store`, and the object store selected by the current schema period. Legacy settings such as `storage_config.aws` or `storage_config.gcs` alone are not sufficient. All Logline components must resolve the same bucket and prefix, `logline/` by default.
+- Object storage configured through `storage_config.object_store`, or `common.storage.object_store`, and the object store selected by the current schema period. Legacy settings such as `storage_config.aws` or `storage_config.gcs` alone are not sufficient. All Full-Text Index components must resolve the same bucket and prefix, `logline/` by default.
 - Writable local scratch storage for each index builder's temporary sort runs and merged output. This is not durable index storage: builders upload completed indexes to object storage and clear the scratch directory at startup. Use a dedicated path with enough free space for the sizing guidance below.
-- Durable, writable job-state storage for the Logline scheduler. Unlike builder scratch space, this directory must survive scheduler restarts so that in-flight compaction jobs are not assigned again.
-- Bucket permissions for each component on the shared Logline prefix: builders need list, read (including object existence checks), and write access; query frontends and queriers need list and read access; compactors need list, read, and write access; the scheduler needs list, read, and delete access. Every component lists the bucket during startup, including components that primarily write indexes.
+- Durable, writable job-state storage for the Full-Text Index scheduler. Unlike builder scratch space, this directory must survive scheduler restarts so that in-flight compaction jobs are not assigned again.
+- Bucket permissions for each component on the shared Full-Text Index prefix: builders need list, read (including object existence checks), and write access; query frontends and queriers need list and read access; compactors need list, read, and write access; the scheduler needs list, read, and delete access. Every component lists the bucket during startup, including components that primarily write indexes.
 - Memory allocated to each builder's container, pod, or host for sort buffers and indexing overhead. Refer to [Sizing and tuning](#sizing-and-tuning) for memory and scratch-storage estimates.
 
 ## Choose a complete-coverage start date
 
-As part of the Logline configuration, specify the date from which you can establish complete index coverage for logs eligible for live narrowing. Logline trusts indexes from this date onward; it cannot infer whether historical indexing is complete.
+As part of the Full-Text Index configuration, specify the date from which you can establish complete index coverage for logs eligible for live narrowing. The Full-Text Index trusts indexes from this date onward; it cannot infer whether historical indexing is complete.
 
-`-logline-store.min-date` is required and uses the format `YYYY-MM-DD`, interpreted as midnight UTC. Builders discard log entries before this date, and queries before it run without Logline narrowing. The current builder requires a date on or after January 1, 2026.
+`-logline-store.min-date` is required and uses the format `YYYY-MM-DD`, interpreted as midnight UTC. Builders discard log entries before this date, and queries before it run without Full-Text Index narrowing. The current builder requires a date on or after January 1, 2026.
 
 Starting a builder does not backfill logs from object storage. Historical coverage is limited by records available in Kafka and the builder consumer group's offsets. Do not move the trusted date backward without first establishing coverage for the additional period.
 
@@ -41,11 +41,11 @@ Recent query splits within `querier.query_ingesters_within` run without narrowin
 
 Keep a positive recent-data window and account for builder lag, flushing, index discovery, and hint-cache delays before enabling live queries. A recent-data window is not a substitute for verifying index coverage.
 
-## Enable Logline
+## Enable the Full-Text Index
 
-Configure Logline through the top-level `logline:` YAML block or equivalent command-line flags. Explicit command-line flags take precedence over YAML settings. The tenant settings described below are configured through `limits_config` or runtime overrides.
+Configure the Full-Text Index through the top-level `logline:` YAML block or equivalent command-line flags. Explicit command-line flags take precedence over YAML settings. The tenant settings described below are configured through `limits_config` or runtime overrides.
 
-The following examples show Logline configuration and additional process arguments, not a complete Loki deployment. First verify the storage and ring prerequisites above, and retain your Kafka, networking, and authentication configuration. Logline opens the bucket selected by the schema period covering the current time; it does not search all historical schema-period buckets. Plan index continuity before changing that bucket.
+The following examples show the Full-Text Index configuration and additional process arguments, not a complete Loki deployment. First verify the storage and ring prerequisites above, and retain your Kafka, networking, and authentication configuration. The Full-Text Index opens the bucket selected by the schema period covering the current time; it does not search all historical schema-period buckets. Plan index continuity before changing that bucket.
 
 ### 1. Configure shared index settings
 
@@ -109,7 +109,7 @@ Use the same index store settings as the builders. Compactors merge compatible i
 
 ### 4. Enable query lookups without changing results
 
-Enable Logline on query frontends and queriers, with the same shared index settings. Start with header opt-in and dry-run as the process default:
+Enable the Full-Text Index on query frontends and queriers, with the same shared index settings. Start with header opt-in and dry-run as the process default:
 
 ```shell
 -logline-query.enabled=true
@@ -141,7 +141,7 @@ Change the tenant mode to `live` only after validation, and restore an appropria
 Recognized `X-Logline-Index` header values override both tenant mode and the process dry-run default. In particular, `live` can override tenant mode `off`. Header opt-in and tenant mode are rollout controls, not access-control boundaries. Control which clients can supply this header during validation.
 {{< /admonition >}}
 
-To disable Logline for a request, use `X-Logline-Index: off`. To disable the query integration at the process level, set `-logline-query.enabled=false` on query frontends and queriers. Neither action deletes indexes or stops separately deployed builders and compactors.
+To disable the Full-Text Index for a request, use `X-Logline-Index: off`. To disable the query integration at the process level, set `-logline-query.enabled=false` on query frontends and queriers. Neither action deletes indexes or stops separately deployed builders and compactors.
 
 ## Sizing and tuning
 
@@ -159,7 +159,7 @@ Start with the defaults and measure your ingestion volume, search selectivity, b
 | `-logline-query.max-hint-parallel` | `64` | Maximum concurrent index lookup workers per query. |
 | `-logline-query.hint-cache-ttl` | `2m` | Hint-cache lifetime. Set to `0` to disable hint caching. |
 
-At the default `postings-buffer-pairs` capacity, each set of builder sort buffers occupies approximately 460 MiB. During a builder swap, two sets can coexist, requiring approximately twice that memory before other overhead. Allocate this memory, plus headroom for decoding, document metadata, merging, and uploads, in the builder's container or pod memory requests and limits, or in the host's memory budget for a non-containerized deployment. If you set Go's `GOMEMLIMIT`, leave room below the container or host limit for memory not covered by `GOMEMLIMIT`; it is a Go runtime setting, not a Logline flag or a hard cap on process memory. The estimated-memory metric is not a total process memory measurement. Increasing extraction or merge parallelism increases resource requirements.
+At the default `postings-buffer-pairs` capacity, each set of builder sort buffers occupies approximately 460 MiB. During a builder swap, two sets can coexist, requiring approximately twice that memory before other overhead. Allocate this memory, plus headroom for decoding, document metadata, merging, and uploads, in the builder's container or pod memory requests and limits, or in the host's memory budget for a non-containerized deployment. If you set Go's `GOMEMLIMIT`, leave room below the container or host limit for memory not covered by `GOMEMLIMIT`; it is a Go runtime setting, not a Full-Text Index flag or a hard cap on process memory. The estimated-memory metric is not a total process memory measurement. Increasing extraction or merge parallelism increases resource requirements.
 
 Size your builder scratch storage for approximately two to three times `flush-on-max-bytes`, because active runs, retiring runs, and merged output can coexist. At the default threshold, that means approximately 40–60 GiB before additional operational headroom. Builder startup clears its scratch directory, so use a dedicated path that contains no other data.
 
@@ -167,13 +167,13 @@ New indexes become available only after building, uploading, and discovery. Cach
 
 ## Retention
 
-Logline indexes are shared across tenants. The scheduler uses the longest nonzero `retention_period` from `limits_config` and configured tenant overrides to expire indexes. If no nonzero period is configured, age-based index deletion is disabled. Per-selector `retention_stream` rules are not used to calculate this period.
+The Full-Text Index files are shared across tenants. The scheduler uses the longest nonzero `retention_period` from `limits_config` and configured tenant overrides to expire indexes. If no nonzero period is configured, age-based index deletion is disabled. Per-selector `retention_stream` rules are not used to calculate this period.
 
 {{< admonition type="warning" >}}
-A tenant's `retention_period: 0` does not prevent index deletion when the default or another tenant has a positive retention period. For example, with a default of `0`, Tenant A configured with `retention_period: 7d`, and no longer retention period configured, the scheduler applies 7-day retention to all shared Logline indexes, not just indexes for Tenant A. Other tenants might retain their logs indefinitely, but their index coverage older than 7 days is still deleted. Live narrowing over those older logs can then skip data and return incomplete results.
+A tenant's `retention_period: 0` does not prevent index deletion when the default or another tenant has a positive retention period. For example, with a default of `0`, Tenant A configured with `retention_period: 7d`, and no longer retention period configured, the scheduler applies 7-day retention to all shared Full-Text Index files, not just indexes for Tenant A. Other tenants might retain their logs indefinitely, but their index coverage older than 7 days is still deleted. Live narrowing over those older logs can then skip data and return incomplete results.
 {{< /admonition >}}
 
-Ensure index retention covers every log time range where live narrowing can apply, including logs retained indefinitely or longer by per-selector retention rules. Do not apply an object storage lifecycle policy that removes indexes while their logs remain queryable through live Logline.
+Ensure index retention covers every log time range where live narrowing can apply, including logs retained indefinitely or longer by per-selector retention rules. Do not apply an object storage lifecycle policy that removes indexes while their logs remain queryable through live Full-Text Index.
 
 After compaction, source indexes remain available for `-logline-retention.compacted-source-delete-delay`, which defaults to 1 hour. This delay lets readers using older discovery snapshots finish reading the source indexes. Account for discovery delays and in-flight reads before reducing it.
 
@@ -195,4 +195,4 @@ Monitor both index coverage and query effectiveness:
 
 ## Next steps
 
-For high consumption lag or queries that do not accelerate, refer to [Tune Logline]({{< relref "./tuning.md" >}}). For errors and missing results, refer to [Troubleshoot Logline]({{< relref "../troubleshooting/troubleshoot-logline.md" >}}).
+For high consumption lag or queries that do not accelerate, refer to [Tune the Full-Text Index]({{< relref "./tuning.md" >}}). For errors and missing results, refer to [Troubleshoot the Full-Text Index]({{< relref "../troubleshooting/troubleshoot-logline.md" >}}).

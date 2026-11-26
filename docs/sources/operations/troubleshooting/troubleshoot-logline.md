@@ -1,19 +1,19 @@
 ---
-title: Troubleshoot Logline
-menuTitle: Troubleshoot Logline
-description: Diagnose Logline builder, storage, and query lookup messages that affect indexing and query acceleration.
+title: Troubleshoot the Full-Text Index
+menuTitle: Troubleshoot the Full-Text Index
+description: Diagnose Full-Text Index builder, storage, and query lookup messages that affect indexing and query acceleration.
 weight: 110
 ---
 
-# Troubleshoot Logline
+# Troubleshoot the Full-Text Index
 
 {{< admonition type="warning" >}}
-Logline is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. Logline requires [Kafka-based ingestion]({{< relref "../kafka.md" >}}). Configuration options, index formats, and behavior can change. Validate index coverage and query results before enabling live acceleration.
+The Full-Text Index is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. The Full-Text Index requires [Kafka-based ingestion]({{< relref "../kafka.md" >}}). Configuration options, index formats, and behavior can change. Validate index coverage and query results before enabling live acceleration.
 {{< /admonition >}}
 
-This page explains specific messages logged by Logline builders and query components. Before you begin, ensure you can access component logs, inspect Kafka and object storage connectivity, and view the deployment's configuration.
+This page explains specific messages logged by Full-Text Index builders and query components. Before you begin, ensure you can access component logs, inspect Kafka and object storage connectivity, and view the deployment's configuration.
 
-For high consumption lag without a specific error, refer to [Tune Logline]({{< relref "../logline/tuning.md" >}}). If index coverage is uncertain, [disable live narrowing]({{< relref "../logline/tuning.md#protect-query-results-while-recovering" >}}) while investigating.
+For high consumption lag without a specific error, refer to [Tune the Full-Text Index]({{< relref "../logline/tuning.md" >}}). If index coverage is uncertain, [disable live narrowing]({{< relref "../logline/tuning.md#protect-query-results-while-recovering" >}}) while investigating.
 
 ## Builder errors
 
@@ -49,7 +49,7 @@ The builder retries failed flush steps. Fix the underlying error rather than inc
 
 **Properties:**
 
-- Enforced by: Logline index builder
+- Enforced by: Full-Text Index builder
 - Retryable: Yes, failed flush steps retry automatically
 - HTTP status: N/A (component log message)
 - Configurable per tenant: No
@@ -79,7 +79,7 @@ The builder cannot create or read its scratch directory, or cannot write an inte
 
 **Properties:**
 
-- Enforced by: Logline index builder
+- Enforced by: Full-Text Index builder
 - Retryable: Requires correcting the storage problem; failed startup or record processing requires a restart
 - HTTP status: N/A (component startup or processing failure)
 - Configurable per tenant: No
@@ -105,7 +105,7 @@ The builder cannot decode a record from its configured Kafka topic. The message 
 
 **Properties:**
 
-- Enforced by: Logline index builder
+- Enforced by: Full-Text Index builder
 - Retryable: Requires correcting the record or configuration and restarting the failed service
 - HTTP status: N/A (component processing failure)
 - Configurable per tenant: No
@@ -142,7 +142,7 @@ The index store cannot list index objects or read their metadata. An initial pol
 
 **Properties:**
 
-- Enforced by: Logline index store
+- Enforced by: Full-Text Index store
 - Retryable: Background polls retry automatically; an initial polling failure requires a successful restart
 - HTTP status: N/A (component log message)
 - Configurable per tenant: No
