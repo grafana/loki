@@ -81,13 +81,19 @@ func (c ChunkMetas) Less(i, j int) bool {
 // TODO(owen-d): can we remove the need for this by ensuring we only push
 // in order and without duplicates?
 func (c ChunkMetas) Finalize() ChunkMetas {
+	res, _, _ := c.FinalizeDropped()
+	return res
+}
+
+// FinalizeDropped is Finalize, also returning the KB and lines of the duplicates it dropped.
+func (c ChunkMetas) FinalizeDropped() (res ChunkMetas, droppedKB, droppedLines uint64) {
 	sort.Sort(c)
 
 	if len(c) == 0 {
-		return c
+		return c, 0, 0
 	}
 
-	res := ChunkMetasPool.Get()
+	res = ChunkMetasPool.Get()
 	lastDuplicate := -1
 	prior := c[0]
 
@@ -97,6 +103,8 @@ func (c ChunkMetas) Finalize() ChunkMetas {
 		if x.MinTime == prior.MinTime && x.MaxTime == prior.MaxTime && x.Checksum == prior.Checksum {
 			res = append(res, c[lastDuplicate+1:i]...)
 			lastDuplicate = i
+			droppedKB += uint64(x.KB)
+			droppedLines += uint64(x.Entries)
 		}
 		prior = x
 	}
@@ -105,15 +113,14 @@ func (c ChunkMetas) Finalize() ChunkMetas {
 	// by returning unmodified underlying slice
 	if len(res) == 0 {
 		ChunkMetasPool.Put(res) // release unused slice to pool
-		return c
+		return c, 0, 0
 	}
 
 	// otherwise, append any remaining values
 	res = append(res, c[lastDuplicate+1:]...)
 	// release self to pool; res will be returned instead
 	ChunkMetasPool.Put(c)
-	return res
-
+	return res, droppedKB, droppedLines
 }
 
 // Add adds ChunkMeta at the right place in order. It assumes existing ChunkMetas have already been sorted by using Finalize.

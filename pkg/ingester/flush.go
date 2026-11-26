@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -749,6 +750,11 @@ func (i *Ingester) reportFlushedChunkStatistics(ch *chunk.Chunk, desc *chunkDesc
 
 	if ok && compressedSize > 0 {
 		i.metrics.chunkCompressionRatio.Observe(float64(uncompressedSize) / compressedSize)
+	}
+	if ok {
+		// Rounded to whole KB per chunk, the size the chunk's index entry records and the only one the
+		// compactor sees, so this can be compared with the compactor's dedupe counters.
+		i.metrics.indexedChunkBytes.Add(math.Round(float64(uncompressedSize)/1024) * 1024)
 	}
 
 	utilization := ch.Data.Utilization()

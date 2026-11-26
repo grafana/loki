@@ -612,7 +612,7 @@ func TestCompactor_Compact(t *testing.T) {
 					require.NoError(t, err)
 
 					// build TableCompactor and compact the index
-					dedupe := newDedupeTracker(prometheus.NewRegistry(), dedupeTrackedTables)
+					dedupe := newDedupeMetrics(prometheus.NewRegistry())
 					tCompactor := newTableCompactor(context.Background(), commonIndexSet, existingUserIndexSets, func(userID string) (compactor.IndexSet, error) {
 						idxSet, err := newMockIndexSet(userID, tableName.Prefix, filepath.Join(tableWorkingDirectory, userID), objectClient)
 						require.NoError(t, err)
@@ -627,15 +627,11 @@ func TestCompactor_Compact(t *testing.T) {
 
 					// Every stream config is indexed twice per user, with and without the user_id label.
 					if len(tc.multiTenantIndexConfigs) > 0 {
-						var listed, existing uint64
-						for _, c := range tc.multiTenantIndexConfigs {
-							listed += streamsKB(c.streamsConfig)
-						}
+						var existing uint64
 						for _, c := range tc.perTenantIndexConfigs {
 							existing += streamsKB(c.streamsConfig)
 						}
 						n := uint64(2 * numUsers)
-						require.Equal(t, float64(n*listed*1024), testutil.ToFloat64(dedupe.listedBytes))
 						require.Equal(t, float64(n*(streamsKB(tc.expectedStreams)-existing)*1024), testutil.ToFloat64(dedupe.distinctBytes))
 					}
 
@@ -1243,7 +1239,7 @@ func TestSetupBuilder_ManyFiles(t *testing.T) {
 	// This should complete without errors even with many files
 	// because files are closed immediately after processing
 	ctx := context.Background()
-	builder, _, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
+	builder, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, builder)
 
@@ -1306,7 +1302,7 @@ func TestCompactTable_ClosesFilesOnError(t *testing.T) {
 				filepath.Join(tableWorkingDirectory, userID), objectClient)
 		},
 		periodConfig,
-		newDedupeTracker(nil, dedupeTrackedTables),
+		newDedupeMetrics(nil),
 	)
 
 	// CompactTable should return an error due to the corrupt file.
@@ -1682,7 +1678,7 @@ func BenchmarkSetupBuilder(b *testing.B) {
 		before := heapAlloc()
 		b.StartTimer()
 
-		builder, _, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant)
+		builder, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant, nil)
 		require.NoError(b, err)
 
 		b.StopTimer()
