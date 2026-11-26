@@ -38,7 +38,7 @@ func TestLayoutSectionBuilder(t *testing.T) {
 	})
 
 	t.Run("writes a section that a row reader reads as no rows", func(t *testing.T) {
-		reader := stats.NewRowReader(t.Context(), openSection(t))
+		reader := stats.NewRowReader(t.Context(), openSection(t), nil)
 		require.False(t, reader.Next())
 		require.NoError(t, reader.Err())
 		require.NoError(t, reader.Close())

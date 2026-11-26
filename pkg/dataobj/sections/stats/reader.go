@@ -135,6 +135,10 @@ type Column struct {
 
 var tracer = otel.Tracer("pkg/dataobj/sections/stats")
 
+// RowReaderStatsTracker is the type of [ReaderOptions.StatsTracker] and of the
+// tracker argument of [NewRowReader].
+type RowReaderStatsTracker = dataset.RowReaderStatsTracker
+
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
 	// Columns to read. Each column must belong to the same [Section].
@@ -143,6 +147,9 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
+
+	// StatsTracker keeps track of the various reader internal stats.
+	StatsTracker dataset.RowReaderStatsTracker
 }
 
 // validate returns an error if opts is invalid. ReaderOptions are valid when
@@ -274,6 +281,7 @@ func (r *Reader) init(ctx context.Context) error {
 		Dataset:           dset,
 		ProjectedColumns:  dset.Columns(),
 		PrefetchAllOnOpen: true,
+		StatsTracker:      r.opts.StatsTracker,
 	}
 	if r.inner == nil {
 		r.inner = columnar.NewReaderAdapter(innerOptions)

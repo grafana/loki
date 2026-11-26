@@ -621,16 +621,21 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 }
 
 type recordingLogMergeObserver struct {
-	stats      []LogMergeObservedStats
-	inputBytes []int64
+	stats                []LogMergeObservedStats
+	inputBytes           []int64
+	compressedInputBytes []int64
 }
 
 func (o *recordingLogMergeObserver) ObserveLogMerge(_ string, stats LogMergeObservedStats, _ time.Duration) {
 	o.stats = append(o.stats, stats)
 }
 
-func (o *recordingLogMergeObserver) ObserveLogMergeInputBytes(bytes int64) {
+func (o *recordingLogMergeObserver) ObserveLogMergeInputBytesUncompressed(bytes int64) {
 	o.inputBytes = append(o.inputBytes, bytes)
+}
+
+func (o *recordingLogMergeObserver) ObserveLogMergeInputBytesCompressed(bytes int64) {
+	o.compressedInputBytes = append(o.compressedInputBytes, bytes)
 }
 
 func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
@@ -670,6 +675,10 @@ func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
 	require.Equal(t, logMergeOutcomeSuccess, observer.stats[0].Outcome)
 	require.Equal(t, int64(len("line1")+len("line1")+len("line22")), observer.stats[0].InputBytes)
 	require.Equal(t, 1, observer.stats[0].DuplicateRecords)
+
+	wantCompressedBytes := logsPageBytes(t, dataBucket, tenant, "objA", "objB")
+	require.Positive(t, wantCompressedBytes)
+	require.Equal(t, wantCompressedBytes, totalBytes(observer.compressedInputBytes), "the merge reads every source page")
 }
 
 func TestDoLogObjectMerge_CountsDuplicatesByStreamLabels(t *testing.T) {
@@ -2026,4 +2035,30 @@ func testLogsBuilderConfig(targetPageSize, targetSectionSize flagext.Bytes) logs
 		SectionStripeMergeLimit:   2,
 		EstimatedCompressionRatio: 8,
 	}
+}
+
+// logsPageBytes returns the total compressed size of the pages in the logs sections of
+// tenant in the objects at paths.
+func logsPageBytes(t *testing.T, bucket objstore.Bucket, tenant string, paths ...string) int64 {
+	t.Helper()
+	var total int64
+	for _, path := range paths {
+		obj, err := dataobj.FromBucket(t.Context(), bucket, path, 0)
+		require.NoError(t, err)
+		for _, section := range obj.Sections().Filter(logs.CheckSection) {
+			if section.Tenant != tenant {
+				continue
+			}
+			opened, err := logs.Open(t.Context(), section)
+			require.NoError(t, err)
+			sectionStats, err := logs.ReadStats(t.Context(), opened)
+			require.NoError(t, err)
+			for _, column := range sectionStats.Columns {
+				for _, page := range column.Pages {
+					total += int64(page.CompressedSize)
+				}
+			}
+		}
+	}
+	return total
 }

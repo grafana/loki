@@ -518,7 +518,7 @@ func (f *logSectionFolder) addSection(ctx context.Context, section *dataobj.Sect
 	if err != nil {
 		return fmt.Errorf("open stats section: %w", err)
 	}
-	reader := stats.NewRowReader(ctx, statsSection)
+	reader := stats.NewRowReader(ctx, statsSection, nil)
 	defer util.CloseAndHandleError(reader, &err)
 	for reader.Next() {
 		f.add(reader.At())

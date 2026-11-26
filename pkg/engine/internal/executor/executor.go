@@ -60,8 +60,16 @@ type Config struct {
 	GetExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 }
 
+// IndexMergeObserver receives IndexMerge statistics.
 type IndexMergeObserver interface {
+	// ObserveIndexMergeOutput receives the size of the index objects of one
+	// finished task.
 	ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64)
+
+	// ObserveIndexMergeInput receives the compressed and the uncompressed size
+	// of a batch of source pages that the task downloaded, while the task
+	// runs. Pages that the reader prunes are not counted.
+	ObserveIndexMergeInput(tenant string, compressedBytes, uncompressedBytes int64)
 }
 
 // LogMergeObserver receives LogMerge statistics from one worker thread.
@@ -69,17 +77,27 @@ type LogMergeObserver interface {
 	// ObserveLogMerge receives the summary of one finished task.
 	ObserveLogMerge(tenant string, stats LogMergeObservedStats, duration time.Duration)
 
-	// ObserveLogMergeInputBytes receives the size of a batch of merged records
-	// while the task runs. It reports during the task, not once at the end,
-	// so that rate() stays steady for tasks that run for many minutes.
-	ObserveLogMergeInputBytes(bytes int64)
+	// ObserveLogMergeInputBytesUncompressed receives the size of a batch of
+	// merged records while the task runs. The size is the line bytes plus the
+	// structured metadata value bytes. It reports during the task, not once at
+	// the end, so that rate() stays steady for tasks that run for many
+	// minutes.
+	ObserveLogMergeInputBytesUncompressed(bytes int64)
+
+	// ObserveLogMergeInputBytesCompressed receives the compressed size of a
+	// batch of source pages that the task downloaded, while the task runs.
+	//
+	// The reader downloads ahead of the merge. A batch can include pages that
+	// the merge has not consumed yet.
+	ObserveLogMergeInputBytesCompressed(bytes int64)
 }
 
 // nopLogMergeObserver discards LogMerge statistics.
 type nopLogMergeObserver struct{}
 
 func (nopLogMergeObserver) ObserveLogMerge(string, LogMergeObservedStats, time.Duration) {}
-func (nopLogMergeObserver) ObserveLogMergeInputBytes(int64)                              {}
+func (nopLogMergeObserver) ObserveLogMergeInputBytesUncompressed(int64)                  {}
+func (nopLogMergeObserver) ObserveLogMergeInputBytesCompressed(int64)                    {}
 
 // NewLogMergeObserverFunc returns the LogMergeObserver for the worker thread
 // with the given index.

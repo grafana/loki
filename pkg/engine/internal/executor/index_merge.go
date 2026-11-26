@@ -62,14 +62,21 @@ func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) (
 	}
 	defer out.reset()
 
-	if err := c.mergePostingsInto(ctx, runs, node.KeySpan, keepAll, out); err != nil {
+	var tracker postings.RowReaderStatsTracker
+	if c.indexMergeObserver != nil {
+		tracker = postings.NewOnPagesDownloadedFunc(func(compressedBytes, uncompressedBytes int64) {
+			c.indexMergeObserver.ObserveIndexMergeInput(node.Tenant, compressedBytes, uncompressedBytes)
+		})
+	}
+
+	if err := c.mergePostingsInto(ctx, runs, node.KeySpan, keepAll, out, tracker); err != nil {
 		return nil, fmt.Errorf("merging postings: %w", err)
 	}
 	statsObjects, err := statsSources(node, objects)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.mergeStatsInto(ctx, statsObjects, keepAll, out); err != nil {
+	if err := c.mergeStatsInto(ctx, statsObjects, keepAll, out, tracker); err != nil {
 		return nil, fmt.Errorf("merging stats: %w", err)
 	}
 
@@ -308,8 +315,10 @@ func keepAll(string) bool { return true }
 //
 // The readers skip the pages that hold no key of keySpan, so a task of a
 // merge split by key span reads little more than its own range.
-func (c *Context) mergePostingsInto(ctx context.Context, runs [][]sourceSection, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput) error {
-	readers := postingsSequences(ctx, runs, keySpan)
+//
+// tracker is optional. The readers report their stats to it.
+func (c *Context) mergePostingsInto(ctx context.Context, runs [][]sourceSection, keySpan postings.KeySpan, keep func(logObjectPath string) bool, out *indexOutput, tracker postings.RowReaderStatsTracker) error {
+	readers := postingsSequences(ctx, runs, keySpan, tracker)
 	if len(readers) == 0 {
 		return nil
 	}
@@ -371,9 +380,9 @@ func (c *Context) mergePostingsInto(ctx context.Context, runs [][]sourceSection,
 // postingsSequences returns one sequence over the postings rows of each run
 // that has postings sections, for the K-way merge. The sequences return only
 // the rows whose posting key is in keySpan, and fail on a row out of order.
-func postingsSequences(ctx context.Context, runs [][]sourceSection, keySpan postings.KeySpan) []sequence[postings.Row] {
+func postingsSequences(ctx context.Context, runs [][]sourceSection, keySpan postings.KeySpan, tracker postings.RowReaderStatsTracker) []sequence[postings.Row] {
 	open := func(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[postings.Row], error) {
-		return openPostingsReader(ctx, sec, keySpan)
+		return openPostingsReader(ctx, sec, keySpan, tracker)
 	}
 	readers := make([]sequence[postings.Row], 0, len(runs))
 	for _, run := range runs {
@@ -394,7 +403,12 @@ func postingsSequences(ctx context.Context, runs [][]sourceSection, keySpan post
 // mergeStatsInto merges the stats sections of all source index objects with a
 // K-way loser-tree merge. It writes a row to out only if keep returns true for
 // the log object path of the row.
-func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput) error {
+//
+// tracker is optional. The readers report their stats to it.
+func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, keep func(logObjectPath string) bool, out *indexOutput, tracker stats.RowReaderStatsTracker) error {
+	open := func(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[stats.Stat], error) {
+		return openStatsReader(ctx, sec, tracker)
+	}
 	readers := make([]sequence[stats.Stat], 0, len(objects))
 	for _, obj := range objects {
 		if len(obj.stats) == 0 {
@@ -404,7 +418,7 @@ func (c *Context) mergeStatsInto(ctx context.Context, objects []objectSections, 
 			ctx:      ctx,
 			sections: sectionsOf(obj.path, obj.stats),
 			seqIdx:   len(readers),
-			open:     openStatsReader,
+			open:     open,
 		})
 	}
 	if len(readers) == 0 {
@@ -569,7 +583,7 @@ func (s *sectionConcatSeq[R]) Close() error {
 
 // openPostingsReader opens a postings section and returns an iterator over its
 // rows whose posting key is in keySpan.
-func openPostingsReader(ctx context.Context, sec *dataobj.Section, keySpan postings.KeySpan) (iter.CloseIterator[postings.Row], error) {
+func openPostingsReader(ctx context.Context, sec *dataobj.Section, keySpan postings.KeySpan, tracker postings.RowReaderStatsTracker) (iter.CloseIterator[postings.Row], error) {
 	ps, err := postings.Open(ctx, sec)
 	if err != nil {
 		return nil, err
@@ -582,7 +596,7 @@ func openPostingsReader(ctx context.Context, sec *dataobj.Section, keySpan posti
 	if predicate != nil {
 		predicates = []postings.Predicate{predicate}
 	}
-	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns(), Predicates: predicates})
+	reader := postings.NewReader(postings.ReaderOptions{Columns: ps.Columns(), Predicates: predicates, StatsTracker: tracker})
 	if err := reader.Open(ctx); err != nil {
 		return nil, fmt.Errorf("opening postings reader: %w", err)
 	}
@@ -590,12 +604,12 @@ func openPostingsReader(ctx context.Context, sec *dataobj.Section, keySpan posti
 }
 
 // openStatsReader opens a stats section and returns a row iterator over it.
-func openStatsReader(ctx context.Context, sec *dataobj.Section) (iter.CloseIterator[stats.Stat], error) {
+func openStatsReader(ctx context.Context, sec *dataobj.Section, tracker stats.RowReaderStatsTracker) (iter.CloseIterator[stats.Stat], error) {
 	ss, err := stats.Open(ctx, sec)
 	if err != nil {
 		return nil, err
 	}
-	return stats.NewRowReader(ctx, ss), nil
+	return stats.NewRowReader(ctx, ss, tracker), nil
 }
 
 // sequence[R] is one group cursor for the K-way merge. It is an

@@ -109,7 +109,7 @@ func readAllStatsRowsFromBucket(t *testing.T, bucket objstore.Bucket, path strin
 		}
 		statsSec, err := stats.Open(ctx, sec)
 		require.NoError(t, err)
-		reader := stats.NewRowReader(ctx, statsSec)
+		reader := stats.NewRowReader(ctx, statsSec, nil)
 		for reader.Next() {
 			rows = append(rows, reader.At())
 		}

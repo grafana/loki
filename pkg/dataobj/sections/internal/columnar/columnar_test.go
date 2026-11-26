@@ -280,6 +280,14 @@ func TestDecoder_ReadPages(t *testing.T) {
 		}
 	})
 
+	t.Run("returns an error when the uncompressed size of a page does not fit in an int", func(t *testing.T) {
+		tooLarge := uint64(math.MaxInt) + 1
+		got, err := readPages(t, reader, &datasetmd.PageDesc{DataOffset: 0, DataSize: 1, UncompressedSize: tooLarge})
+
+		require.EqualError(t, err, fmt.Sprintf("page 0 has an uncompressed size that does not fit in an int: size=%d", tooLarge))
+		require.Empty(t, got)
+	})
+
 	t.Run("returns an error when the size of the data region is negative", func(t *testing.T) {
 		got, err := readPages(t, negativeDataSizeReader{reader}, &datasetmd.PageDesc{DataOffset: 0, DataSize: 1})
 

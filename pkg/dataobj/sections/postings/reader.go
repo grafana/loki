@@ -19,6 +19,17 @@ import (
 
 var tracer = otel.Tracer("pkg/dataobj/sections/postings")
 
+// RowReaderStatsTracker is the type of [ReaderOptions.StatsTracker].
+type RowReaderStatsTracker = dataset.RowReaderStatsTracker
+
+// NewOnPagesDownloadedFunc returns a stats tracker for
+// [ReaderOptions.StatsTracker]. It calls fn with the compressed and the
+// uncompressed size of each batch of pages that the reader downloads. It
+// returns nil if fn is nil.
+func NewOnPagesDownloadedFunc(fn func(compressedBytes, uncompressedBytes int64)) RowReaderStatsTracker {
+	return dataset.NewOnPagesDownloadedFunc(fn)
+}
+
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
 	// Columns to read. Each column must belong to the same [Section].

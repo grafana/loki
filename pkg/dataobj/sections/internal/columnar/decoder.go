@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -117,7 +118,7 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 // error is emitted from the sequence and iteration stops.
 //
 // ReadPages emits one error and no pages if a page does not fit in the data
-// region of the section.
+// region of the section, or if its uncompressed size does not fit in an int.
 func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) result.Seq[dataset.PageData] {
 	return result.Iter(func(yield func(dataset.PageData) bool) error {
 		region := xcap.RegionFromContext(ctx)
@@ -136,6 +137,12 @@ func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) 
 			// uint64(dataSize) would wrap to a huge value.
 			if dataSize < 0 || page.DataOffset > uint64(dataSize) || page.DataSize > uint64(dataSize)-page.DataOffset {
 				return fmt.Errorf("page %d is outside the data region: offset=%d size=%d region length=%d", i, page.DataOffset, page.DataSize, dataSize)
+			}
+
+			// The page descriptor stores the size as an int. A larger value would
+			// wrap to a negative size.
+			if page.UncompressedSize > math.MaxInt {
+				return fmt.Errorf("page %d has an uncompressed size that does not fit in an int: size=%d", i, page.UncompressedSize)
 			}
 
 			ranges = append(ranges, rangeio.Range{

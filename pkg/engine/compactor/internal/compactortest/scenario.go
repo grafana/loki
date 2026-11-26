@@ -146,7 +146,7 @@ func (s *Scenario) ReadReachableContents(ctx context.Context, t *testing.T, tena
 		for _, section := range sections.Filter(stats.CheckSection) {
 			opened, err := stats.Open(ctx, section)
 			require.NoError(t, err)
-			rows := stats.NewRowReader(ctx, opened)
+			rows := stats.NewRowReader(ctx, opened, nil)
 			for rows.Next() {
 				row := rows.At()
 				contents.StatsObjectPaths[row.ObjectPath] = true
