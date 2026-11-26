@@ -41,11 +41,22 @@ func NewQueryResultPrinter(showLabelsKey []string, ignoreLabelsKey []string, qui
 type streamEntryPair struct {
 	entry  loghttp.Entry
 	labels loghttp.LabelSet
+	// streamKey identifies the stream the entry came from, using the labels as
+	// returned by Loki (before common/ignored labels are removed for display).
+	streamKey string
 }
 
-func (r *QueryResultPrinter) PrintResult(value loghttp.ResultValue, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry, error) {
+// BatchEntry is an entry printed at the end of a batch, together with the
+// stream it belongs to, so that it can be recognised when the next batch
+// overlaps with it.
+type BatchEntry struct {
+	loghttp.Entry
+	streamKey string
+}
+
+func (r *QueryResultPrinter) PrintResult(value loghttp.ResultValue, out output.LogOutput, lastEntry []*BatchEntry) (int, []*BatchEntry, error) {
 	length := -1
-	var entry []*loghttp.Entry
+	var entry []*BatchEntry
 	switch value.Type() {
 	case logqlmodel.ValueTypeStreams:
 		var err error
@@ -71,7 +82,7 @@ func (r *QueryResultPrinter) PrintResult(value loghttp.ResultValue, out output.L
 	return length, entry, nil
 }
 
-func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry, error) {
+func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry []*BatchEntry) (int, []*BatchEntry, error) {
 	common := commonLabels(streams)
 
 	// Remove the labels we want to show from common
@@ -94,7 +105,9 @@ func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.Log
 	// Remove ignored and common labels from the cached labels and
 	// calculate the max labels length
 	maxLabelsLen := r.FixedLabelsLen
+	streamKeys := make([]string, len(streams))
 	for i, s := range streams {
+		streamKeys[i] = s.Labels.String()
 		ls := s.Labels
 		// Remove common labels
 		if !r.IncludeCommonLabels {
@@ -123,11 +136,12 @@ func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.Log
 	// sort and display entries
 	allEntries := make([]streamEntryPair, 0)
 
-	for _, s := range streams {
+	for i, s := range streams {
 		for _, e := range s.Entries {
 			allEntries = append(allEntries, streamEntryPair{
-				entry:  e,
-				labels: s.Labels,
+				entry:     e,
+				labels:    s.Labels,
+				streamKey: streamKeys[i],
 			})
 		}
 	}
@@ -151,7 +165,7 @@ func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.Log
 			// shared by multiple entries we have to check all that were stored to see if we've already
 			// printed them.
 			for _, le := range lastEntry {
-				if e.entry.Line == le.Line {
+				if e.entry.Line == le.Line && e.streamKey == le.streamKey {
 					skip = true
 				}
 			}
@@ -169,13 +183,13 @@ func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.Log
 	// with an entry that shared multiple timestamps, so we need to keep a list of all these entries
 	// because the next query is going to contain them too and we want to not duplicate anything already
 	// printed.
-	lel := []*loghttp.Entry{}
+	lel := []*BatchEntry{}
 	// Start with the timestamp of the last entry
 	le := allEntries[len(allEntries)-1].entry
 	for i, e := range allEntries {
 		// Save any entry which has this timestamp (most of the time this will only be the single last entry)
 		if e.entry.Timestamp.Equal(le.Timestamp) {
-			lel = append(lel, &allEntries[i].entry)
+			lel = append(lel, &BatchEntry{Entry: allEntries[i].entry, streamKey: allEntries[i].streamKey})
 		}
 	}
 
