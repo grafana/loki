@@ -5,8 +5,8 @@ package log
 //
 // A stage must not keep UnsafeData, a slice of it, or a string that aliases it, for example one
 // made with unsafe. This includes the values of the labels that a stage sets. A stage must copy
-// what it keeps. A line that a stage returns can alias the line that it got, so the same rule
-// applies to the line that Process returns.
+// what it keeps, and SafeCopyString does that for a string. A line that a stage returns can alias
+// the line that it got, so the same rule applies to the line that Process returns.
 //
 // UnsafeBytes is a struct, not an alias or a defined type over []byte. An alias is the same type
 // as []byte, so the compiler does not tell them apart. A defined type is a new type, but Go
@@ -18,4 +18,11 @@ type UnsafeBytes struct {
 	// UnsafeData is the memory of the line. The name repeats the warning at each use, so a reader
 	// sees that the code touches memory that it does not own.
 	UnsafeData []byte
+}
+
+// SafeCopyString returns a copy of the line as a string. The string does not alias the line, so it
+// stays valid after the owner reuses or overwrites the memory. A caller that only needs an owned
+// string does not have to read UnsafeData.
+func (u UnsafeBytes) SafeCopyString() string {
+	return string(u.UnsafeData)
 }

@@ -22,7 +22,7 @@ func (m *decolorizeStage) Run(in chan Entry) chan Entry {
 				log.UnsafeBytes{UnsafeData: []byte(e.Line)},
 				nil,
 			)
-			e.Line = string(decolorizedLine.UnsafeData)
+			e.Line = decolorizedLine.SafeCopyString()
 			out <- e
 		}
 	}()

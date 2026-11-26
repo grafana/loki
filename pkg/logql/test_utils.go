@@ -128,7 +128,7 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 				}
 				s.Entries = append(s.Entries, logproto.Entry{
 					Timestamp: e.Timestamp,
-					Line:      string(l.UnsafeData),
+					Line:      l.SafeCopyString(),
 				})
 			}
 		}

@@ -1824,7 +1824,7 @@ func (e *entryBufferedIterator) Next() bool {
 		e.stats.AddPostFilterLines(1)
 		e.currLabels = lbs
 		e.cur.Timestamp = time.Unix(0, e.currTs)
-		e.cur.Line = string(newLine.UnsafeData)
+		e.cur.Line = newLine.SafeCopyString()
 		e.cur.StructuredMetadata = logproto.FromLabelsToLabelAdapters(lbs.StructuredMetadata())
 		e.cur.Parsed = logproto.FromLabelsToLabelAdapters(lbs.Parsed())
 

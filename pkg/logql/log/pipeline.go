@@ -353,7 +353,7 @@ func (p *streamPipeline) ProcessString(ts int64, line string, structuredMetadata
 	// Stages only read from the line.
 	lb, lr, ok := p.Process(ts, UnsafeBytes{UnsafeData: unsafeGetBytes(line)}, structuredMetadata)
 	// but the returned line needs to be copied.
-	return string(lb.UnsafeData), lr, ok
+	return lb.SafeCopyString(), lr, ok
 }
 
 func (p *streamPipeline) BaseLabels() LabelsResult { return p.builder.currentResult }
