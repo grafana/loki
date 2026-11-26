@@ -87,7 +87,7 @@ require (
 	github.com/parquet-go/bitpack v1.1.0
 	github.com/parquet-go/parquet-go v0.32.1
 	// github.com/pierrec/lz4 v2.0.5+incompatible
-	github.com/pierrec/lz4/v4 v4.1.33
+	github.com/pierrec/lz4/v4 v4.1.34
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_golang/exp v0.0.0-20261019101427-217707f26b14
