@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/prometheus/prometheus/model/labels"
@@ -288,7 +289,7 @@ func (s *Scanner) MatchLabels(ctx context.Context, alloc *memory.Allocator, cms 
 		perMatcher := out[ref]
 		if perMatcher == nil {
 			perMatcher = make([]MatchedStreams, len(cms))
-			out[ref] = perMatcher
+			out[ownRef(ref)] = perMatcher
 		}
 		bits := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
 		for _, i := range cands {
@@ -362,7 +363,7 @@ func (s *Scanner) LabelStreams(ctx context.Context, alloc *memory.Allocator, cms
 		perMatcher := out[ref]
 		if perMatcher == nil {
 			perMatcher = make([]LabelStreams, len(cms))
-			out[ref] = perMatcher
+			out[ownRef(ref)] = perMatcher
 		}
 		bits := memory.BitmapFrom(row.StreamIDBitmap, len(row.StreamIDBitmap)*8, 0)
 		for _, i := range cands {
@@ -423,8 +424,20 @@ func widen(minNS, maxNS *int64, has *bool, row Row) {
 	}
 }
 
+// refOf returns the SectionRef of row. Its ObjectPath shares the memory of
+// row, so a map that outlives the scan must key on [ownRef] of it.
 func refOf(row Row) SectionRef {
 	return SectionRef{ObjectPath: row.ObjectPath, SectionIndex: row.SectionIndex}
+}
+
+// ownRef returns ref with its own copy of ObjectPath.
+//
+// The strings of a [Row] keep the values of their whole batch alive. A result
+// map keeps the key of the first row of each section, so without the copy it
+// keeps up to one batch alive for each section that the scan found.
+func ownRef(ref SectionRef) SectionRef {
+	ref.ObjectPath = strings.Clone(ref.ObjectPath)
+	return ref
 }
 
 // unionStreams returns the bitwise OR of acc and bits, treating a nil acc as
@@ -520,7 +533,7 @@ func (s *Scanner) MatcherHits(ctx context.Context, predicates []*labels.Matcher)
 			vals := matched[ref]
 			if vals == nil {
 				vals = make(map[PredicateValue]struct{})
-				matched[ref] = vals
+				matched[ownRef(ref)] = vals
 			}
 			vals[pv] = struct{}{}
 		}
@@ -574,9 +587,11 @@ func (s *Scanner) labelNameHits(ctx context.Context) (map[SectionRef]map[string]
 		set := hits[ref]
 		if set == nil {
 			set = make(map[string]struct{})
-			hits[ref] = set
+			hits[ownRef(ref)] = set
 		}
-		set[row.ColumnName] = struct{}{}
+		if _, ok := set[row.ColumnName]; !ok {
+			set[strings.Clone(row.ColumnName)] = struct{}{}
+		}
 	}
 	return hits, lr.Err()
 }

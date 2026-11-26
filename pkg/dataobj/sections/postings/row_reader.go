@@ -102,8 +102,9 @@ func (r *RowReader) next() (Row, error) {
 // the last Next call returned false.
 //
 // The record does not use the memory of the batch, so it stays valid after
-// later calls to Next. A retained record keeps the strings and stream ID
-// bitmaps of its batch alive.
+// later calls to Next. But each of its strings and stream ID bitmaps keeps
+// those values of its whole batch alive. A caller that keeps a few values for
+// longer than the scan, such as map keys, must copy them.
 func (r *RowReader) At() Row { return r.cur }
 
 // Err returns any error that caused iteration to end. nil on natural EOF.
