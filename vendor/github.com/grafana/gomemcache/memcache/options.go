@@ -14,11 +14,36 @@ func newOptions(opts ...Option) *Options {
 	return o
 }
 
-// Options are used to modify the behavior of an individual Get or GetMulti
-// call made by the Client. They are constructed by applying Option callbacks
-// passed to a Client method to a default Options instance.
+// shardKeyOf returns the shard key that opts set, or an empty string when they
+// set none. With no options it allocates nothing.
+func shardKeyOf(opts []Option) string {
+	if len(opts) == 0 {
+		return ""
+	}
+	return newOptions(opts...).ShardKey
+}
+
+// legalShardKey reports whether shardKey is empty, which means no shard key, or
+// follows the rule of an item key.
+func legalShardKey(shardKey string) bool {
+	return shardKey == "" || legalKey(shardKey)
+}
+
+func selectorKey(itemKey, shardKey string) string {
+	if shardKey != "" {
+		return shardKey
+	}
+	return itemKey
+}
+
+// Options change the behavior of one Client call. The Client builds them by
+// applying the Option callbacks of the call to a default Options instance.
 type Options struct {
 	Alloc Allocator
+
+	// ShardKey, when it is not empty, picks the server of the call instead of
+	// the item key.
+	ShardKey string
 }
 
 // Option is a callback used to modify the Options that a particular Client
@@ -26,10 +51,43 @@ type Options struct {
 type Option func(opts *Options)
 
 // WithAllocator creates a new Option that makes use of a specific memory Allocator
-// for result values (Item.Value) loaded from memcached.
+// for result values (Item.Value) loaded from memcached. Get and GetMulti use
+// it. The other methods ignore it.
 func WithAllocator(alloc Allocator) Option {
 	return func(opts *Options) {
 		opts.Alloc = alloc
+	}
+}
+
+// WithShardKey creates an Option that picks the server of a call from shardKey,
+// not from the item key. Every Client method that takes an item key accepts it.
+// An empty shardKey means no shard key. If a call has several WithShardKey
+// options, the last one wins.
+//
+// Use a shard key when items belong together. Without one, GetMulti splits its
+// item keys across servers. With one, a single server gets one request with all
+// the item keys. One response holds all the items, so the caller must limit the
+// number of item keys.
+//
+// The caller owns the choice of the shard key. The client does not check that
+// the items of a shard key fit on one server, or that one server can carry
+// their load. A shard key that groups too many items can fill or overload its
+// server. Spreading the items across servers can also be faster, because the
+// servers work in parallel.
+//
+// The client passes the shard key to the ServerSelector. It does not send the
+// shard key to the server.
+//
+// A shard key follows the rule of an item key: at most 250 bytes, with no space
+// and no control character. A call with another shard key returns
+// ErrMalformedKey.
+//
+// The item key alone identifies an item on a server. Items with the same item
+// key and different shard keys collide when the shard keys pick the same
+// server. Keep item keys unique across shard keys.
+func WithShardKey(shardKey string) Option {
+	return func(opts *Options) {
+		opts.ShardKey = shardKey
 	}
 }
 

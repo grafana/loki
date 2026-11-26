@@ -58,7 +58,15 @@ type PartitionInstanceLifecyclerConfig struct {
 	// DeleteInactivePartitionAfterDuration is how long the lifecycler should wait before
 	// deleting inactive partitions with no owners. Inactive partitions are never removed
 	// if this value is 0.
+	// If both this and DeleteInactivePartitionAfterDurationFunc are set, then the value returned
+	// from DeleteInactivePartitionAfterDurationFunc is used.
 	DeleteInactivePartitionAfterDuration time.Duration
+
+	// DeleteInactivePartitionAfterDurationFunc is like DeleteInactivePartitionAfterDuration,
+	// but allows for dynamically setting the duration (eg. in response to runtime limits).
+	// If both this and DeleteInactivePartitionAfterDuration are set, then the value returned
+	// from DeleteInactivePartitionAfterDurationFunc is used.
+	DeleteInactivePartitionAfterDurationFunc func() (time.Duration, error)
 
 	// PollingInterval is the internal polling interval. This setting is useful to let
 	// upstream projects to lower it in unit tests.
@@ -405,9 +413,19 @@ func (l *PartitionInstanceLifecycler) reconcileOtherPartitions(ctx context.Conte
 
 	err := l.updateRing(ctx, func(ring *PartitionRingDesc) (bool, error) {
 		changed := false
+		deleteInactivePartitionAfter := l.cfg.DeleteInactivePartitionAfterDuration
 
-		if l.cfg.DeleteInactivePartitionAfterDuration > 0 {
-			deleteBefore := now.Add(-l.cfg.DeleteInactivePartitionAfterDuration)
+		if l.cfg.DeleteInactivePartitionAfterDurationFunc != nil {
+			var err error
+			deleteInactivePartitionAfter, err = l.cfg.DeleteInactivePartitionAfterDurationFunc()
+
+			if err != nil {
+				return false, err
+			}
+		}
+
+		if deleteInactivePartitionAfter > 0 {
+			deleteBefore := now.Add(-deleteInactivePartitionAfter)
 
 			for partitionID, partition := range ring.Partitions {
 				// Never delete the partition owned by this lifecycler, since it's expected to have at least
