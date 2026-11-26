@@ -159,9 +159,11 @@ func (b *Builder) dropEmptyStreams() {
 // duplicates it dropped. It must be called before the chunks are modified.
 func (b *Builder) FinalizeChunks() (droppedKB, droppedLines uint64) {
 	for s := range b.allStreams() {
-		chks, kb, lines := s.chunks.FinalizeDropped()
-		droppedKB += kb
-		droppedLines += lines
+		before := s.chunks.Stats()
+		chks := s.chunks.Finalize()
+		after := chks.Stats()
+		droppedKB += before.KB - after.KB
+		droppedLines += before.Entries - after.Entries
 		// The chunks are held until Build, if we are holding a large buffer unnecessarily
 		// then release and copy to a new slice to reduce heap pressure.
 		if cap(chks)-len(chks) > len(chks)/4 { // 4 has been tested in real world compactions but is large untuned.

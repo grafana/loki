@@ -228,7 +228,8 @@ func (t *tableCompactor) CompactTable() error {
 		if err != nil {
 			return err
 		}
-		distinctKB, distinctLines = distinctKB+kb, distinctLines+lines
+		distinctKB += kb
+		distinctLines += lines
 
 		compactedIndex := newCompactedIndex(t.ctx, existingUserIndexSet.GetTableName(), userID, existingUserIndexSet.GetWorkingDir(), t.periodConfig, builder)
 		t.compactedIndexes[userID] = compactedIndex
@@ -319,10 +320,9 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
 		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
-			for _, chk := range chks {
-				listedKB += uint64(chk.KB)
-				listedLines += uint64(chk.Entries)
-			}
+			st := tsdbindex.ChunkMetas(chks).Stats()
+			listedKB += st.KB
+			listedLines += st.Entries
 			builder.AddSeries(withoutTenantLabel(lbls), fp, chks)
 			return false
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
