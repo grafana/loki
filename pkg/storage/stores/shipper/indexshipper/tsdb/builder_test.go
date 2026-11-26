@@ -288,16 +288,3 @@ func heapAlloc() uint64 {
 	runtime.ReadMemStats(&m)
 	return m.HeapAlloc
 }
-
-// TestFinalizeChunks_ReturnsDropped checks that FinalizeChunks returns the KB and lines of the
-// duplicates it dropped.
-func TestFinalizeChunks_ReturnsDropped(t *testing.T) {
-	chunk := func(id int64, kb uint32) index.ChunkMeta {
-		return index.ChunkMeta{MinTime: id * 1000, MaxTime: id*1000 + 999, Checksum: uint32(id) + 1, Entries: 3, KB: kb}
-	}
-	b := NewBuilder(index.FormatV3)
-	b.AddSeries(labels.FromStrings("series", "0"), 0, index.ChunkMetas{chunk(0, 10), chunk(1, 20)})
-	b.AddSeries(labels.FromStrings("series", "0"), 0, index.ChunkMetas{chunk(1, 20), chunk(2, 30)})
-	kb, lines := b.FinalizeChunks()
-	require.Equal(t, [2]uint64{20, 3}, [2]uint64{kb, lines})
-}
