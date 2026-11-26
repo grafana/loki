@@ -79,6 +79,7 @@ func (c *coordinator) newPairPlanner() *pairPlanner {
 		bucket:            c.bucket,
 		metrics:           c.metrics,
 		strategy:          c.logMergePlanningStrategy,
+		maxRunSize:        c.limits.LogCompactionMaxRunSize,
 		minCompactionSize: uint64(c.cfg.LogMinCompactionSize),
 		maxLogTaskSize:    uint64(c.cfg.LogMaxTaskSize),
 		maxKeySize:        uint64(c.cfg.LogMaxKeySize),

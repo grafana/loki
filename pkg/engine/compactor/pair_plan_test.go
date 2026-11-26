@@ -54,6 +54,31 @@ func TestPlanPairs(t *testing.T) {
 		require.Equal(t, []LegacyIndexRun{{IndexPaths: []string{"indexes/legacy"}, LogRuns: 2, UncompressedSize: 400}}, plan.Legacy)
 	})
 
+	t.Run("plans no merge of exactly the maximum run size", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairIndex(t.Context(), t, bucket, "indexes/a", pairTestSchema, testLogObject{"logs/a", "a", "z"})
+		seedPairIndex(t.Context(), t, bucket, "indexes/b", pairTestSchema, testLogObject{"logs/b", "a", "z"})
+		cappedCfg := cfg
+		cappedCfg.LogMaxRunSize = 400
+
+		plan, err := PlanPairs(t.Context(), log.NewNopLogger(), bucket, "acme", imWindow(), cappedCfg)
+		require.NoError(t, err)
+		require.Len(t, plan.Pairs, 2)
+		require.Empty(t, plan.Merges)
+	})
+
+	t.Run("plans a merge below the maximum run size", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairIndex(t.Context(), t, bucket, "indexes/a", pairTestSchema, testLogObject{"logs/a", "a", "z"})
+		seedPairIndex(t.Context(), t, bucket, "indexes/b", pairTestSchema, testLogObject{"logs/b", "a", "z"})
+		cappedCfg := cfg
+		cappedCfg.LogMaxRunSize = 401
+
+		plan, err := PlanPairs(t.Context(), log.NewNopLogger(), bucket, "acme", imWindow(), cappedCfg)
+		require.NoError(t, err)
+		require.Len(t, plan.Merges, 1)
+	})
+
 	t.Run("splits a merge into log tasks above the maximum log task size", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedPairIndex(t.Context(), t, bucket, "indexes/a", pairTestSchema, testLogObject{"logs/a", "a", "z"})

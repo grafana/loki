@@ -337,7 +337,9 @@ func (c *coordinator) compactTenantLogs(
 //
 // planLogCompaction returns a plan with no work if the index has no sections
 // for tenant, is below the minimum compaction size, needs no compaction, or
-// has a sort prefix above the maximum key size in every planned merge.
+// has a sort prefix above the maximum key size in every planned merge. An
+// index needs no compaction when every group of k runs in a level reaches the
+// maximum run size of the tenant.
 func (c *coordinator) planLogCompaction(
 	ctx context.Context,
 	tenant string,
@@ -364,15 +366,17 @@ func (c *coordinator) planLogMerge(
 	sections []v2.Section[logSortPrefix],
 ) (logCompactionPlan, error) {
 	entryLogger := log.With(c.logger, "tenant", tenant, "entry", sourceIndexRun.String())
+	strategy := v2.NewCappedSizeLeveledStrategy(c.logMergePlanningStrategy, c.limits.LogCompactionMaxRunSize(tenant))
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
 	singleRuns := countSingleObjectRuns(runs)
+	cappedRuns := strategy.CappedRuns(runs)
 	if v2.BelowMinCompactionSize(runs, uint64(c.cfg.LogMinCompactionSize)) ||
-		!c.logMergePlanningStrategy.NeedsCompaction(runs) {
-		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window)
+		!strategy.NeedsCompaction(runs) {
+		level.Debug(entryLogger).Log("msg", "log-compaction: window not worth compacting, skipping", "window", window, "capped_runs", cappedRuns)
 		return logCompactionPlan{singleObjectRuns: singleRuns}, nil
 	}
 
-	merges, unmerged := c.logMergePlanningStrategy.Plan(runs, tenant)
+	merges, unmerged := strategy.Plan(runs, tenant)
 	if len(merges) == 0 {
 		return logCompactionPlan{}, fmt.Errorf("no log merge tasks to execute for source index %s: %d runs, %d unmerged", sourceIndexRun, len(runs), len(unmerged))
 	}
@@ -396,7 +400,7 @@ func (c *coordinator) planLogMerge(
 		specs = append(specs, splitter.split(merge)...)
 	}
 
-	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmergedRuns))
+	level.Info(entryLogger).Log("msg", "planned log compaction tasks", "input_runs", len(runs), "runs_per_level", fmt.Sprint(c.logMergePlanningStrategy.RunsPerLevel(runs)), "merges", len(merges), "tasks", len(specs), "unmerged_runs", len(unmergedRuns), "capped_runs", cappedRuns)
 	logMergeTaskDetails(entryLogger, specs)
 
 	plan := logCompactionPlan{

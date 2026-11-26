@@ -41,5 +41,6 @@ type CombinedLimits interface {
 	DataObjShardLayout(userID string) streams.ShardLayout
 	CompactionPhases(userID string) (runIndex, runLog bool)
 	DeletionSweepEnabled(userID string) bool
+	LogCompactionMaxRunSize(userID string) uint64
 	PolicyLimitsServiceStreamsExpiry(userID, policy string) (time.Duration, bool)
 }

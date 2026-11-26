@@ -217,6 +217,7 @@ type Limits struct {
 	DataObjIndexCompactionEnabled  bool             `yaml:"dataobj_index_compaction_enabled" json:"dataobj_index_compaction_enabled" category:"experimental"`
 	DataObjLogCompactionEnabled    bool             `yaml:"dataobj_log_compaction_enabled" json:"dataobj_log_compaction_enabled" category:"experimental"`
 	DataObjDeletionSweepEnabled    bool             `yaml:"dataobj_deletion_sweep_enabled" json:"dataobj_deletion_sweep_enabled" category:"experimental"`
+	DataObjLogCompactionMaxRunSize flagext.ByteSize `yaml:"dataobj_log_compaction_max_run_size" json:"dataobj_log_compaction_max_run_size" category:"experimental"`
 	BloomPlanningStrategy          string           `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy"`
 	BloomSplitSeriesKeyspaceBy     int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by"`
 	BloomTaskTargetSeriesChunkSize flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size"`
@@ -566,6 +567,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.DataObjIndexCompactionEnabled, "dataobj-compaction.index.enable", false, "Experimental. Whether dataobj index compaction runs for the tenant.")
 	f.BoolVar(&l.DataObjLogCompactionEnabled, "dataobj-compaction.log.enable", false, "Experimental. Whether dataobj log compaction runs for the tenant. Log compaction implies index compaction; enabling log compaction without index compaction is a configuration error.")
 	f.BoolVar(&l.DataObjDeletionSweepEnabled, "dataobj-compaction.deletion-sweep.enable", false, "Experimental. Whether the dataobj deletion sweep runs for the tenant. A sweep finds the objects of the tenant that no table of contents (ToC) file can reach. An object that two sweeps, at least 23 hours apart, both find unreachable is a deletion candidate. Sweeps delete the candidates, or only log them if -dataobj.compaction.deletion-sweep.dry-run is true. The sweep also needs -dataobj.compaction.deletion-sweep.enabled.")
+	// The default is the lower bound of size level 5. Merges into level 5 and
+	// above rewrite much data for little query benefit.
+	_ = l.DataObjLogCompactionMaxRunSize.Set("8TB")
+	f.Var(&l.DataObjLogCompactionMaxRunSize, "dataobj-compaction.log.max-run-size", "Experimental. Exclusive upper bound of the uncompressed size of a run that dataobj log compaction writes for the tenant. Log compaction merges runs of a similar size in groups. It merges a group only if the summed size of its runs is below this value, and otherwise keeps the runs as they are. Units are powers of 2, so 1TB is 2^40 bytes. 0 means no maximum.")
 	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Deprecated: Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor', 'split_by_series_chunks_size'")
 	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Deprecated: Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
 	_ = l.BloomTaskTargetSeriesChunkSize.Set(defaultBloomTaskTargetChunkSize)
@@ -1232,6 +1237,13 @@ func (o *Overrides) CompactionPhases(userID string) (runIndex, runLog bool) {
 // the tenant.
 func (o *Overrides) DeletionSweepEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).DataObjDeletionSweepEnabled
+}
+
+// LogCompactionMaxRunSize returns the exclusive upper bound of the
+// uncompressed size of a run that dataobj log compaction writes for the
+// tenant, in bytes. 0 means no maximum.
+func (o *Overrides) LogCompactionMaxRunSize(userID string) uint64 {
+	return uint64(o.getOverridesForUser(userID).DataObjLogCompactionMaxRunSize)
 }
 
 func (o *Overrides) BloomPlanningStrategy(userID string) string {

@@ -4727,6 +4727,14 @@ shard_streams:
 # CLI flag: -dataobj-compaction.deletion-sweep.enable
 [dataobj_deletion_sweep_enabled: <boolean> | default = false]
 
+# Experimental. Exclusive upper bound of the uncompressed size of a run that
+# dataobj log compaction writes for the tenant. Log compaction merges runs of a
+# similar size in groups. It merges a group only if the summed size of its runs
+# is below this value, and otherwise keeps the runs as they are. Units are
+# powers of 2, so 1TB is 2^40 bytes. 0 means no maximum.
+# CLI flag: -dataobj-compaction.log.max-run-size
+[dataobj_log_compaction_max_run_size: <int> | default = 8TB]
+
 # Deprecated: Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
 # CLI flag: -bloom-build.planning-strategy
