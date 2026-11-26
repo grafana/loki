@@ -64,7 +64,7 @@ func (r *RowReader) Next() bool {
 // Bloom rows can hold tens of kilobytes each, and every batch is copied
 // several times while it is read. An index merge keeps one batch open per
 // source index, so a larger batch multiplies the memory of the merge.
-const rowReaderBatchSize = 1024
+const rowReaderBatchSize = 128
 
 // next reads the next Row from the section. Returns io.EOF when exhausted.
 func (r *RowReader) next() (Row, error) {
