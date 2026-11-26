@@ -60,7 +60,7 @@ func packNested(stream logproto.InternalStreamAdapter, shards, expandedBytes int
 	}
 
 	count := min(shards, total)
-	capacity := count
+	var capacity int
 	if uint64(expandedBytes) <= targetBytes {
 		count, capacity = 1, 1
 	} else {
