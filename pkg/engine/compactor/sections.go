@@ -502,6 +502,21 @@ type logSectionFolder struct {
 	labelNames []string
 	bySection  map[logSectionID]*v2.Section[logSortPrefix]
 	interned   map[string]string
+
+	// schemaKeys holds one shared schema key and label values slice for
+	// each distinct set of label values, keyed by the schema key.
+	schemaKeys map[string]sharedSchemaKey
+	// scratch holds the label values of the current stats row. sortPrefix
+	// reuses it to avoid an allocation for each row, and keeps no reference
+	// to it.
+	scratch []string
+}
+
+// sharedSchemaKey is a schema key and the label values that encode it, shared
+// by every stats row with those values.
+type sharedSchemaKey struct {
+	key    string
+	labels []string
 }
 
 func newLogSectionFolder(labelNames []string) *logSectionFolder {
@@ -509,7 +524,48 @@ func newLogSectionFolder(labelNames []string) *logSectionFolder {
 		labelNames: labelNames,
 		bySection:  make(map[logSectionID]*v2.Section[logSortPrefix]),
 		interned:   make(map[string]string),
+		schemaKeys: make(map[string]sharedSchemaKey),
+		scratch:    make([]string, len(labelNames)),
 	}
+}
+
+// sortPrefix returns the sort prefix of stat. Rows with the same label values
+// share the schema key string and the label values slice of their prefix. An
+// index run can hold millions of stats rows over few distinct values, and the
+// planner can keep them for many scans.
+func (f *logSectionFolder) sortPrefix(stat stats.Stat) logSortPrefix {
+	if len(f.labelNames) == 0 {
+		return newLogSortPrefix(stat.ShardBucket, nil)
+	}
+	for i, name := range f.labelNames {
+		f.scratch[i] = stat.Labels[name]
+	}
+	encoded := streams.EncodeSchemaKey(f.scratch)
+	shared, ok := f.schemaKeys[encoded]
+	switch {
+	case !ok:
+		// The key of one label is the value itself, which points into the
+		// buffers of a record batch, so the folder keeps a copy.
+		shared = sharedSchemaKey{key: strings.Clone(encoded), labels: f.internedScratch()}
+		f.schemaKeys[shared.key] = shared
+	case !slices.Equal(shared.labels, f.scratch):
+		// Values with a NUL byte can encode to the key of other values. Such
+		// a row shares the key string, but needs its own values.
+		shared = sharedSchemaKey{key: shared.key, labels: f.internedScratch()}
+	}
+	return logSortPrefix{
+		prefix: streams.SortPrefix{ShardBucket: stat.ShardBucket, SchemaKey: shared.key},
+		labels: shared.labels,
+	}
+}
+
+// internedScratch returns a copy of scratch with interned values.
+func (f *logSectionFolder) internedScratch() []string {
+	labels := make([]string, len(f.scratch))
+	for i, value := range f.scratch {
+		labels[i] = intern(f.interned, value)
+	}
+	return labels
 }
 
 // addSection folds every row of section, which must be a stats section.
@@ -533,14 +589,7 @@ func (f *logSectionFolder) addSection(ctx context.Context, section *dataobj.Sect
 // whole LogMerge phase. Without a copy, they keep every batch in memory.
 // Interning copies each distinct value once.
 func (f *logSectionFolder) add(stat stats.Stat) {
-	var labels []string
-	if len(f.labelNames) > 0 {
-		labels = make([]string, len(f.labelNames))
-		for i, name := range f.labelNames {
-			labels[i] = intern(f.interned, stat.Labels[name])
-		}
-	}
-	key := newLogSortPrefix(stat.ShardBucket, labels)
+	key := f.sortPrefix(stat)
 	keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
 
 	path := intern(f.interned, stat.ObjectPath)
@@ -586,6 +635,9 @@ func (f *logSectionFolder) add(stat stats.Stat) {
 func (f *logSectionFolder) refs() []v2.Section[logSortPrefix] {
 	refs := make([]v2.Section[logSortPrefix], 0, len(f.bySection))
 	for _, ref := range f.bySection {
+		// Trim the spare capacity that append left, because the planner can
+		// keep the keys for many scans.
+		ref.Keys = slices.Clone(ref.Keys)
 		refs = append(refs, *ref)
 	}
 	slices.SortFunc(refs, func(a, b v2.Section[logSortPrefix]) int {

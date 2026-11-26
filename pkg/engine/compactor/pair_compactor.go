@@ -72,8 +72,8 @@ type pairCompactor struct {
 }
 
 // newPairPlanner returns the planner of the coupled planner, with the
-// settings of c.
-func (c *coordinator) newPairPlanner() *pairPlanner {
+// settings of c. It reads the stats of index runs through cache.
+func (c *coordinator) newPairPlanner(cache *logSectionsCache) *pairPlanner {
 	return &pairPlanner{
 		logger:                      c.logger,
 		bucket:                      c.bucket,
@@ -83,6 +83,7 @@ func (c *coordinator) newPairPlanner() *pairPlanner {
 		minCompactionSize:           uint64(c.cfg.LogMinCompactionSize),
 		maxLogTaskSize:              uint64(c.cfg.LogMaxTaskSize),
 		maxKeySize:                  uint64(c.cfg.LogMaxKeySize),
+		cache:                       cache,
 	}
 }
 
@@ -92,7 +93,7 @@ func (c *coordinator) newPairCompactor(tenant string) *pairCompactor {
 	return &pairCompactor{
 		tenant:           tenant,
 		logger:           log.With(c.logger, "tenant", tenant, "planner", "pairs"),
-		planner:          c.newPairPlanner(),
+		planner:          c.newPairPlanner(newLogSectionsCache(tenant, c.metrics)),
 		bucket:           c.bucket,
 		publisher:        c.publisher,
 		dispatcher:       c.pairDispatcher,
@@ -135,14 +136,16 @@ func (p *pairCompactor) run(ctx context.Context) {
 // plans. It returns the number of jobs it started. A window that fails to plan
 // does not stop the other windows.
 //
-// planAndStart sets the last plan timestamp of the tenant only if it planned every
-// index run of every window.
+// planAndStart sets the last plan timestamp of the tenant only if it planned
+// every index run of every window.
 func (p *pairCompactor) planAndStart(ctx context.Context) int {
 	var (
 		started  int
 		complete = true
 	)
-	for lookback, window := range p.windows() {
+	windows := p.windows()
+	p.planner.cache.dropWindowsExcept(windows)
+	for lookback, window := range windows {
 		leased := p.leases.snapshot()
 		legacy := ignoreLegacy
 		if lookback == 0 {
