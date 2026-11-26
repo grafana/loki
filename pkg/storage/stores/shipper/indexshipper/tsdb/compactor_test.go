@@ -637,6 +637,9 @@ func TestCompactor_Compact(t *testing.T) {
 						n := uint64(2 * numUsers)
 						require.Equal(t, float64(n*listed*1024), testutil.ToFloat64(dedupe.listedBytes))
 						require.Equal(t, float64(n*(streamsKB(tc.expectedStreams)-existing)*1024), testutil.ToFloat64(dedupe.distinctBytes))
+						// The inline counters see no re-uploads here, so they must agree.
+						require.Equal(t, testutil.ToFloat64(dedupe.listedBytes), testutil.ToFloat64(dedupe.inline.listedBytes))
+						require.Equal(t, testutil.ToFloat64(dedupe.distinctBytes), testutil.ToFloat64(dedupe.inline.listedBytes)-testutil.ToFloat64(dedupe.inline.dedupedBytes))
 					}
 
 					// verify that we have CompactedIndex for numUsers
@@ -1243,7 +1246,7 @@ func TestSetupBuilder_ManyFiles(t *testing.T) {
 	// This should complete without errors even with many files
 	// because files are closed immediately after processing
 	ctx := context.Background()
-	builder, _, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{})
+	builder, _, err := setupBuilder(ctx, indexFormat, "user1", idxSet, []Index{}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, builder)
 
@@ -1682,7 +1685,7 @@ func BenchmarkSetupBuilder(b *testing.B) {
 		before := heapAlloc()
 		b.StartTimer()
 
-		builder, _, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant)
+		builder, _, err := setupBuilder(ctx, s.indexFormat, s.userID, s.idxSet, s.multiTenant, nil)
 		require.NoError(b, err)
 
 		b.StopTimer()

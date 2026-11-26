@@ -189,7 +189,7 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		builder, tenantSizes, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, multiTenantIndices)
+		builder, tenantSizes, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, multiTenantIndices, t.dedupe.inline)
 		if err != nil {
 			return err
 		}
@@ -215,7 +215,7 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 
-		builder, _, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{})
+		builder, _, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{}, nil)
 		if err != nil {
 			return err
 		}
@@ -277,7 +277,7 @@ func processSourceIndex(ctx context.Context, sourceIndex storage.IndexFile, sour
 // setupBuilder creates a Builder for a single user.
 // It combines the users index from multiTenantIndexes and its existing compacted index(es).
 // It also returns the chunk totals of the merge, see mergeStageSizes.
-func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index) (*Builder, mergeStageSizes, error) {
+func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index, inline *inlineDedupeMetrics) (*Builder, mergeStageSizes, error) {
 	var sizes mergeStageSizes
 	sourceIndexes := sourceIndexSet.ListSourceFiles()
 	builder := NewBuilder(indexType)
@@ -285,6 +285,7 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
 		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
+			inline.listed(chks)
 			builder.AddSeries(withoutTenantLabel(lbls), fp, chks)
 			return false
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
@@ -303,7 +304,7 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 	sizes.existing = builder.totalChunks().minus(sizes.listed)
 
 	// finalize the chunks to remove the duplicates and sort them
-	builder.FinalizeChunks()
+	inline.deduped(builder.FinalizeChunks())
 	sizes.afterDedupe = builder.totalChunks()
 
 	return builder, sizes, nil

@@ -73,6 +73,9 @@ type dedupeTracker struct {
 	listedLines   prometheus.Counter
 	distinctLines prometheus.Counter
 
+	// TEST ONLY: the inline counting proposed in review, run side by side with the counters above.
+	inline *inlineDedupeMetrics
+
 	mtx       sync.Mutex
 	maxTables int
 	seen      map[string]map[string]struct{}
@@ -109,6 +112,7 @@ func newDedupeTracker(reg prometheus.Registerer, maxTables int) *dedupeTracker {
 			Name:      "tsdb_distinct_chunk_lines_total",
 			Help:      "Total lines of chunk entries that were new in the compacted index after deduplication.",
 		}),
+		inline:    newInlineDedupeMetrics(reg),
 		maxTables: maxTables,
 		seen:      make(map[string]map[string]struct{}),
 	}
@@ -192,4 +196,42 @@ func (b *Builder) totalChunks() chunkTotals {
 		t = t.add(s.chunks)
 	}
 	return t
+}
+
+// inlineDedupeMetrics is TEST ONLY. It counts listed and deduped chunk entries inline, as they are
+// read and dropped, with no re-upload filtering. A nil *inlineDedupeMetrics counts nothing.
+type inlineDedupeMetrics struct {
+	listedBytes  prometheus.Counter
+	listedLines  prometheus.Counter
+	dedupedBytes prometheus.Counter
+	dedupedLines prometheus.Counter
+}
+
+func newInlineDedupeMetrics(reg prometheus.Registerer) *inlineDedupeMetrics {
+	c := func(name, help string) prometheus.Counter {
+		return promauto.With(reg).NewCounter(prometheus.CounterOpts{Namespace: "loki", Subsystem: "compactor", Name: name, Help: "TEST ONLY. " + help})
+	}
+	return &inlineDedupeMetrics{
+		listedBytes:  c("tsdb_inline_listed_chunk_uncompressed_bytes_total", "Uncompressed bytes of chunk entries read from ingester index files, counted inline."),
+		listedLines:  c("tsdb_inline_listed_chunk_lines_total", "Lines of chunk entries read from ingester index files, counted inline."),
+		dedupedBytes: c("tsdb_inline_deduped_chunk_uncompressed_bytes_total", "Uncompressed bytes of duplicate chunk entries dropped, counted inline."),
+		dedupedLines: c("tsdb_inline_deduped_chunk_lines_total", "Lines of duplicate chunk entries dropped, counted inline."),
+	}
+}
+
+func (m *inlineDedupeMetrics) listed(chks []tsdbindex.ChunkMeta) {
+	if m == nil {
+		return
+	}
+	t := chunkTotals{}.add(chks)
+	m.listedBytes.Add(float64(t.kb * 1024))
+	m.listedLines.Add(float64(t.lines))
+}
+
+func (m *inlineDedupeMetrics) deduped(kb, lines uint64) {
+	if m == nil {
+		return
+	}
+	m.dedupedBytes.Add(float64(kb * 1024))
+	m.dedupedLines.Add(float64(lines))
 }

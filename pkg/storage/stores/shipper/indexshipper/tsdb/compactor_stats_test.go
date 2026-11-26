@@ -114,7 +114,7 @@ func TestNewIndexCompactorWithDedupeMetrics(t *testing.T) {
 	NewIndexCompactorWithDedupeMetrics(reg)
 	n, err := testutil.GatherAndCount(reg)
 	require.NoError(t, err)
-	require.Equal(t, 4, n)
+	require.Equal(t, 8, n)
 }
 
 // entries holds chunks per series id.

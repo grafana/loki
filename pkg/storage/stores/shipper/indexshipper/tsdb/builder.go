@@ -155,10 +155,15 @@ func (b *Builder) dropEmptyStreams() {
 	}
 }
 
-// FinalizeChunks sorts and dedupes the chunks of every stream. It must be called before the chunks are modified.
-func (b *Builder) FinalizeChunks() {
+// FinalizeChunks sorts and dedupes the chunks of every stream, returning the KB and lines of the
+// duplicates it dropped. It must be called before the chunks are modified.
+func (b *Builder) FinalizeChunks() (droppedKB, droppedLines uint64) {
 	for s := range b.allStreams() {
+		before := chunkTotals{}.add(s.chunks)
 		chks := s.chunks.Finalize()
+		after := chunkTotals{}.add(chks)
+		droppedKB += before.kb - after.kb
+		droppedLines += before.lines - after.lines
 		// The chunks are held until Build, if we are holding a large buffer unnecessarily
 		// then release and copy to a new slice to reduce heap pressure.
 		if cap(chks)-len(chks) > len(chks)/4 { // 4 has been tested in real world compactions but is large untuned.
@@ -167,6 +172,7 @@ func (b *Builder) FinalizeChunks() {
 		s.chunks = chks
 	}
 	b.chunksFinalized = true
+	return droppedKB, droppedLines
 }
 
 // InsertChunk adds a chunk to the stream with the given labels. The stream must exist.
