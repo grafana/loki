@@ -6,11 +6,19 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dslog "github.com/grafana/dskit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+)
+
+// The rate of decode failure logs. A topic in another format fails every
+// record, and the metric counts them all.
+const (
+	decodeFailureLogsPerSecond = 1
+	decodeFailureLogsBurst     = 5
 )
 
 var (
@@ -28,7 +36,8 @@ var (
 type processor struct {
 	decoder *kafka.Decoder
 	metrics *metrics
-	logger  log.Logger
+	// failureLogger logs decode failures at a limited rate.
+	failureLogger log.Logger
 }
 
 func newProcessor(metrics *metrics, logger log.Logger) *processor {
@@ -38,9 +47,9 @@ func newProcessor(metrics *metrics, logger log.Logger) *processor {
 		panic(err)
 	}
 	return &processor{
-		decoder: decoder,
-		metrics: metrics,
-		logger:  logger,
+		decoder:       decoder,
+		metrics:       metrics,
+		failureLogger: dslog.NewRateLimitedLogger(logger, decodeFailureLogsPerSecond, decodeFailureLogsBurst, nil),
 	}
 }
 
@@ -54,7 +63,7 @@ func (p *processor) process(rec *kgo.Record, now time.Time) {
 
 	if err := p.decode(rec); err != nil {
 		p.metrics.decodeFailures.Inc()
-		level.Warn(p.logger).Log("msg", "skipping a record that failed to decode", "offset", rec.Offset, "err", err)
+		level.Warn(p.failureLogger).Log("msg", "skipping a record that failed to decode", "offset", rec.Offset, "err", err)
 	}
 }
 
@@ -102,7 +111,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		}),
 		consumptionLag: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_chunk_builder_consumption_lag_seconds",
-			Help: "The time in seconds between the Kafka timestamp of the last consumed record and when the chunk-builder consumed it.",
+			Help: "The time in seconds between the Kafka timestamp of the last consumed record and when the chunk-builder consumed it. It does not change while no records arrive, so it does not grow when consumption stalls; alert on loki_chunk_builder_single_partition_consumer_fetch_errors_total for that.",
 		}),
 	}
 }

@@ -13,8 +13,8 @@ const DefaultConsumerGroup = "chunk-builder"
 
 // Config configures the chunk-builder.
 type Config struct {
-	// Enabled turns on the chunk-builder target. Running the target without it
-	// does nothing.
+	// Enabled turns on the chunk-builder target. The target fails to start
+	// without it.
 	Enabled bool `yaml:"enabled"`
 
 	// Topic is the Kafka topic that the chunk-builder consumes. It is a

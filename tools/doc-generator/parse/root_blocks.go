@@ -108,7 +108,7 @@ var (
 		{
 			Name:       "chunk_builder",
 			StructType: []reflect.Type{reflect.TypeFor[chunkbuilder.Config]()},
-			Desc:       "The chunk_builder block configures the experimental chunk-builder, which consumes one partition of a Kafka topic to build chunks and a TSDB index in object storage.",
+			Desc:       "The chunk_builder block configures the experimental chunk-builder, which is under development. Each chunk-builder consumes one partition of a Kafka topic.",
 		},
 		{
 			Name:       "index_gateway",

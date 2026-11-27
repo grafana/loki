@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"math"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,11 +20,17 @@ func TestConfig_RegisterFlags(t *testing.T) {
 	require.Equal(t, DefaultConsumerGroup, cfg.ConsumerGroup)
 }
 
+// tooLargePartitionID is a variable, so that converting it to int compiles on
+// 32-bit platforms too.
+var tooLargePartitionID int64 = math.MaxInt32 + 1
+
 func TestConfig_Validate(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		modify func(cfg *Config)
 		err    string
+		// only64 skips the case where int has 32 bits.
+		only64 bool
 	}{
 		{
 			name:   "valid with a topic and the defaults",
@@ -49,11 +56,15 @@ func TestConfig_Validate(t *testing.T) {
 		},
 		{
 			name:   "invalid with a partition ID that does not fit in 32 bits",
-			modify: func(cfg *Config) { cfg.PartitionID = math.MaxInt32 + 1 },
+			modify: func(cfg *Config) { cfg.PartitionID = int(tooLargePartitionID) },
 			err:    "the partition ID must fit in 32 bits",
+			only64: true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.only64 && strconv.IntSize < 64 {
+				t.Skip("an int cannot hold a partition ID beyond 32 bits")
+			}
 			var cfg Config
 			cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
 			cfg.Enabled = true
@@ -105,10 +116,28 @@ func TestResolvePartitionID(t *testing.T) {
 			expected:   12,
 		},
 		{
+			name:       "derives the partition from a hostname that contains local",
+			configured: -1,
+			hostname:   "chunk-builder-locality-3",
+			expected:   3,
+		},
+		{
 			name:       "fails when the hostname has no ordinal suffix",
 			configured: -1,
 			hostname:   "chunk-builder",
-			err:        "failed to extract partition ID from hostname: chunk-builder does not contain a partition ID",
+			err:        "hostname chunk-builder has no ordinal suffix: set -chunk-builder.partition-id",
+		},
+		{
+			name:       "fails for a local hostname without an ordinal suffix",
+			configured: -1,
+			hostname:   "laptop.local",
+			err:        "hostname laptop.local has no ordinal suffix: set -chunk-builder.partition-id",
+		},
+		{
+			name:       "fails when the ordinal suffix does not fit in 32 bits",
+			configured: -1,
+			hostname:   "chunk-builder-4294967296",
+			err:        `the ordinal suffix of hostname chunk-builder-4294967296 is not a partition: strconv.ParseInt: parsing "4294967296": value out of range`,
 		},
 		{
 			name:       "fails when the hostname is unknown",

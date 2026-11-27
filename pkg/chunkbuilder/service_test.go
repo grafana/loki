@@ -65,10 +65,11 @@ func TestService_ConsumesAndDecodesRecords(t *testing.T) {
 	})
 
 	m := s.processor.metrics
+	// The processor counts a record before it decodes it, so wait for the
+	// decode failure of the last record too.
 	require.Eventually(t, func() bool {
-		return testutil.ToFloat64(m.records) == 4
-	}, 10*time.Second, 10*time.Millisecond)
-	require.Equal(t, float64(2), testutil.ToFloat64(m.decodeFailures), "the invalid record and the record without a tenant fail to decode")
+		return testutil.ToFloat64(m.records) == 4 && testutil.ToFloat64(m.decodeFailures) == 2
+	}, 10*time.Second, 10*time.Millisecond, "the invalid record and the record without a tenant fail to decode")
 	require.Equal(t, float64(noTenant.Offset), testutil.ToFloat64(m.lastOffset))
 	require.Equal(t, float64(len(flat.Value)+len(nested.Value)+len(garbage.Value)+len(noTenant.Value)), testutil.ToFloat64(m.receivedBytes))
 	require.GreaterOrEqual(t, testutil.ToFloat64(m.consumptionLag), float64(0))
@@ -77,6 +78,46 @@ func TestService_ConsumesAndDecodesRecords(t *testing.T) {
 	committed, err := kafkav2.NewOffsetReader(producer, testTopic).LastCommittedOffset(ctx, DefaultConsumerGroup, 1)
 	require.NoError(t, err)
 	require.Equal(t, int64(-1), committed, "the chunk-builder must not commit offsets before checkpoints exist")
+}
+
+func TestService_FailsToStartWithoutThePartition(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		topic     string
+		partition int
+		err       string
+	}{
+		{
+			name:      "a topic that does not exist",
+			topic:     "does-not-exist",
+			partition: 0,
+			err:       "failed to list the partitions of the topic",
+		},
+		{
+			name:      "a partition beyond the partitions of the topic",
+			topic:     testTopic,
+			partition: 5,
+			err:       "the topic has no partition 5, only 2 partitions",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := testContext(t)
+			_, kafkaCfg := testkafka.CreateCluster(t, 2, testTopic)
+
+			cfg := testConfig(tc.partition)
+			cfg.Topic = tc.topic
+			s, err := New(kafkaCfg, cfg, prometheus.NewRegistry(), log.NewNopLogger())
+			require.NoError(t, err)
+
+			require.Error(t, services.StartAndAwaitRunning(ctx, s))
+			require.ErrorContains(t, s.FailureCase(), tc.err)
+
+			// The chunk-builder must not create the topic, since it only consumes.
+			topics, err := kadm.NewClient(newTestProducer(t, kafkaCfg)).ListTopics(ctx)
+			require.NoError(t, err)
+			require.Equal(t, []string{testTopic}, topics.Names())
+		})
+	}
 }
 
 func TestService_ResumesFromTheCommittedOffset(t *testing.T) {
@@ -114,7 +155,7 @@ func TestService_ResumesFromTheCommittedOffset(t *testing.T) {
 func TestService(t *testing.T) {
 	t.Run("starts the consumer from the resume offset", func(t *testing.T) {
 		consumer := newFakeConsumer()
-		s := newTestService(consumer, fakeOffsetReader{offset: 42})
+		s := newTestService(consumer, newFakeOffsetReader(42, nil))
 		ctx := testContext(t)
 		require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
@@ -129,7 +170,7 @@ func TestService(t *testing.T) {
 	t.Run("fails to start when it cannot read the resume offset", func(t *testing.T) {
 		errOffset := errors.New("offset fetch failed")
 		consumer := newFakeConsumer()
-		s := newTestService(consumer, fakeOffsetReader{err: errOffset})
+		s := newTestService(consumer, newFakeOffsetReader(0, errOffset))
 		ctx := testContext(t)
 
 		err := services.StartAndAwaitRunning(ctx, s)
@@ -149,6 +190,9 @@ func TestService(t *testing.T) {
 
 		require.Error(t, s.AwaitTerminated(ctx))
 		require.ErrorIs(t, s.FailureCase(), errConsumer)
+		// Whichever of the records channel and the watcher running sees first,
+		// the error comes from the watcher, which names the consumer.
+		require.ErrorContains(t, s.FailureCase(), "service fake-consumer failed")
 	})
 
 	t.Run("fails when the consumer stops on its own", func(t *testing.T) {
@@ -239,7 +283,7 @@ func newTestService(consumer *fakeConsumer, offsetReader resumeOffsetReader) *Se
 // A fakeConsumer runs until it is stopped or receives from stop. It closes
 // records when it stops, as [kafkav2.SinglePartitionConsumer] does.
 type fakeConsumer struct {
-	services.Service
+	*services.BasicService
 	records       chan *kgo.Record
 	stop          chan error
 	initialOffset int64
@@ -250,7 +294,7 @@ func newFakeConsumer() *fakeConsumer {
 		records: make(chan *kgo.Record),
 		stop:    make(chan error, 1),
 	}
-	c.Service = services.NewBasicService(nil, func(ctx context.Context) error {
+	c.BasicService = services.NewBasicService(nil, func(ctx context.Context) error {
 		defer close(c.records)
 		select {
 		case <-ctx.Done():
@@ -258,7 +302,7 @@ func newFakeConsumer() *fakeConsumer {
 		case err := <-c.stop:
 			return err
 		}
-	}, nil)
+	}, nil).WithName("fake-consumer")
 	return c
 }
 
@@ -267,11 +311,21 @@ func (c *fakeConsumer) SetInitialOffset(offset int64) error {
 	return nil
 }
 
+// A fakeOffsetReader serves one partition, 0, and fails every ResumeOffset
+// with err if it is not nil.
 type fakeOffsetReader struct {
 	offset int64
 	err    error
 }
 
+func newFakeOffsetReader(offset int64, err error) fakeOffsetReader {
+	return fakeOffsetReader{offset: offset, err: err}
+}
+
 func (r fakeOffsetReader) ResumeOffset(_ context.Context, _ string, _ int32) (int64, error) {
 	return r.offset, r.err
+}
+
+func (r fakeOffsetReader) EndOffsets(_ context.Context) (map[int32]int64, error) {
+	return map[int32]int64{0: r.offset}, nil
 }

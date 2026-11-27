@@ -470,3 +470,11 @@ func TestInitDataObjCache(t *testing.T) {
 		require.Equal(t, int64(defaultMetadataCacheMaxItemBytes), l.dataObjTOCCache.MaxItemBytes())
 	})
 }
+
+func TestInitChunkBuilder(t *testing.T) {
+	t.Run("fails when the target is selected but not enabled", func(t *testing.T) {
+		l := &Loki{}
+		_, err := l.initChunkBuilder()
+		require.EqualError(t, err, "the chunk-builder target needs -chunk-builder.enabled")
+	})
+}

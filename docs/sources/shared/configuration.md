@@ -1479,9 +1479,8 @@ dataobj:
 # filtering.
 [logline: <logline>]
 
-# The chunk_builder block configures the experimental chunk-builder, which
-# consumes one partition of a Kafka topic to build chunks and a TSDB index in
-# object storage.
+# The chunk_builder block configures the experimental chunk-builder, which is
+# under development. Each chunk-builder consumes one partition of a Kafka topic.
 [chunk_builder: <chunk_builder>]
 
 ingest_limits:
@@ -2491,7 +2490,7 @@ embedded_cache:
 
 ### chunk_builder
 
-The `chunk_builder` block configures the experimental chunk-builder, which consumes one partition of a Kafka topic to build chunks and a TSDB index in object storage.
+The `chunk_builder` block configures the experimental chunk-builder, which is under development. Each chunk-builder consumes one partition of a Kafka topic.
 
 ```yaml
 # Experimental: Enable the chunk-builder target. Each chunk-builder consumes one

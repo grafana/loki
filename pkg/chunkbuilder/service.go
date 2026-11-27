@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -22,7 +24,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
-	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/kafkav2"
 )
 
@@ -38,6 +39,9 @@ type partitionConsumer interface {
 // A resumeOffsetReader allows mocking of [kafkav2.OffsetReader] in tests.
 type resumeOffsetReader interface {
 	ResumeOffset(ctx context.Context, consumerGroup string, partition int32) (int64, error)
+	// EndOffsets returns the end offset of each partition of the topic, keyed
+	// by partition.
+	EndOffsets(ctx context.Context) (map[int32]int64, error)
 }
 
 // Service is the chunk-builder. It consumes one partition of a Kafka topic and
@@ -72,6 +76,10 @@ func New(kafkaCfg kafka.Config, cfg Config, reg prometheus.Registerer, logger lo
 	// topic, which the chunk-builder does not need.
 	readerCfg := kafkaCfg
 	readerCfg.Topic = cfg.Topic
+	// The chunk-builder only consumes. With auto-creation, a mistyped topic
+	// would be created and consumed silently, and every start would change the
+	// default number of partitions of the whole Kafka cluster.
+	readerCfg.AutoCreateTopicEnabled = false
 	if err := readerCfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid kafka config: %w", err)
 	}
@@ -115,9 +123,14 @@ func New(kafkaCfg kafka.Config, cfg Config, reg prometheus.Registerer, logger lo
 	return s, nil
 }
 
+// ordinalSuffix matches the ordinal suffix of a StatefulSet pod name.
+var ordinalSuffix = regexp.MustCompile(`-([0-9]+)$`)
+
 // resolvePartitionID returns configured if it is not negative. Otherwise it
 // returns the ordinal suffix of the hostname, so chunk-builder-3 consumes
-// partition 3.
+// partition 3. Unlike partitionring.ExtractPartitionID, it has no fallback
+// to partition 0, so two chunk-builders never share a partition because of
+// their hostnames.
 func resolvePartitionID(configured int, hostname func() (string, error)) (int32, error) {
 	if configured >= 0 {
 		return int32(configured), nil
@@ -126,11 +139,15 @@ func resolvePartitionID(configured int, hostname func() (string, error)) (int32,
 	if err != nil {
 		return 0, fmt.Errorf("failed to get hostname: %w", err)
 	}
-	partition, err := partitionring.ExtractPartitionID(name)
-	if err != nil {
-		return 0, fmt.Errorf("failed to extract partition ID from hostname: %w", err)
+	match := ordinalSuffix.FindStringSubmatch(name)
+	if match == nil {
+		return 0, fmt.Errorf("hostname %s has no ordinal suffix: set -chunk-builder.partition-id", name)
 	}
-	return partition, nil
+	partition, err := strconv.ParseInt(match[1], 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("the ordinal suffix of hostname %s is not a partition: %w", name, err)
+	}
+	return int32(partition), nil
 }
 
 // newService returns a Service that processes the records that consumer sends
@@ -156,7 +173,8 @@ func newService(
 		watcher:       services.NewFailureWatcher(),
 	}
 	// Watch the consumer before it starts, so no failure is lost. The watcher
-	// keeps a failure until running reads it.
+	// sends a failure on an unbuffered channel, so its listener blocks until
+	// running receives it, or until closeWatcher drains it.
 	s.watcher.WatchService(consumer)
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping).WithName(componentName)
 	return s
@@ -166,10 +184,12 @@ func newService(
 func (s *Service) starting(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "starting")
 	if err := s.initResumeOffset(ctx); err != nil {
+		s.closeWatcher()
 		s.close()
 		return fmt.Errorf("failed to initialize the offset of the consumer: %w", err)
 	}
 	if err := services.StartAndAwaitRunning(ctx, s.consumer); err != nil {
+		s.closeWatcher()
 		s.close()
 		return fmt.Errorf("failed to start the consumer: %w", err)
 	}
@@ -202,21 +222,44 @@ func (s *Service) consumerStopped(ctx context.Context) error {
 		// The service is stopping.
 		return nil
 	}
-	if err != nil {
-		return err
+	if err == nil {
+		return errors.New("the consumer stopped unexpectedly")
 	}
-	return errors.New("the consumer stopped unexpectedly")
+	// The consumer failed. Receive the failure from the watcher, which names
+	// the consumer and would otherwise block its listener forever.
+	select {
+	case err := <-s.watcher.Chan():
+		return err
+	case <-ctx.Done():
+		return nil
+	}
 }
 
 // stopping implements [services.StoppingFn].
 func (s *Service) stopping(failureCase error) error {
 	level.Info(s.logger).Log("msg", "stopping")
-	if err := services.StopAndAwaitTerminated(context.Background(), s.consumer); err != nil {
-		level.Warn(s.logger).Log("msg", "failed to stop the consumer", "err", err)
+	// A consumer that already failed cannot be stopped, and running returned
+	// its failure.
+	if s.consumer.State() != services.Failed {
+		if err := services.StopAndAwaitTerminated(context.Background(), s.consumer); err != nil {
+			level.Warn(s.logger).Log("msg", "failed to stop the consumer", "err", err)
+		}
 	}
+	s.closeWatcher()
 	s.close()
 	level.Info(s.logger).Log("msg", "stopped")
 	return failureCase
+}
+
+// closeWatcher stops the watcher. It drains a failure that running did not
+// receive, since closing waits for the listener, which blocks until its failure
+// is received.
+func (s *Service) closeWatcher() {
+	go func() {
+		for range s.watcher.Chan() { // Drain until Close closes the channel.
+		}
+	}()
+	s.watcher.Close()
 }
 
 // close closes the Kafka client, if the service owns one.
@@ -245,12 +288,12 @@ func (s *Service) initResumeOffset(ctx context.Context) error {
 	})
 	var lastErr error
 	for b.Ongoing() {
-		offset, err := s.offsetReader.ResumeOffset(ctx, s.consumerGroup, s.partition)
+		offset, err := s.resumeOffset(ctx)
 		if err == nil {
 			level.Info(s.logger).Log("msg", "resuming", "consumer_group", s.consumerGroup, "offset", offset)
 			return s.consumer.SetInitialOffset(offset)
 		}
-		lastErr = fmt.Errorf("failed to fetch the resume offset: %w", err)
+		lastErr = err
 		b.Wait()
 	}
 	if lastErr == nil {
@@ -258,4 +301,22 @@ func (s *Service) initResumeOffset(ctx context.Context) error {
 		lastErr = b.Err()
 	}
 	return lastErr
+}
+
+// resumeOffset checks that the topic has the partition, then returns the offset
+// to resume from. Without the check, the consumer of a missing topic or
+// partition would wait for it forever without an error.
+func (s *Service) resumeOffset(ctx context.Context) (int64, error) {
+	ends, err := s.offsetReader.EndOffsets(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list the partitions of the topic: %w", err)
+	}
+	if _, ok := ends[s.partition]; !ok {
+		return 0, fmt.Errorf("the topic has no partition %d, only %d partitions", s.partition, len(ends))
+	}
+	offset, err := s.offsetReader.ResumeOffset(ctx, s.consumerGroup, s.partition)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch the resume offset: %w", err)
+	}
+	return offset, nil
 }

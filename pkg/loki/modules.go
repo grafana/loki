@@ -2214,9 +2214,10 @@ func (t *Loki) initDataObjBuilder() (services.Service, error) {
 }
 
 func (t *Loki) initChunkBuilder() (services.Service, error) {
+	// Only the chunk-builder target needs this module, so a disabled
+	// chunk-builder means the target was selected by mistake.
 	if !t.Cfg.ChunkBuilder.Enabled {
-		level.Warn(util_log.Logger).Log("msg", "the chunk-builder target does nothing unless -chunk-builder.enabled is set")
-		return nil, nil
+		return nil, errors.New("the chunk-builder target needs -chunk-builder.enabled")
 	}
 	level.Info(util_log.Logger).Log("msg", "initializing chunk-builder")
 	chunkBuilder, err := chunkbuilder.New(t.Cfg.KafkaConfig, t.Cfg.ChunkBuilder, prometheus.DefaultRegisterer, util_log.Logger)
