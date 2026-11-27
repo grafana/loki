@@ -170,6 +170,78 @@ var (
 	}
 )
 
+func TestAddFullRangeVectorWarning(t *testing.T) {
+	start := testTime
+	end := start.Add(6 * time.Hour)
+	request := &LokiRequest{
+		StartTs: start,
+		EndTs:   end,
+		Plan:    testutil.MustPlan(`sum(rate({app="payments"}[6h]))`),
+	}
+	response := &LokiPromResponse{
+		Response: &base.PrometheusResponse{},
+	}
+
+	result := addFullRangeVectorWarning(request, response).(*LokiPromResponse)
+	require.Equal(t, []string{logql.FullRangeVectorWarning}, result.Response.Warnings)
+}
+
+func TestAddFullRangeVectorWarningDoesNotWarnForShorterRangeVector(t *testing.T) {
+	start := testTime
+	end := start.Add(6 * time.Hour)
+	request := &LokiRequest{
+		StartTs: start,
+		EndTs:   end,
+		Plan:    testutil.MustPlan(`sum(rate({app="payments"}[1h]))`),
+	}
+	response := &LokiPromResponse{
+		Response: &base.PrometheusResponse{},
+	}
+
+	result := addFullRangeVectorWarning(request, response).(*LokiPromResponse)
+	require.Empty(t, result.Response.Warnings)
+}
+
+func TestAddFullRangeVectorWarningFromSubqueries(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		queryRange time.Duration
+		want       []string
+	}{
+		{
+			name:       "remove warning matching only the split range",
+			queryRange: 6 * time.Hour,
+			want:       []string{"another warning"},
+		},
+		{
+			name:       "retain warning matching the original range",
+			queryRange: 30 * time.Minute,
+			want:       []string{logql.FullRangeVectorWarning, "another warning"},
+		},
+		{
+			name:       "remove warning for zero length range",
+			queryRange: 0,
+			want:       []string{"another warning"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := &LokiRequest{
+				StartTs: testTime,
+				EndTs:   testTime.Add(tc.queryRange),
+				Plan:    testutil.MustPlan(`rate({app="foo"}[30m])`),
+			}
+			response := &LokiPromResponse{
+				Response: &base.PrometheusResponse{
+					Warnings: []string{logql.FullRangeVectorWarning, "another warning"},
+				},
+			}
+
+			result := addFullRangeVectorWarning(request, response).(*LokiPromResponse)
+			require.Equal(t, tc.want, result.Response.Warnings)
+		})
+	}
+}
+
 func getQueryAndStatsHandler(queryHandler, statsHandler base.Handler) base.Handler {
 	return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 		switch r.(type) {
