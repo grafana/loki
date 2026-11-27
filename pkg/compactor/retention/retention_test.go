@@ -1113,7 +1113,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				true, true,
 			},
 			numChunksDeleted: []int64{
-				1, 0,
+				0, 1,
 			},
 			numExpectedExpiryChecks: 2,
 		},
@@ -1140,7 +1140,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				true, true,
 			},
 			numChunksDeleted: []int64{
-				1, 0,
+				0, 1,
 			},
 			numExpectedExpiryChecks: 2,
 		},

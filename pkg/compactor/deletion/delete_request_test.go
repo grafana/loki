@@ -273,7 +273,7 @@ func TestDeleteRequest_GetChunkFilter(t *testing.T) {
 			deleteRequest, err := newDeleteRequest(tc.deleteRequest, newDeleteRequestsManagerMetrics(nil).deletedLinesTotal)
 			require.NoError(t, err)
 
-			isExpired, filterFunc := deleteRequest.GetChunkFilter([]byte(user1), mustParseLabel(lbl), chunkEntry)
+			isExpired, filterFunc := deleteRequest.GetChunkFilter([]byte(user1), mustParseLabel(lbl), chunkEntry, model.Interval{Start: 0, End: math.MaxInt64})
 			require.Equal(t, tc.expectedResp.isDeleted, isExpired)
 			if tc.expectedResp.expectedFilter == nil {
 				require.Nil(t, filterFunc)
@@ -322,7 +322,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		lbls := mustParseLabel(lblStr)
 
 		require.NoError(t, dr.SetQuery(dr.Query))
-		f, err := dr.FilterFunction(lbls)
+		f, err := dr.FilterFunction(retention.Chunk{ChunkID: "chunk-1"}, model.Interval{Start: 0, End: math.MaxInt64}, lbls)
 		require.NoError(t, err)
 
 		require.True(t, f(time.Now(), `some line`, labels.EmptyLabels()))
@@ -344,7 +344,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		lbls := mustParseLabel(lblStr)
 
 		require.NoError(t, dr.SetQuery(dr.Query))
-		f, err := dr.FilterFunction(lbls)
+		f, err := dr.FilterFunction(retention.Chunk{ChunkID: "chunk-1"}, model.Interval{Start: 0, End: math.MaxInt64}, lbls)
 		require.NoError(t, err)
 
 		require.True(t, f(time.Now(), `some line`, labels.FromStrings(lblPing, lblPong)))
@@ -366,7 +366,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		lbls := mustParseLabel(lblStr)
 
 		require.NoError(t, dr.SetQuery(dr.Query))
-		f, err := dr.FilterFunction(lbls)
+		f, err := dr.FilterFunction(retention.Chunk{ChunkID: "chunk-1"}, model.Interval{Start: 0, End: math.MaxInt64}, lbls)
 		require.NoError(t, err)
 
 		require.True(t, f(time.Now(), `some line`, labels.FromStrings(lblPing, lblPong)))
@@ -388,7 +388,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		lbls := mustParseLabel(lblStr)
 
 		require.NoError(t, dr.SetQuery(dr.Query))
-		f, err := dr.FilterFunction(lbls)
+		f, err := dr.FilterFunction(retention.Chunk{ChunkID: "chunk-1"}, model.Interval{Start: 0, End: math.MaxInt64}, lbls)
 		require.NoError(t, err)
 
 		require.False(t, f(time.Time{}, "", labels.EmptyLabels()))
@@ -412,7 +412,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		lbls := mustParseLabel(lblStr)
 
 		require.NoError(t, dr.SetQuery(dr.Query))
-		f, err := dr.FilterFunction(lbls)
+		f, err := dr.FilterFunction(retention.Chunk{ChunkID: "chunk-1"}, model.Interval{Start: 0, End: math.MaxInt64}, lbls)
 		require.NoError(t, err)
 		require.NotNil(t, f)
 
