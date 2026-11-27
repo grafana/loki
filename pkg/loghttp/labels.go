@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/json"
 )
 
 // LabelResponse represents the http json response to a label query
@@ -23,15 +23,19 @@ type LabelResponse struct {
 type LabelSet map[string]string
 
 func (l *LabelSet) UnmarshalJSON(data []byte) error {
+	d := json.GetDecoder(data)
+	defer d.Release()
+	return l.decode(d)
+}
+
+// decode reads an object from d. Non-string values keep their raw JSON text.
+func (l *LabelSet) decode(d *json.Decoder) error {
 	if *l == nil {
 		*l = make(LabelSet)
 	}
-	return jsonparser.ObjectEach(data, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
-		v, err := jsonparser.ParseString(val)
-		if err != nil {
-			return err
-		}
-		k, err := jsonparser.ParseString(key)
+	return d.EachField(func(key []byte) error {
+		k := string(key) // copy: reading the value reuses the buffer
+		v, err := d.ReadScalar()
 		if err != nil {
 			return err
 		}
