@@ -33,6 +33,47 @@ This leverages the fact that the new deployment adds a `app.kubernetes.io/compon
 
 **To Migrate from `loki-distributed` to `loki`**
 
+1. Copy the existing schema config
+
+   The new chart does not read `schema_config` from `loki-distributed`. `loki.schemaConfig` is empty until you set it, and `loki.useTestSchema` must stay `false` on a real cluster.
+
+   Copy every period from the running config into the new values, oldest period first. Keep each period's `from`, `store`, `object_store`, `schema`, `index.prefix`, and `index.period` unchanged. A cluster that changed schema over time needs all of those periods. Dropping an older period, or changing its index prefix, leaves that index unreadable even when the bucket is the same one.
+
+   Read the schema from the existing release:
+
+   ```bash
+   helm -n <NAMESPACE> get values loki-distributed
+   ```
+
+   If the schema was applied outside those values, copy `schema_config` from the ConfigMap the ingesters mount instead.
+
+   ```yaml
+   loki:
+     useTestSchema: false
+     schemaConfig:
+       configs:
+         - from: "2022-01-01"
+           store: boltdb-shipper
+           object_store: s3
+           schema: v11
+           index:
+             prefix: loki_index_
+             period: 24h
+         - from: "2024-04-01"
+           store: tsdb
+           object_store: s3
+           schema: v13
+           index:
+             prefix: index_
+             period: 24h
+   ```
+
+   Replace the dates, store, object store, schema version, and index prefix with the values from the existing cluster. Render the new chart and confirm `schema_config` lists the same periods before you install it:
+
+   ```bash
+   helm template loki grafana/loki --namespace loki --values values.yaml > /tmp/loki-rendered.yaml
+   ```
+
 1. Deploy new Loki Cluster
 
    Next you will deploy the new `loki` chart in the same namespace as your existing `loki-distributed` installation. Make sure to use the same buckets and storage configuration as your existing installation. You will need to set some special `migrate` values as well:
@@ -70,17 +111,15 @@ This leverages the fact that the new deployment adds a `app.kubernetes.io/compon
 
    The easiest way to do this is via the `extraArgs` argument in the `ingester` section of the `loki-distributed` chart. You may also want to set the ingester's log level to `debug` to see messages about the flushing process.
 
-   ````yaml
+   ```yaml
    ingester:
      replicas: 3
      extraArgs:
        - '-ingester.flush-on-shutdown=true'
        - '-log.level=debug'
-       ```
+   ```
 
    Deploy this change, and make sure all ingesters restart and are running the latest configuration.
-
-   ````
 
 1. Scale Down Ingesters One at a Time
 
