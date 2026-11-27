@@ -12,8 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/grafana/dskit/tenant"
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
@@ -24,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
+	"github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -150,8 +149,11 @@ type reachabilityWalk struct {
 	tenant      string
 
 	reachableMu sync.Mutex
-	reachable   map[string]struct{}
-	stats       ReachabilityStats
+
+	// reachable holds only paths that checkObjectPath accepts, so addBatchPaths
+	// skips the check for a path that it holds.
+	reachable map[string]struct{}
+	stats     ReachabilityStats
 }
 
 // run reads the ToC of the tenant in each window, and the index objects that
@@ -193,6 +195,7 @@ func (w *reachabilityWalk) run(ctx context.Context, windows []time.Time, maxOpen
 	return paths, w.stats, nil
 }
 
+// add stores p in the reachable set. checkObjectPath must accept p.
 func (w *reachabilityWalk) add(p string) {
 	w.reachableMu.Lock()
 	defer w.reachableMu.Unlock()
@@ -341,65 +344,61 @@ func (w *reachabilityWalk) addStatsObjectPaths(ctx context.Context, section *dat
 	if err := reader.Open(ctx); err != nil {
 		return err
 	}
-	return w.addObjectPaths(ctx, reader.Read)
+	return w.addObjectPaths(ctx, reader)
 }
 
-// addObjectPaths adds the paths of the single string column that read
-// returns, until read returns io.EOF.
-func (w *reachabilityWalk) addObjectPaths(ctx context.Context, read func(context.Context, int) (arrow.RecordBatch, error)) error {
+// addObjectPaths adds the paths that reader reads, until the end of the section.
+// The reader must project the object_path column.
+func (w *reachabilityWalk) addObjectPaths(ctx context.Context, reader *stats.Reader) error {
 	const batchSize = 1024
+	alloc := memory.NewAllocator(nil)
+	defer alloc.Free()
 	for {
-		rec, readErr := read(ctx, batchSize)
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			if rec != nil {
-				rec.Release()
-			}
-			return readErr
-		}
-		if rec != nil {
-			if err := w.addRecordPaths(rec); err != nil {
-				return err
-			}
-		}
-		if errors.Is(readErr, io.EOF) {
+		alloc.Reclaim()
+		batch, err := reader.ReadRecordBatch(ctx, alloc, batchSize)
+		if errors.Is(err, io.EOF) {
 			return nil
+		} else if err != nil {
+			return err
+		}
+		if err := w.addBatchPaths(batch); err != nil {
+			return err
 		}
 	}
 }
 
-// addRecordPaths adds the paths of the object_path column of rec, and
-// releases rec.
+// addBatchPaths adds the paths of the object_path column of batch.
 //
 // It returns an error for a null or empty value, and for a path that is not
 // clean and relative. Writers never store either, so such a value means a
 // corrupt section or a reader bug. Skipping it could drop a reachable object.
-func (w *reachabilityWalk) addRecordPaths(rec arrow.RecordBatch) error {
-	defer rec.Release()
-	if n := rec.NumCols(); n != 1 {
-		return fmt.Errorf("object_path record has %d columns, want 1", n)
-	}
-	column, ok := rec.Column(0).(*array.String)
-	if !ok {
-		return fmt.Errorf("object_path column has type %s, want string", rec.Column(0).DataType())
-	}
-	for i := range column.Len() {
-		if column.IsNull(i) || column.Value(i) == "" {
-			return errors.New("object_path column holds a null or empty value")
-		}
-		if err := checkObjectPath(column.Value(i)); err != nil {
-			return err
-		}
+func (w *reachabilityWalk) addBatchPaths(batch *stats.RecordBatch) error {
+	column := batch.ObjectPath
+	if column == nil {
+		return errors.New("object_path batch has no object_path column")
 	}
 
-	// The values point into the buffer of the whole batch. Clone a new path
-	// so that the set does not keep every batch alive. Many rows reference
-	// the same log object, so check the set before the clone.
 	w.reachableMu.Lock()
 	defer w.reachableMu.Unlock()
-	for i := range column.Len() {
-		if _, ok := w.reachable[column.Value(i)]; !ok {
-			w.reachable[strings.Clone(column.Value(i))] = struct{}{}
+	for i := range batch.Rows {
+		if column.IsNull(i) || len(column.Get(i)) == 0 {
+			return errors.New("object_path column holds a null or empty value")
 		}
+
+		// Many rows reference the same log object. The check gives the same result
+		// for the same path, so run it once for each distinct path. The lookup does
+		// not allocate.
+		if _, ok := w.reachable[string(column.Get(i))]; ok {
+			continue
+		}
+
+		// The allocator reuses the memory of the value after Reclaim, so the set
+		// stores a copy.
+		p := string(column.Get(i))
+		if err := checkObjectPath(p); err != nil {
+			return err
+		}
+		w.reachable[p] = struct{}{}
 	}
 	return nil
 }

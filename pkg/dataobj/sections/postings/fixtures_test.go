@@ -54,7 +54,7 @@ func openPostingsSections(ctx context.Context, t *testing.T, b *postings.Builder
 		secs = append(secs, sec)
 	}
 	require.NotEmpty(t, secs, "no postings section in object")
-	return secs, func() { _ = closer.Close() }
+	return secs, func() { require.NoError(t, closer.Close()) }
 }
 
 // getSectionColumn returns the section column of the requested exported type.

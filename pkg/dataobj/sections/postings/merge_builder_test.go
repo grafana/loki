@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 // TestMergeBuilder_AppendLabelEntry_RoundTrip verifies that appended label
@@ -45,39 +44,35 @@ func TestMergeBuilder_AppendLabelEntry_RoundTrip(t *testing.T) {
 	sections := flushMergeBuilderAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	rows, tbl := readAllRows(t, sections[0])
+	rows := readAllRows(t, sections[0])
 	require.Len(t, rows, 1)
 
-	bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
-
-	expected := arrowtest.Rows{
-		{
-			"kind.int64":              int64(KindLabel),
-			"object_path.utf8":        "/tenant/abc/obj1",
-			"shard_buckets.int64":     int64(0),
-			"section_index.int64":     int64(0),
-			"column_name.utf8":        "env",
-			"label_value.utf8":        "value1",
-			"bloom_filter.binary":     nil,
-			"uncompressed_size.int64": int64(4096),
-			"min_timestamp.timestamp": timeVal,
-			"max_timestamp.timestamp": timeVal,
-			"min_shard_bucket.int64":  int64(0),
-			"max_shard_bucket.int64":  int64(0),
-		},
-	}
-
-	strictRows := stripOpaqueBinaryColumns(rows, "stream_id_bitmap.binary")
-	strictExpected := stripOpaqueBinaryColumns(expected, "stream_id_bitmap.binary")
-	require.Equal(t, strictExpected, strictRows)
+	// A label row has a shard bucket range, and the range is 0 here. A row reads a
+	// null as the zero value, so check the nulls in the batch.
+	batch := readBatch(t, sections[0])
+	require.False(t, batch.MinShardBucket.IsNull(0), "label posting should have a min shard bucket")
+	require.False(t, batch.MaxShardBucket.IsNull(0), "label posting should have a max shard bucket")
+	require.True(t, batch.BloomFilter.IsNull(0), "label posting should have a null bloom filter")
 
 	// Verify the bitmap bytes match exactly (modulo padding)
 	// Since we set bits 3, 7, 15, we need at least 2 bytes
-	require.NotEmpty(t, bitmaps[0])
-	require.True(t, checkBit(bitmaps[0], 3), "bit 3 should be set")
-	require.True(t, checkBit(bitmaps[0], 7), "bit 7 should be set")
-	require.True(t, checkBit(bitmaps[0], 15), "bit 15 should be set")
-	require.False(t, checkBit(bitmaps[0], 0), "bit 0 should not be set")
+	bitmap := rows[0].StreamIDBitmap
+	require.NotEmpty(t, bitmap)
+	require.True(t, checkBit(bitmap, 3), "bit 3 should be set")
+	require.True(t, checkBit(bitmap, 7), "bit 7 should be set")
+	require.True(t, checkBit(bitmap, 15), "bit 15 should be set")
+	require.False(t, checkBit(bitmap, 0), "bit 0 should not be set")
+	rows[0].StreamIDBitmap = nil
+
+	require.Equal(t, Row{
+		Kind:             KindLabel,
+		ObjectPath:       "/tenant/abc/obj1",
+		ColumnName:       "env",
+		LabelValue:       "value1",
+		UncompressedSize: 4096,
+		MinTimestamp:     timeVal.UnixNano(),
+		MaxTimestamp:     timeVal.UnixNano(),
+	}, rows[0])
 }
 
 func TestMergeBuilder_AppendLabelEntry_ShardBuckets(t *testing.T) {
@@ -108,10 +103,10 @@ func TestMergeBuilder_AppendLabelEntry_ShardBuckets(t *testing.T) {
 
 		mergedSections := flushMergeBuilderAndOpenSections(t, merge)
 		require.Len(t, mergedSections, 1)
-		got, _ := readAllRows(t, mergedSections[0])
+		got := readAllRows(t, mergedSections[0])
 		require.Len(t, got, 1)
-		require.Equal(t, int64(3), got[0]["min_shard_bucket.int64"])
-		require.Equal(t, int64(9), got[0]["max_shard_bucket.int64"])
+		require.Equal(t, uint32(3), got[0].MinShardBucket)
+		require.Equal(t, uint32(9), got[0].MaxShardBucket)
 	})
 }
 
@@ -148,41 +143,37 @@ func TestMergeBuilder_AppendBloomEntry_RoundTrip(t *testing.T) {
 	sections := flushMergeBuilderAndOpenSections(t, b)
 	require.Len(t, sections, 1)
 
-	rows, tbl := readAllRows(t, sections[0])
+	rows := readAllRows(t, sections[0])
 	require.Len(t, rows, 1)
 
-	bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
-	bloomFilters := extractBinaryColumn(t, tbl, "bloom_filter.binary")
-
-	expected := arrowtest.Rows{
-		{
-			"kind.int64":              int64(KindBloom),
-			"object_path.utf8":        "/tenant/abc/obj2",
-			"shard_buckets.int64":     int64(0),
-			"section_index.int64":     int64(1),
-			"column_name.utf8":        "service_name",
-			"label_value.utf8":        nil,
-			"bloom_filter.binary":     bloomFilters[0],
-			"uncompressed_size.int64": int64(8192),
-			"min_timestamp.timestamp": timeVal,
-			"max_timestamp.timestamp": timeVal,
-			"min_shard_bucket.int64":  nil,
-			"max_shard_bucket.int64":  nil,
-		},
-	}
-
-	strictRows := stripOpaqueBinaryColumns(rows, "stream_id_bitmap.binary", "bloom_filter.binary")
-	strictExpected := stripOpaqueBinaryColumns(expected, "stream_id_bitmap.binary", "bloom_filter.binary")
-	require.Equal(t, strictExpected, strictRows)
+	// A bloom row has no label value and no shard bucket range. A row decodes a
+	// null as the zero value, so check the nulls in the batch.
+	batch := readBatch(t, sections[0])
+	require.True(t, batch.LabelValue.IsNull(0), "bloom posting should have a null label value")
+	require.True(t, batch.MinShardBucket.IsNull(0), "bloom posting should have a null min shard bucket")
+	require.True(t, batch.MaxShardBucket.IsNull(0), "bloom posting should have a null max shard bucket")
 
 	// Verify bloom filter bytes round-trip exactly
-	require.Equal(t, bloomBytes, bloomFilters[0], "bloom filter bytes must round-trip")
+	require.Equal(t, bloomBytes, rows[0].BloomFilter, "bloom filter bytes must round-trip")
+	rows[0].BloomFilter = nil
 
 	// Verify stream IDs 0, 2, 8 are set
-	require.True(t, checkBit(bitmaps[0], 0), "bit 0 should be set")
-	require.True(t, checkBit(bitmaps[0], 2), "bit 2 should be set")
-	require.True(t, checkBit(bitmaps[0], 8), "bit 8 should be set")
-	require.False(t, checkBit(bitmaps[0], 1), "bit 1 should not be set")
+	bitmap := rows[0].StreamIDBitmap
+	require.True(t, checkBit(bitmap, 0), "bit 0 should be set")
+	require.True(t, checkBit(bitmap, 2), "bit 2 should be set")
+	require.True(t, checkBit(bitmap, 8), "bit 8 should be set")
+	require.False(t, checkBit(bitmap, 1), "bit 1 should not be set")
+	rows[0].StreamIDBitmap = nil
+
+	require.Equal(t, Row{
+		Kind:             KindBloom,
+		ObjectPath:       "/tenant/abc/obj2",
+		SectionIndex:     1,
+		ColumnName:       "service_name",
+		UncompressedSize: 8192,
+		MinTimestamp:     timeVal.UnixNano(),
+		MaxTimestamp:     timeVal.UnixNano(),
+	}, rows[0])
 }
 
 // testLabelEntry returns a label entry for section 0 of objectPath.

@@ -329,8 +329,8 @@ func indexedObjectPaths(t *testing.T, obj *dataobj.Object) []string {
 	t.Helper()
 
 	seen := make(map[string]struct{})
-	for _, row := range readAllStatsRows(t, obj) {
-		seen[row["object_path.utf8"].(string)] = struct{}{}
+	for _, row := range readAllStats(t, obj) {
+		seen[row.ObjectPath] = struct{}{}
 	}
 
 	paths := make([]string, 0, len(seen))

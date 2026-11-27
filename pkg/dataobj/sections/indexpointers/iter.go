@@ -213,6 +213,9 @@ func decodeRow(columns []*Column, row dataset.Row, pointer *IndexPointer) error 
 // them. A nil bound is a null value. It returns the zero KeyRange if both bounds
 // are nil, and an error if only one bound is nil. The range does not borrow
 // memory from the bounds.
+//
+// A caller must pass nil only for a null bound. An empty slice is a bound that
+// is not valid.
 func PostingKeysFromBounds(minEncoded, maxEncoded []byte) (postings.KeyRange, error) {
 	switch {
 	case minEncoded == nil && maxEncoded == nil:

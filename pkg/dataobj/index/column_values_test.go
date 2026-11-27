@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -89,31 +88,25 @@ func TestColumnValuesCalculation_BloomPostingAppended(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 
 	// We expect 2 bloom postings: one for trace_id, one for span_id.
-	i := findRow(tbl.rows, map[string]any{
-		"kind.int64":       int64(postings.KindBloom),
-		"column_name.utf8": "trace_id",
-	})
+	i := findBloomRow(rows, "trace_id")
 	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
 
-	j := findRow(tbl.rows, map[string]any{
-		"kind.int64":       int64(postings.KindBloom),
-		"column_name.utf8": "span_id",
-	})
+	j := findBloomRow(rows, "span_id")
 	require.NotEqual(t, -1, j, "expected bloom posting for span_id")
 
-	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), tbl.rows[i]["shard_buckets.int64"])
-	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), tbl.rows[j]["shard_buckets.int64"])
+	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), rows[i].ShardBuckets)
+	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), rows[j].ShardBuckets)
 
 	// Bloom filter bytes should be non-empty.
-	require.NotEmpty(t, tbl.opaque["bloom_filter.binary"][i], "expected non-empty bloom filter for trace_id")
-	require.NotEmpty(t, tbl.opaque["bloom_filter.binary"][j], "expected non-empty bloom filter for span_id")
+	require.NotEmpty(t, rows[i].BloomFilter, "expected non-empty bloom filter for trace_id")
+	require.NotEmpty(t, rows[j].BloomFilter, "expected non-empty bloom filter for span_id")
 
 	// Stream ID bitmap should be non-empty.
-	require.NotEmpty(t, tbl.opaque["stream_id_bitmap.binary"][i], "expected non-empty stream bitmap for trace_id")
-	require.NotEmpty(t, tbl.opaque["stream_id_bitmap.binary"][j], "expected non-empty stream bitmap for span_id")
+	require.NotEmpty(t, rows[i].StreamIDBitmap, "expected non-empty stream bitmap for trace_id")
+	require.NotEmpty(t, rows[j].StreamIDBitmap, "expected non-empty stream bitmap for span_id")
 }
 
 func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
@@ -141,24 +134,21 @@ func TestColumnValuesCalculation_TimestampsAndSizes(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 
-	i := findRow(tbl.rows, map[string]any{
-		"kind.int64":       int64(postings.KindBloom),
-		"column_name.utf8": "trace_id",
-	})
+	i := findBloomRow(rows, "trace_id")
 	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
 
-	row := tbl.rows[i]
-	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row["shard_buckets.int64"])
+	row := rows[i]
+	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row.ShardBuckets)
 	// Timestamps: min=ts1 (10s), max=ts3 (30s) — ts3 is the latest, proving the
 	// third record's timestamp was tracked.
-	require.Equal(t, ts1.UTC(), row["min_timestamp.timestamp"])
-	require.Equal(t, ts3.UTC(), row["max_timestamp.timestamp"])
+	require.Equal(t, ts1.UnixNano(), row.MinTimestamp)
+	require.Equal(t, ts3.UnixNano(), row.MaxTimestamp)
 
 	// Size: sum of line lengths for records that have trace_id metadata.
 	expectedSize := int64(len(line1) + len(line2) + len(line3))
-	require.Equal(t, expectedSize, row["uncompressed_size.int64"])
+	require.Equal(t, expectedSize, row.UncompressedSize)
 }
 
 func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
@@ -178,17 +168,14 @@ func TestColumnValuesCalculation_StreamIDBitmapBitsSet(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 
-	i := findRow(tbl.rows, map[string]any{
-		"kind.int64":       int64(postings.KindBloom),
-		"column_name.utf8": "trace_id",
-	})
+	i := findBloomRow(rows, "trace_id")
 	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
-	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), tbl.rows[i]["shard_buckets.int64"])
+	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), rows[i].ShardBuckets)
 
 	// Bitmap should have bit 1 set (stream ID 1 has trace_id).
-	require.NotEmpty(t, tbl.opaque["stream_id_bitmap.binary"][i])
+	require.NotEmpty(t, rows[i].StreamIDBitmap)
 }
 
 func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
@@ -204,24 +191,18 @@ func TestColumnValuesCalculation_EmptyBatch(t *testing.T) {
 	// The column was registered during Prepare, so the postings section still
 	// holds a bloom posting for trace_id, with empty data because no records
 	// were processed.
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 
-	i := findRow(tbl.rows, map[string]any{
-		"kind.int64":       int64(postings.KindBloom),
-		"column_name.utf8": "trace_id",
-	})
+	i := findBloomRow(rows, "trace_id")
 	require.NotEqual(t, -1, i, "expected bloom posting for trace_id even with empty batch")
 
-	row := tbl.rows[i]
-	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row["shard_buckets.int64"])
+	row := rows[i]
+	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row.ShardBuckets)
 	// With the bloom aggregator, an unobserved but prepared column uses sentinel values:
 	// MinTimestamp = math.MaxInt64 and MaxTimestamp = math.MinInt64.
-	// These are stored and read back as time.Time values.
-	sentinelMinTimestamp := time.Unix(0, math.MaxInt64).UTC() // unobserved min starts at max possible
-	sentinelMaxTimestamp := time.Unix(0, math.MinInt64).UTC() // unobserved max starts at min possible
-	require.Equal(t, sentinelMinTimestamp, row["min_timestamp.timestamp"], "no records means sentinel max int64 for min timestamp")
-	require.Equal(t, sentinelMaxTimestamp, row["max_timestamp.timestamp"], "no records means sentinel min int64 for max timestamp")
-	require.Equal(t, int64(0), row["uncompressed_size.int64"], "no records means zero size")
+	require.Equal(t, int64(math.MaxInt64), row.MinTimestamp, "no records means sentinel max int64 for min timestamp")
+	require.Equal(t, int64(math.MinInt64), row.MaxTimestamp, "no records means sentinel min int64 for max timestamp")
+	require.Equal(t, int64(0), row.UncompressedSize, "no records means zero size")
 }
 
 func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
@@ -246,21 +227,18 @@ func TestColumnValuesCalculation_MultipleBatches(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch2))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 
-	i := findRow(tbl.rows, map[string]any{
-		"kind.int64":       int64(postings.KindBloom),
-		"column_name.utf8": "trace_id",
-	})
+	i := findBloomRow(rows, "trace_id")
 	require.NotEqual(t, -1, i, "expected bloom posting for trace_id")
 
-	row := tbl.rows[i]
-	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row["shard_buckets.int64"])
+	row := rows[i]
+	require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row.ShardBuckets)
 	// Timestamps should span both batches.
-	require.Equal(t, ts1.UTC(), row["min_timestamp.timestamp"])
-	require.Equal(t, ts2.UTC(), row["max_timestamp.timestamp"])
+	require.Equal(t, ts1.UnixNano(), row.MinTimestamp)
+	require.Equal(t, ts2.UnixNano(), row.MaxTimestamp)
 
 	// Size: both lines.
 	expectedSize := int64(len("first") + len("second"))
-	require.Equal(t, expectedSize, row["uncompressed_size.int64"])
+	require.Equal(t, expectedSize, row.UncompressedSize)
 }

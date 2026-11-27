@@ -17,12 +17,16 @@ import (
 	"github.com/thanos-io/objstore/providers/filesystem"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/columnar"
+	"github.com/grafana/loki/v3/pkg/columnar/columnartest"
+	"github.com/grafana/loki/v3/pkg/columnar/types"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/watermarks"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 func TestListTableOfContentsWindows(t *testing.T) {
@@ -637,6 +641,75 @@ func TestCheckObjectPath(t *testing.T) {
 	}
 }
 
+func TestReachabilityWalk_addBatchPaths(t *testing.T) {
+	newWalk := func() *reachabilityWalk {
+		return &reachabilityWalk{reachable: make(map[string]struct{})}
+	}
+
+	t.Run("returns an error when a path is null", func(t *testing.T) {
+		batch := &stats.RecordBatch{
+			Rows:       2,
+			ObjectPath: columnartest.Array(t, types.KindUTF8, nil, "objects/00/a", nil).(*columnar.UTF8),
+		}
+
+		err := newWalk().addBatchPaths(batch)
+		require.EqualError(t, err, "object_path column holds a null or empty value")
+	})
+
+	t.Run("returns an error when a null path holds a valid path in its slot", func(t *testing.T) {
+		validity := memory.NewBitmap(nil, 1)
+		validity.AppendValues(false)
+		w := newWalk()
+		batch := &stats.RecordBatch{
+			Rows:       1,
+			ObjectPath: columnar.NewUTF8([]byte("objects/00/a"), []int32{0, 12}, validity),
+		}
+
+		require.EqualError(t, w.addBatchPaths(batch), "object_path column holds a null or empty value")
+		require.Empty(t, w.reachable)
+	})
+
+	t.Run("returns an error when the batch has no object_path column", func(t *testing.T) {
+		err := newWalk().addBatchPaths(&stats.RecordBatch{Rows: 1})
+		require.EqualError(t, err, "object_path batch has no object_path column")
+	})
+
+	t.Run("keeps a repeated path valid when the batch memory changes", func(t *testing.T) {
+		w := newWalk()
+		data := []byte("objects/00/a")
+		batch := &stats.RecordBatch{
+			Rows:       2,
+			ObjectPath: columnar.NewUTF8(append(data, data...), []int32{0, 12, 24}, memory.Bitmap{}),
+		}
+		require.NoError(t, w.addBatchPaths(batch))
+		require.NoError(t, w.addBatchPaths(batch))
+		clear(batch.ObjectPath.Data())
+
+		require.Equal(t, map[string]struct{}{"objects/00/a": {}}, w.reachable)
+	})
+}
+
+func TestReachabilityWalk_addObjectPaths(t *testing.T) {
+	t.Run("returns the error of a read that fails", func(t *testing.T) {
+		reader := openObjectPathReader(t, []string{"objects/00/a", "objects/00/b"})
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		w := &reachabilityWalk{reachable: make(map[string]struct{})}
+		err := w.addObjectPaths(ctx, reader)
+		require.ErrorIs(t, err, context.Canceled)
+		require.Empty(t, w.reachable)
+	})
+
+	t.Run("adds the path of every row of the section", func(t *testing.T) {
+		reader := openObjectPathReader(t, []string{"objects/00/a", "objects/00/b"})
+
+		w := &reachabilityWalk{reachable: make(map[string]struct{})}
+		require.NoError(t, w.addObjectPaths(t.Context(), reader))
+		require.Equal(t, map[string]struct{}{"objects/00/a": {}, "objects/00/b": {}}, w.reachable)
+	})
+}
+
 // getRangeFailBucket fails every GetRange call for name.
 type getRangeFailBucket struct {
 	objstore.Bucket
@@ -672,3 +745,36 @@ func (rawSectionBuilder) Flush(w dataobj.SectionWriter) (int64, error) {
 }
 
 func (rawSectionBuilder) Reset() {}
+
+// openObjectPathReader returns an open reader of the object_path column of a
+// stats section that holds one row for each path.
+func openObjectPathReader(t *testing.T, paths []string) *stats.Reader {
+	t.Helper()
+
+	statsBuilder := stats.NewBuilder(nil, stats.ColumnarSectionEncoder(2048, 1000), streams.NewLayout(streams.DefaultShardLayout(), nil))
+	statsBuilder.SetTenant("tenant")
+	for _, objectPath := range paths {
+		statsBuilder.Append(stats.Stat{ObjectPath: objectPath})
+	}
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(statsBuilder))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+	var sections []*dataobj.Section
+	for _, section := range obj.Sections().Filter(stats.CheckSection) {
+		sections = append(sections, section)
+	}
+	require.Len(t, sections, 1)
+	sec, err := stats.Open(t.Context(), sections[0])
+	require.NoError(t, err)
+	column, ok, err := sec.ObjectPathColumn()
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	reader := stats.NewReader(stats.ReaderOptions{Columns: []*stats.Column{column}})
+	require.NoError(t, reader.Open(t.Context()))
+	t.Cleanup(func() { require.NoError(t, reader.Close()) })
+	return reader
+}

@@ -3,7 +3,7 @@
 //
 // A watermark records, for one Kafka topic and partition, the highest offset
 // whose records the ToC already holds. A section holds a few rows, so the
-// package has no Arrow reader and no predicates.
+// package has no batch reader and no predicates.
 package watermarks
 
 import (

@@ -2,13 +2,10 @@ package indexobj
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
@@ -424,97 +421,34 @@ func TestMergeBuilder_RecordsLayout(t *testing.T) {
 	})
 }
 
-// readAllPostingsRows opens a postings section and returns all decoded rows.
-// It drains the reader in batches and decodes each row from the Arrow record batches.
+// readAllPostingsRows opens a postings section and returns all its rows.
 func readAllPostingsRows(ctx context.Context, t *testing.T, sec *postings.Section) []postings.Row {
 	t.Helper()
 
-	r := postings.NewReader(postings.ReaderOptions{
-		Columns:   sec.Columns(),
-		Allocator: memory.DefaultAllocator,
-	})
+	r := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
 	require.NoError(t, r.Open(ctx))
-	t.Cleanup(func() { _ = r.Close() })
 
-	var (
-		rows    []postings.Row
-		columns postings.ColumnIndex
-	)
-	for {
-		batch, err := r.Read(ctx, 128)
-		if err != nil && !errors.Is(err, io.EOF) {
-			require.NoError(t, err)
-		}
-
-		if batch == nil || batch.NumRows() == 0 {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			continue
-		}
-
-		// Build column index on first batch.
-		if columns == nil {
-			columns = postings.BuildColumnIndex(batch.Schema())
-		}
-
-		// Decode each row in the batch.
-		for rowIdx := 0; rowIdx < int(batch.NumRows()); rowIdx++ {
-			rows = append(rows, postings.DecodeRow(batch, columns, rowIdx))
-		}
-
-		if errors.Is(err, io.EOF) {
-			break
-		}
+	var rows []postings.Row
+	rowReader := postings.NewRowReader(ctx, r)
+	for rowReader.Next() {
+		rows = append(rows, rowReader.At())
 	}
-
+	require.NoError(t, rowReader.Err())
+	require.NoError(t, rowReader.Close())
 	return rows
 }
 
-// readAllStatsRows opens a stats section and returns all decoded rows.
-// It drains the reader in batches and decodes each row from the Arrow record batches.
+// readAllStatsRows opens a stats section and returns all its rows.
 func readAllStatsRows(ctx context.Context, t *testing.T, sec *stats.Section) []stats.Stat {
 	t.Helper()
 
-	r := stats.NewReader(stats.ReaderOptions{
-		Columns:   sec.Columns(),
-		Allocator: memory.DefaultAllocator,
-	})
-	require.NoError(t, r.Open(ctx))
-	t.Cleanup(func() { _ = r.Close() })
-
-	var (
-		rows    []stats.Stat
-		columns stats.ColumnIndex
-	)
-	for {
-		batch, err := r.Read(ctx, 128)
-		if err != nil && !errors.Is(err, io.EOF) {
-			require.NoError(t, err)
-		}
-
-		if batch == nil || batch.NumRows() == 0 {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			continue
-		}
-
-		// Build column index on first batch.
-		if columns == nil {
-			columns = stats.BuildColumnIndex(batch.Schema())
-		}
-
-		// Decode each row in the batch.
-		for rowIdx := 0; rowIdx < int(batch.NumRows()); rowIdx++ {
-			rows = append(rows, stats.DecodeRow(batch, columns, rowIdx))
-		}
-
-		if errors.Is(err, io.EOF) {
-			break
-		}
+	var rows []stats.Stat
+	rowReader := stats.NewRowReader(ctx, sec, nil)
+	for rowReader.Next() {
+		rows = append(rows, rowReader.At())
 	}
-
+	require.NoError(t, rowReader.Err())
+	require.NoError(t, rowReader.Close())
 	return rows
 }
 

@@ -2,19 +2,13 @@ package stats
 
 import (
 	"context"
-	"errors"
 	"io"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 // defaultEncoder is a SectionEncoder using default page sizes for testing.
@@ -32,54 +26,24 @@ func buildObject(t *testing.T, b *Builder) (*dataobj.Object, io.Closer) {
 	return obj, closer
 }
 
-// readTable drains a Reader into an arrow.Table, mirroring streams/reader_test.go.
-func readTable(ctx context.Context, r *Reader) (arrow.Table, error) {
-	var recs []arrow.RecordBatch
-	for {
-		rec, err := r.Read(ctx, 128)
-		if rec != nil && rec.NumRows() > 0 {
-			recs = append(recs, rec)
-		}
-		if err != nil && errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-	}
-	if len(recs) == 0 {
-		return nil, io.EOF
-	}
-	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
-}
-
 // readAllRowsFromObject opens every stats section in obj and concatenates
 // all rows in obj.Sections() order (stable).
-func readAllRowsFromObject(t *testing.T, obj *dataobj.Object) arrowtest.Rows {
+func readAllRowsFromObject(t *testing.T, obj *dataobj.Object) []Stat {
 	t.Helper()
-	var all arrowtest.Rows
+	var all []Stat
 	for _, s := range obj.Sections() {
 		if !CheckSection(s) {
 			continue
 		}
-		sec, err := Open(context.Background(), s)
+		sec, err := Open(t.Context(), s)
 		require.NoError(t, err)
 
-		r := NewReader(ReaderOptions{
-			Columns:   sec.Columns(),
-			Allocator: memory.DefaultAllocator,
-		})
-		require.NoError(t, r.Open(context.Background()))
-		t.Cleanup(func() { _ = r.Close() })
-
-		tbl, err := readTable(context.Background(), r)
-		if errors.Is(err, io.EOF) {
-			continue
+		rr := NewRowReader(t.Context(), sec, nil)
+		for rr.Next() {
+			all = append(all, rr.At())
 		}
-		require.NoError(t, err)
-
-		rows, err := arrowtest.TableRows(memory.DefaultAllocator, tbl)
-		require.NoError(t, err)
-		all = append(all, rows...)
+		require.NoError(t, rr.Err())
+		require.NoError(t, rr.Close())
 	}
 	return all
 }
@@ -133,44 +97,14 @@ func TestBuilder_RoundTrip(t *testing.T) {
 	}
 
 	obj, closer := buildObject(t, b)
-	t.Cleanup(func() { _ = closer.Close() })
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
 	actual := readAllRowsFromObject(t, obj)
 	// Sort order: bar < baz < foo
-	expected := arrowtest.Rows{
-		{
-			"object_path.utf8":        "/tenant/abc/obj2",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(1),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 500).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 1500).UTC(),
-			"row_count.int64":         int64(50),
-			"uncompressed_size.int64": int64(4096),
-			"service_name.label.utf8": "bar",
-		},
-		{
-			"object_path.utf8":        "/tenant/abc/obj3",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(2),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 3000).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 4000).UTC(),
-			"row_count.int64":         int64(200),
-			"uncompressed_size.int64": int64(16384),
-			"service_name.label.utf8": "baz",
-		},
-		{
-			"object_path.utf8":        "/tenant/abc/obj1",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 1000).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 2000).UTC(),
-			"row_count.int64":         int64(100),
-			"uncompressed_size.int64": int64(8192),
-			"service_name.label.utf8": "foo",
-		},
+	expected := []Stat{
+		{ObjectPath: "/tenant/abc/obj2", SectionIndex: 1, SortSchema: "label:service_name", Labels: map[string]string{"service_name": "bar"}, MinTimestamp: 500, MaxTimestamp: 1500, RowCount: 50, UncompressedSize: 4096},
+		{ObjectPath: "/tenant/abc/obj3", SectionIndex: 2, SortSchema: "label:service_name", Labels: map[string]string{"service_name": "baz"}, MinTimestamp: 3000, MaxTimestamp: 4000, RowCount: 200, UncompressedSize: 16384},
+		{ObjectPath: "/tenant/abc/obj1", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "foo"}, MinTimestamp: 1000, MaxTimestamp: 2000, RowCount: 100, UncompressedSize: 8192},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -188,66 +122,16 @@ func TestBuilder_SortOrder(t *testing.T) {
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 200})
 
 	obj, closer := buildObject(t, b)
-	t.Cleanup(func() { _ = closer.Close() })
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
 	actual := readAllRowsFromObject(t, obj)
 	// Verify sort order: alpha(100), alpha(200), alpha(300), beta(200), gamma(50).
-	expected := arrowtest.Rows{
-		{
-			"object_path.utf8":        "",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "alpha",
-		},
-		{
-			"object_path.utf8":        "",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "alpha",
-		},
-		{
-			"object_path.utf8":        "",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "alpha",
-		},
-		{
-			"object_path.utf8":        "",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "beta",
-		},
-		{
-			"object_path.utf8":        "",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 50).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "gamma",
-		},
+	expected := []Stat{
+		{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 100},
+		{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 200},
+		{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "alpha"}, MinTimestamp: 300},
+		{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "beta"}, MinTimestamp: 200},
+		{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "gamma"}, MinTimestamp: 50},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -263,44 +147,14 @@ func TestBuilder_AllSameServiceName(t *testing.T) {
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 200, ObjectPath: "b"})
 
 	obj, closer := buildObject(t, b)
-	t.Cleanup(func() { _ = closer.Close() })
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
 	actual := readAllRowsFromObject(t, obj)
 	// Sort is by MinTimestamp within the same service_name.
-	expected := arrowtest.Rows{
-		{
-			"object_path.utf8":        "a",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "svc",
-		},
-		{
-			"object_path.utf8":        "b",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "svc",
-		},
-		{
-			"object_path.utf8":        "c",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 300).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "svc",
-		},
+	expected := []Stat{
+		{ObjectPath: "a", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100},
+		{ObjectPath: "b", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 200},
+		{ObjectPath: "c", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 300},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -381,44 +235,14 @@ func TestBuilder_TieBreakOnObjectPathAndSectionIndex(t *testing.T) {
 	b.Append(Stat{SortSchema: schema, Labels: labels, MinTimestamp: 100, MaxTimestamp: 200, ObjectPath: "objA", SectionIndex: 0})
 
 	obj, closer := buildObject(t, b)
-	t.Cleanup(func() { _ = closer.Close() })
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
 	actual := readAllRowsFromObject(t, obj)
 	// Full-key order: (objA, 0), (objA, 1), (objB, 0).
-	expected := arrowtest.Rows{
-		{
-			"object_path.utf8":        "objA",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        schema,
-			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 200).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "svc",
-		},
-		{
-			"object_path.utf8":        "objA",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(1),
-			"sort_schema.utf8":        schema,
-			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 200).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "svc",
-		},
-		{
-			"object_path.utf8":        "objB",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        schema,
-			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 200).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "svc",
-		},
+	expected := []Stat{
+		{ObjectPath: "objA", SortSchema: schema, Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100, MaxTimestamp: 200},
+		{ObjectPath: "objA", SectionIndex: 1, SortSchema: schema, Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100, MaxTimestamp: 200},
+		{ObjectPath: "objB", SortSchema: schema, Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 100, MaxTimestamp: 200},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -431,33 +255,13 @@ func TestBuilder_MissingServiceName(t *testing.T) {
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, ObjectPath: "obj2", MinTimestamp: 200})
 
 	obj, closer := buildObject(t, b)
-	t.Cleanup(func() { _ = closer.Close() })
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
 	actual := readAllRowsFromObject(t, obj)
 	// Empty string sorts before "svc".
-	expected := arrowtest.Rows{
-		{
-			"object_path.utf8":        "obj1",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 100).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "",
-		},
-		{
-			"object_path.utf8":        "obj2",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "svc",
-		},
+	expected := []Stat{
+		{ObjectPath: "obj1", SortSchema: "label:service_name", Labels: map[string]string{"service_name": ""}, MinTimestamp: 100},
+		{ObjectPath: "obj2", SortSchema: "label:service_name", Labels: map[string]string{"service_name": "svc"}, MinTimestamp: 200},
 	}
 	require.Equal(t, expected, actual)
 }
@@ -500,7 +304,7 @@ func TestBuilder_SectionSplitting(t *testing.T) {
 
 	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
 	// Verify 2 sections were created.
 	var statsSections []*dataobj.Section
@@ -524,7 +328,7 @@ func TestBuilder_LargeValues(t *testing.T) {
 	longSchema := "label:" + longName
 	b := NewBuilder(nil, defaultEncoder, testLayout(longSchema))
 
-	b.Append(Stat{
+	input := Stat{
 		ObjectPath:       longPath,
 		SortSchema:       longSchema,
 		Labels:           map[string]string{longName: longLabel},
@@ -533,30 +337,13 @@ func TestBuilder_LargeValues(t *testing.T) {
 		MaxTimestamp:     2_000_000,
 		RowCount:         99999,
 		UncompressedSize: 1_000_000_000,
-	})
+	}
+	b.Append(input)
 
 	obj, closer := buildObject(t, b)
-	t.Cleanup(func() { _ = closer.Close() })
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
-	actual := readAllRowsFromObject(t, obj)
-	require.Len(t, actual, 1)
-
-	// Build the expected label column name dynamically
-	labelColName := longName + ".label.utf8"
-	expected := arrowtest.Rows{
-		{
-			"object_path.utf8":        longPath,
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(99),
-			"sort_schema.utf8":        longSchema,
-			"min_timestamp.timestamp": time.Unix(0, 1_000_000).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 2_000_000).UTC(),
-			"row_count.int64":         int64(99999),
-			"uncompressed_size.int64": int64(1_000_000_000),
-			labelColName:              longLabel,
-		},
-	}
-	require.Equal(t, expected, actual)
+	require.Equal(t, []Stat{input}, readAllRowsFromObject(t, obj))
 }
 
 // TestBuilder_ResetAndReuse verifies that Reset clears all rows and the builder can be reused.
@@ -575,21 +362,11 @@ func TestBuilder_ResetAndReuse(t *testing.T) {
 	b.Append(Stat{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "second"}, MinTimestamp: 200})
 
 	obj, closer := buildObject(t, b)
-	t.Cleanup(func() { _ = closer.Close() })
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
 
 	actual := readAllRowsFromObject(t, obj)
-	expected := arrowtest.Rows{
-		{
-			"object_path.utf8":        "",
-			"__shard_bucket__.int64":  int64(0),
-			"section_index.int64":     int64(0),
-			"sort_schema.utf8":        "label:service_name",
-			"min_timestamp.timestamp": time.Unix(0, 200).UTC(),
-			"max_timestamp.timestamp": time.Unix(0, 0).UTC(),
-			"row_count.int64":         int64(0),
-			"uncompressed_size.int64": int64(0),
-			"service_name.label.utf8": "second",
-		},
+	expected := []Stat{
+		{SortSchema: "label:service_name", Labels: map[string]string{"service_name": "second"}, MinTimestamp: 200},
 	}
 	require.Equal(t, expected, actual)
 }

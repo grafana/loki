@@ -158,15 +158,14 @@ func readIndexRun(ctx context.Context, bucket objstore.Bucket, tenant string, ru
 
 // runBoundsReader reads the postings bounds of the index objects of one index
 // run. It is not safe for concurrent use.
-//
-// The strings of a decoded postings row point into the buffers of its page.
-// The reader interns the strings of each bound, so a bound does not keep a
-// page alive after the read. Planning holds the bounds of every run of a
-// window at once.
 type runBoundsReader struct {
 	tenant       string
 	planningUnit string
-	interned     map[string]string
+
+	// interned holds one string for each distinct value of the bounds. Planning
+	// holds the bounds of every run of a window at once, so equal values share
+	// one string.
+	interned map[string]string
 }
 
 func newRunBoundsReader(tenant string, run indexRun) *runBoundsReader {
@@ -296,8 +295,8 @@ func (s *keySamples) add(row postings.Row) {
 		s.samples[n-1].rows++
 		return
 	}
-	// The decoded strings of row point into the buffers of a record batch, so
-	// the sample keeps interned copies.
+	// The sample keeps interned strings, so equal values of many samples share
+	// one string.
 	s.samples = append(s.samples, keySample{
 		key: indexSortKey{
 			kind:       row.Kind,
@@ -544,9 +543,7 @@ func (f *logSectionFolder) sortPrefix(stat stats.Stat) logSortPrefix {
 	shared, ok := f.schemaKeys[encoded]
 	switch {
 	case !ok:
-		// The key of one label is the value itself, which points into the
-		// buffers of a record batch, so the folder keeps a copy.
-		shared = sharedSchemaKey{key: strings.Clone(encoded), labels: f.internedScratch()}
+		shared = sharedSchemaKey{key: encoded, labels: f.internedScratch()}
 		f.schemaKeys[shared.key] = shared
 	case !slices.Equal(shared.labels, f.scratch):
 		// Values with a NUL byte can encode to the key of other values. Such
@@ -583,11 +580,6 @@ func (f *logSectionFolder) addSection(ctx context.Context, section *dataobj.Sect
 }
 
 // add folds stat into the reference of its log section.
-//
-// The decoded strings of stat point into the buffers of a record batch. The
-// plans and the bySection keys keep the label values and object paths for the
-// whole LogMerge phase. Without a copy, they keep every batch in memory.
-// Interning copies each distinct value once.
 func (f *logSectionFolder) add(stat stats.Stat) {
 	key := f.sortPrefix(stat)
 	keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
@@ -651,15 +643,15 @@ func (f *logSectionFolder) refs() []v2.Section[logSortPrefix] {
 	return refs
 }
 
-// intern returns the copy of s in interned. It adds a copy of s on the
-// first call for each distinct value.
+// intern returns the string in interned that equals s. It stores s on the first
+// call for each distinct value. The caller must pass a string that owns its
+// memory.
 func intern(interned map[string]string, s string) string {
 	if v, ok := interned[s]; ok {
 		return v
 	}
-	v := strings.Clone(s)
-	interned[v] = v
-	return v
+	interned[s] = s
+	return s
 }
 
 // schemaLabelNames returns the label names of the fully-qualified schema

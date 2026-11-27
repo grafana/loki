@@ -4,17 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
-	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
+	"github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
 
@@ -33,16 +31,15 @@ func NewOnPagesDownloadedFunc(fn func(compressedBytes, uncompressedBytes int64))
 
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
-	// Columns to read. Each column must belong to the same [Section].
+	// Columns to read. Each column must belong to the same [Section]. Each
+	// column type can appear once. A repeat makes the first ReadRecordBatch
+	// fail.
 	Columns []*Column
 
 	// Predicates filter the rows returned by the Reader. Optional; when empty
-	// all rows from Columns are returned.
+	// all rows from Columns are returned. A predicate can reference a column
+	// that is not in Columns. The Reader reads that column without returning it.
 	Predicates []Predicate
-
-	// Allocator to use for allocating Arrow records. If nil,
-	// [memory.DefaultAllocator] is used.
-	Allocator memory.Allocator
 
 	// StatsTracker keeps track of the various reader internal stats.
 	StatsTracker dataset.RowReaderStatsTracker
@@ -89,17 +86,16 @@ func (opts *ReaderOptions) validate() error {
 	return perr
 }
 
-// A Reader reads batches of rows from a postings [Section]. The returned
-// [arrow.RecordBatch] values carry one column per entry in
-// [ReaderOptions.Columns], named per [Reader.Schema].
+// A Reader reads batches of rows from a postings [Section].
+// [Reader.ReadRecordBatch] returns each batch as a [RecordBatch] with one array
+// for each entry in [ReaderOptions.Columns].
+//
+// A Reader is not safe for concurrent use.
 type Reader struct {
-	opts   ReaderOptions
-	schema *arrow.Schema
+	opts ReaderOptions
 
 	ready bool
 	inner *dataset.RowReader
-
-	alloc *memoryv2.Allocator
 
 	readSpan trace.Span
 }
@@ -114,23 +110,18 @@ func NewReader(opts ReaderOptions) *Reader {
 	return &r
 }
 
-// Columns returns the [Column]s the Reader will read.
+// Columns returns the [Column]s the Reader will read. The caller must not
+// modify the returned slice.
 func (r *Reader) Columns() []*Column { return r.opts.Columns }
 
-// Schema returns the [arrow.Schema] used by the Reader. Set on construction
-// (via [Reader.Reset]) so it is valid before [Reader.Open] is called.
-func (r *Reader) Schema() *arrow.Schema { return r.schema }
-
-// Reset reuses the Reader with new options. Reset rebuilds Schema so that
-// Schema() is valid before Open.
+// Reset reuses the Reader with new options.
 func (r *Reader) Reset(opts ReaderOptions) {
-	if r.alloc == nil {
-		r.alloc = memoryv2.NewAllocator(nil)
-	} else {
-		r.alloc.Reset()
-	}
 	r.opts = opts
-	r.schema = columnsSchema(opts.Columns)
+
+	// Clone the columns to protect against the caller changing the slice.
+	// ReadRecordBatch pairs each array of a batch with the column at the same
+	// position, so a changed slice would mislabel the arrays.
+	r.opts.Columns = slices.Clone(opts.Columns)
 	r.readSpan = nil
 	r.ready = false
 	if r.inner != nil {
@@ -138,8 +129,8 @@ func (r *Reader) Reset(opts ReaderOptions) {
 	}
 }
 
-// Open initializes Reader resources. Must be called before [Reader.Read].
-// Safe to call multiple times.
+// Open initializes Reader resources. Must be called before
+// [Reader.ReadRecordBatch]. Safe to call multiple times.
 func (r *Reader) Open(ctx context.Context) error {
 	if r.ready {
 		return nil
@@ -151,18 +142,23 @@ func (r *Reader) Open(ctx context.Context) error {
 	return nil
 }
 
-// Read reads up to batchSize rows from the section. Read returns an error if
-// batchSize is not positive.
+// ReadRecordBatch reads the next rows of the section that pass the predicates,
+// at most batchSize of them. A nil error means that the batch has between one
+// and batchSize rows. A batch with fewer rows does not mean that the section
+// ended.
 //
-// Read skips the rows that fail the predicates. A batch with a nil error has at
-// least one row. A batch with fewer than batchSize rows does not mean that the
-// section ended. At the end of the section, Read returns an empty batch and
-// io.EOF.
+// At the end of the section, and on every call after it, ReadRecordBatch
+// returns nil and [io.EOF]. On any other error it returns nil and the error.
+// Treat any error other than [io.EOF] as final. It returns an error when
+// batchSize is not positive, alloc is nil, or the Reader is not open.
 //
-// A batch that comes with an error has no rows. Read never returns a nil batch
-// with io.EOF. It can return a nil batch with another error. The caller must
-// release every returned batch.
-func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
+// The arrays of the batch use memory from alloc. They stay valid until the
+// caller reclaims alloc. A call can leave temporary memory in alloc, also when
+// it fails. The caller should reclaim alloc after each batch.
+//
+// The call must have the allocator to itself: do not use alloc in another
+// goroutine during the call.
+func (r *Reader) ReadRecordBatch(ctx context.Context, alloc *memory.Allocator, batchSize int) (*RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
 	}
@@ -173,23 +169,23 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
 	}
 
-	defer r.alloc.Reclaim()
-
-	rb, readErr := r.inner.ReadRecordBatch(ctx, r.alloc, batchSize)
-	result, err := arrowconv.ToRecordBatch(rb, r.schema)
-	if err != nil {
-		return nil, fmt.Errorf("convert columnar.RecordBatch to arrow.RecordBatch: %w", err)
+	rb, err := r.inner.ReadRecordBatch(ctx, alloc, batchSize)
+	if errors.Is(err, io.EOF) {
+		return nil, io.EOF
+	} else if err != nil {
+		return nil, fmt.Errorf("reading record batch: %w", err)
 	}
 
-	return result, readErr
+	batch, err := newRecordBatch(r.opts.Columns, rb)
+	if err != nil {
+		return nil, fmt.Errorf("decoding record batch: %w", err)
+	}
+	return batch, nil
 }
 
 func (r *Reader) init(ctx context.Context) error {
 	if err := r.opts.validate(); err != nil {
 		return fmt.Errorf("invalid options: %w", err)
-	}
-	if r.opts.Allocator == nil {
-		r.opts.Allocator = memory.DefaultAllocator
 	}
 
 	ctx, span := xcap.StartSpan(ctx, tracer, "postings.Reader.Open")
@@ -222,8 +218,8 @@ func (r *Reader) init(ctx context.Context) error {
 	}
 
 	// Project only the first len(r.opts.Columns) columns of the dataset, so a
-	// batch has one array for each field of the schema. [dataset.RowReader] reads
-	// the other columns only for the predicates.
+	// batch has one array for each entry in [ReaderOptions.Columns].
+	// [dataset.RowReader] reads the other columns only for the predicates.
 	innerOptions := dataset.RowReaderOptions{
 		Dataset:           dset,
 		ProjectedColumns:  dset.Columns()[:len(r.opts.Columns)],
@@ -274,58 +270,4 @@ func (r *Reader) Close() error {
 		return r.inner.Close()
 	}
 	return nil
-}
-
-// columnsSchema builds the arrow schema for the given projected columns.
-func columnsSchema(cols []*Column) *arrow.Schema {
-	fields := make([]arrow.Field, 0, len(cols))
-	for _, col := range cols {
-		fields = append(fields, columnToField(col))
-	}
-	return arrow.NewSchema(fields, nil)
-}
-
-var columnDatatypes = map[ColumnType]arrow.DataType{
-	ColumnTypeInvalid:          arrow.Null,
-	ColumnTypeKind:             arrow.PrimitiveTypes.Int64,
-	ColumnTypeObjectPath:       arrow.BinaryTypes.String,
-	ColumnTypeShardBuckets:     arrow.PrimitiveTypes.Int64,
-	ColumnTypeSectionIndex:     arrow.PrimitiveTypes.Int64,
-	ColumnTypeColumnName:       arrow.BinaryTypes.String,
-	ColumnTypeLabelValue:       arrow.BinaryTypes.String,
-	ColumnTypeBloomFilter:      arrow.BinaryTypes.Binary,
-	ColumnTypeStreamIDBitmap:   arrow.BinaryTypes.Binary,
-	ColumnTypeUncompressedSize: arrow.PrimitiveTypes.Int64,
-	ColumnTypeMinTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeMaxTimestamp:     arrow.FixedWidthTypes.Timestamp_ns,
-	ColumnTypeMinShardBucket:   arrow.PrimitiveTypes.Int64,
-	ColumnTypeMaxShardBucket:   arrow.PrimitiveTypes.Int64,
-}
-
-func columnToField(col *Column) arrow.Field {
-	dtype, ok := columnDatatypes[col.Type]
-	if !ok {
-		dtype = arrow.Null
-	}
-	return arrow.Field{
-		Name:     makeColumnName(col.Name, col.Type.String(), dtype),
-		Type:     dtype,
-		Nullable: true,
-	}
-}
-
-// makeColumnName produces a unique field name "<name>.<type>.<dtype>" or
-// "<type>.<dtype>" when the column has no name. Mirrors streams/reader.go.
-func makeColumnName(label, name string, dty arrow.DataType) string {
-	switch {
-	case label == "" && name == "":
-		return dty.Name()
-	case label == "" && name != "":
-		return name + "." + dty.Name()
-	default:
-		if name == "" {
-			name = "<invalid>"
-		}
-		return label + "." + name + "." + dty.Name()
-	}
 }

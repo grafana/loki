@@ -1,7 +1,6 @@
 package indexpointers_test
 
 import (
-	"context"
 	"errors"
 	"io"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
+	"github.com/grafana/loki/v3/pkg/memory"
 )
 
 const benchPathVariants = 200
@@ -44,7 +44,7 @@ func BenchmarkReaderRead(b *testing.B) {
 }
 
 func benchmarkReaderRead(b *testing.B, params readerBenchParams) {
-	ctx := context.Background()
+	ctx := b.Context()
 	sec := buildBenchSection(b, params.numPointers)
 	columns := sec.Columns()
 
@@ -53,27 +53,24 @@ func benchmarkReaderRead(b *testing.B, params readerBenchParams) {
 	}
 
 	reader := indexpointers.NewReader(opts)
+	alloc := memory.NewAllocator(nil)
+	defer alloc.Free()
 
 	b.ReportAllocs()
 
 	for b.Loop() {
 		reader.Reset(opts)
 		require.NoError(b, reader.Open(ctx))
-		totalRows := int64(0)
+		totalRows := 0
 
 		for {
-			rec, err := reader.Read(ctx, 256)
-			if rec != nil {
-				totalRows += rec.NumRows()
-				rec.Release()
+			alloc.Reclaim()
+			batch, err := reader.ReadRecordBatch(ctx, alloc, 256)
+			if errors.Is(err, io.EOF) {
+				break
 			}
-
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				require.NoError(b, err)
-			}
+			require.NoError(b, err)
+			totalRows += batch.Rows
 		}
 
 		require.NoError(b, reader.Close())
@@ -103,9 +100,9 @@ func buildBenchSection(b *testing.B, numPointers int) *indexpointers.Section {
 
 	obj, closer, err := objectBuilder.Flush()
 	require.NoError(b, err)
-	b.Cleanup(func() { closer.Close() })
+	b.Cleanup(func() { require.NoError(b, closer.Close()) })
 
-	sec, err := indexpointers.Open(context.Background(), obj.Sections()[0])
+	sec, err := indexpointers.Open(b.Context(), obj.Sections()[0])
 	require.NoError(b, err)
 	return sec
 }
