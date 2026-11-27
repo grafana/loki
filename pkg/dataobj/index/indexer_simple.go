@@ -173,5 +173,5 @@ func ObjectKey(ctx context.Context, object *dataobj.Object) (string, error) {
 	sum := h.Sum(sumBytes[:0])
 	sumStr := hex.EncodeToString(sum[:])
 
-	return fmt.Sprintf("indexes/%s/%s", sumStr[:2], sumStr[2:]), nil
+	return fmt.Sprintf("%s%s/%s", dataobj.IndexDirectory, sumStr[:2], sumStr[2:]), nil
 }

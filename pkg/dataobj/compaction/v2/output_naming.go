@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
 )
 
 // hashReader streams r through SHA-224 and returns the hex digest.
@@ -24,7 +26,7 @@ func CompactedIndexPath(tenant string, r io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return "indexes/tenants/" + tenant + "/" + sum[:2] + "/" + sum[2:], nil
+	return dataobj.IndexDirectory + "tenants/" + tenant + "/" + sum[:2] + "/" + sum[2:], nil
 }
 
 // CompactedLogObjectPath returns the object-storage key for a compacted log
