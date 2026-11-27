@@ -14,6 +14,7 @@ type MockLimits struct {
 	MaxQueryTimeoutVal            time.Duration
 	MaxQueryRangeVal              time.Duration
 	MaxQuerySeriesVal             int
+	MaxQueryIntermediateSeriesVal int
 	MaxConcurrentTailRequestsVal  int
 	MaxEntriesLimitPerQueryVal    int
 	MaxStreamsMatchersPerQueryVal int
@@ -44,6 +45,10 @@ func (m *MockLimits) MaxQueryRange(_ context.Context, _ string) time.Duration {
 
 func (m *MockLimits) MaxQuerySeries(_ string) int {
 	return m.MaxQuerySeriesVal
+}
+
+func (m *MockLimits) MaxQueryIntermediateSeries(_ string) int {
+	return m.MaxQueryIntermediateSeriesVal
 }
 
 func (m *MockLimits) MaxConcurrentTailRequests(_ context.Context, _ string) int {

@@ -4340,6 +4340,11 @@ discover_generic_fields:
 # CLI flag: -querier.max-query-series
 [max_query_series: <int> | default = 500]
 
+# Experimental: Limit the maximum number of label sets that a querier job may hold
+# while it evaluates a metric query. 0 to disable. Not enforced yet.
+# CLI flag: -querier.max-query-intermediate-series
+[max_query_intermediate_series: <int> | default = 0]
+
 # Limit how far back in time series data and metadata can be queried, up until
 # lookback duration ago. This limit is enforced in the query frontend, the
 # querier and the ruler. If the requested time range is outside the allowed
