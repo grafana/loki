@@ -679,7 +679,7 @@ Flags:
                                 HTTP_PROXY ($LOKI_ENV_PROXY)
       --limit=30                Limit on number of entries to print. Setting it
                                 to 0 will fetch all entries.
-      --since=1h                Lookback window.
+      --since=1h                Lookback window. Supported units: y, w, d, h, m, s, ms.
       --from=FROM               Start looking for logs at this absolute time
                                 (inclusive)
       --to=TO                   Stop looking for logs at this absolute time
@@ -970,7 +970,7 @@ Flags:
       --[no-]envproxy         Use ProxyFromEnvironment to use net/http
                               ProxyFromEnvironment configuration, eg HTTP_PROXY
                               ($LOKI_ENV_PROXY)
-      --since=1h              Lookback window.
+      --since=1h              Lookback window. Supported units: y, w, d, h, m, s, ms.
       --from=FROM             Start looking for labels at this absolute time
                               (inclusive)
       --to=TO                 Stop looking for labels at this absolute time
@@ -1080,7 +1080,7 @@ Flags:
       --[no-]envproxy         Use ProxyFromEnvironment to use net/http
                               ProxyFromEnvironment configuration, eg HTTP_PROXY
                               ($LOKI_ENV_PROXY)
-      --since=1h              Lookback window.
+      --since=1h              Lookback window. Supported units: y, w, d, h, m, s, ms.
       --from=FROM             Start looking for logs at this absolute time
                               (inclusive)
       --to=TO                 Stop looking for logs at this absolute time
@@ -1205,7 +1205,7 @@ Flags:
       --[no-]envproxy         Use ProxyFromEnvironment to use net/http
                               ProxyFromEnvironment configuration, eg HTTP_PROXY
                               ($LOKI_ENV_PROXY)
-      --since=1h              Lookback window.
+      --since=1h              Lookback window. Supported units: y, w, d, h, m, s, ms.
       --from=FROM             Start looking for logs at this absolute time
                               (inclusive)
       --to=TO                 Stop looking for logs at this absolute time
@@ -1328,7 +1328,7 @@ Flags:
       --[no-]envproxy           Use ProxyFromEnvironment to use net/http
                                 ProxyFromEnvironment configuration, eg
                                 HTTP_PROXY ($LOKI_ENV_PROXY)
-      --since=1h                Lookback window.
+      --since=1h                Lookback window. Supported units: y, w, d, h, m, s, ms.
       --from=FROM               Start looking for logs at this absolute time
                                 (inclusive)
       --to=TO                   Stop looking for logs at this absolute time
@@ -1457,7 +1457,7 @@ Flags:
       --[no-]envproxy           Use ProxyFromEnvironment to use net/http
                                 ProxyFromEnvironment configuration, eg
                                 HTTP_PROXY ($LOKI_ENV_PROXY)
-      --since=1h                Lookback window.
+      --since=1h                Lookback window. Supported units: y, w, d, h, m, s, ms.
       --from=FROM               Start looking for logs at this absolute time
                                 (inclusive)
       --to=TO                   Stop looking for logs at this absolute time
@@ -1596,7 +1596,7 @@ Flags:
       --limit=100             Limit on number of fields or values to return.
       --line-limit=1000       Limit the number of lines each subquery is allowed
                               to process.
-      --since=1h              Lookback window.
+      --since=1h              Lookback window. Supported units: y, w, d, h, m, s, ms.
       --from=FROM             Start looking for logs at this absolute time
                               (inclusive)
       --to=TO                 Stop looking for logs at this absolute time
@@ -1835,7 +1835,7 @@ Flags:
       --[no-]envproxy         Use ProxyFromEnvironment to use net/http
                               ProxyFromEnvironment configuration, eg HTTP_PROXY
                               ($LOKI_ENV_PROXY)
-      --since=1h              Lookback window.
+      --since=1h              Lookback window. Supported units: y, w, d, h, m, s, ms.
       --from=FROM             Start time for deletion (inclusive)
       --to=TO                 End time for deletion (exclusive)
       --max-interval=MAX-INTERVAL  
