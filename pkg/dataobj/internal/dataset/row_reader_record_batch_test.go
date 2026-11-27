@@ -28,6 +28,9 @@ var recordBatchTestSizes = []int{1, 3, 7, 64, 10_000}
 // errInjectedReadPages is the error that failingAtDataset returns.
 var errInjectedReadPages = errors.New("failed to read pages")
 
+// errInjectedListPages is the error that failingListAtDataset returns.
+var errInjectedListPages = errors.New("failed to list pages")
+
 // parityRowStats are the row statistics that Read and ReadRecordBatch must record
 // alike. parityByteStats are the byte statistics. ReadRecordBatch can record fewer
 // bytes than Read, never more.
@@ -721,6 +724,42 @@ func TestRowReader_ReadRecordBatch(t *testing.T) {
 		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 		require.EqualError(t, err, "projecting column 0: pages of column 0 end at row 9, but the column holds 10 rows: unexpected EOF")
 		require.Equal(t, int64(0), batch.NumRows())
+	})
+
+	t.Run("returns the same rows and downloads the same pages as a run without failures when listing the pages fails after the first column and the caller retries", func(t *testing.T) {
+		generator := DatasetGenerator{RowCount: 3000, PageSizeHint: 2048, Columns: generatedColumns(100, 1)}
+		dset, columns := generator.Build(t, 5)
+		opts := RowReaderOptions{Dataset: dset, ProjectedColumns: columns}
+		downloadStats := []string{
+			dataobj.StatDatasetPrimaryPagesDownloaded.Name(),
+			dataobj.StatDatasetPrimaryColumnBytes.Name(),
+		}
+
+		var want [][]string
+		wantStats := runAndCollectStats(t, func(ctx context.Context) {
+			want = readAllRecordBatches(ctx, t, opts, 64)
+		})
+
+		opts.Dataset = &failingListAtDataset{Dataset: dset, failColumn: 1}
+		var got [][]string
+		gotStats := runAndCollectStats(t, func(ctx context.Context) {
+			r := NewRowReader(opts)
+			require.NoError(t, r.Open(ctx))
+
+			var alloc memory.Allocator
+			batch, err := r.ReadRecordBatch(ctx, &alloc, 64)
+			require.ErrorIs(t, err, errInjectedListPages)
+			require.Equal(t, int64(0), batch.NumRows())
+
+			got = readRemainingRecordBatches(ctx, t, r, 64)
+			require.NoError(t, r.Close())
+		})
+
+		require.Equal(t, want, got)
+		for _, stat := range downloadStats {
+			require.Positive(t, wantStats[stat], stat)
+			require.Equal(t, wantStats[stat], gotStats[stat], stat)
+		}
 	})
 
 	t.Run("returns the same rows as Read when it runs again after Reset with other options", func(t *testing.T) {
@@ -2065,6 +2104,34 @@ type failingListDataset struct {
 
 func (d *failingListDataset) ListPages(context.Context, []Column) result.Seq[Pages] {
 	return result.Iter(func(func(Pages) bool) error { return d.err })
+}
+
+// failingListAtDataset is a Dataset whose first ListPages call fails with
+// errInjectedListPages at the column with index failColumn. That call lists the
+// columns before failColumn. Later calls list every column.
+type failingListAtDataset struct {
+	Dataset
+	failColumn int // Index of the column where the first call fails.
+	calls      int // Number of ListPages calls so far.
+}
+
+func (d *failingListAtDataset) ListPages(ctx context.Context, columns []Column) result.Seq[Pages] {
+	fail := d.calls == 0
+	d.calls++
+
+	return func(yield func(result.Result[Pages]) bool) {
+		var column int
+		for res := range d.Dataset.ListPages(ctx, columns) {
+			if fail && column == d.failColumn {
+				yield(result.Error[Pages](errInjectedListPages))
+				return
+			}
+			if !yield(res) {
+				return
+			}
+			column++
+		}
+	}
 }
 
 // truncatedListDataset is a Dataset that lists one page less than each column
