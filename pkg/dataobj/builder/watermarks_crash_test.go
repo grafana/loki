@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
@@ -161,7 +160,7 @@ func (e *crashEnv) run(t *testing.T, records []*kgo.Record, flushEvery, concurre
 	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, logsobj.NoTenantOverrides{})
 	require.NoError(t, err)
 	indexobjMetrics := indexobj.NewBuilderMetrics(reg)
-	idx, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, e.idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg), indexobjtest.NoBloomDenyList{})
+	idx, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, e.idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg), fakeTenantOverrides{})
 	require.NoError(t, err)
 
 	uploader := dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, e.bucket, logger)

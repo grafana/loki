@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/prometheus/model/labels"
@@ -25,7 +26,6 @@ import (
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
@@ -1163,12 +1163,12 @@ func newTestExecutorContext(t testing.TB, bucket objstore.Bucket) *Context {
 	}
 
 	return &Context{
-		bucket:         bucket,
-		scratchStore:   scratch.NewMemory(),
-		indexobjCfg:    testBuilderCfg,
-		bloomDenyList:  indexobjtest.NoBloomDenyList{},
-		logsobjCfg:     testBuilderCfg,
-		builderMetrics: logsobj.NewBuilderMetrics(),
+		bucket:          bucket,
+		scratchStore:    scratch.NewMemory(),
+		indexobjCfg:     testBuilderCfg,
+		tenantOverrides: fakeTenantOverrides{},
+		logsobjCfg:      testBuilderCfg,
+		builderMetrics:  logsobj.NewBuilderMetrics(),
 
 		logMergeObserver: nopLogMergeObserver{},
 		logger:           log.NewNopLogger(),
@@ -2353,4 +2353,81 @@ func totalBytes(values []int64) int64 {
 		total += value
 	}
 	return total
+}
+
+// fakeTenantOverrides is a [TenantOverrides] that gives each tenant its own
+// bloom deny list. A tenant that is not in the map has an empty list.
+type fakeTenantOverrides map[string][]string
+
+func (o fakeTenantOverrides) DataObjBloomDenyList(tenant string) []string { return o[tenant] }
+
+func TestExecuteIndexMerge_BloomDenyList(t *testing.T) {
+	ctx := context.Background()
+	overrides := fakeTenantOverrides{"tenant-a": {"observed_timestamp"}}
+
+	for _, tc := range []struct {
+		tenant      string
+		wantPassAll bool
+	}{
+		{tenant: "tenant-a", wantPassAll: true},
+		{tenant: "tenant-b", wantPassAll: false},
+	} {
+		t.Run("merges the filters of "+tc.tenant, func(t *testing.T) {
+			bucket := objstore.NewInMemBucket()
+			srcPath := "source/index-0.dat"
+
+			// The source index has a real filter for each column.
+			b := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+			b.SetTenant(tc.tenant)
+			for _, column := range []string{"observed_timestamp", "trace_id"} {
+				b.PrepareBloomColumn("log-A", 0, column, 100, 0)
+				require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
+					ObjectPath: "log-A", SectionIndex: 0, ColumnName: column, Value: "1", StreamID: 1, Timestamp: time.Unix(0, 1_000_000),
+				}))
+			}
+			uploadSections(t, bucket, srcPath, b)
+
+			c := newTestExecutorContext(t, bucket)
+			c.tenantOverrides = overrides
+			node := &physical.IndexMerge{
+				NodeID: ulid.Make(),
+				Tenant: tc.tenant,
+				Runs:   []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: srcPath, SectionIndex: 0}}}},
+			}
+			arts, err := oneArtifact(t)(c.doIndexMerge(ctx, node))
+			require.NoError(t, err)
+
+			requireBloomFilters(t, readAllPostingsRowsFromBucket(ctx, t, bucket, arts.Path), tc.wantPassAll)
+		})
+	}
+}
+
+// requireBloomFilters checks the bloom rows of the columns observed_timestamp
+// and trace_id. The trace_id filter must prune the value "2". The
+// observed_timestamp filter must match every value if wantPassAll is true, and
+// must prune the value "2" otherwise.
+func requireBloomFilters(t *testing.T, rows []postings.Row, wantPassAll bool) {
+	t.Helper()
+
+	matches := func(row postings.Row, value string) bool {
+		var filter bloom.BloomFilter
+		require.NoError(t, filter.UnmarshalBinary(row.BloomFilter))
+		return filter.Test([]byte(value))
+	}
+
+	seen := map[string]bool{}
+	for _, row := range rows {
+		if row.Kind != postings.KindBloom {
+			continue
+		}
+		seen[row.ColumnName] = true
+		require.True(t, matches(row, "1"), "column %s must match its own value", row.ColumnName)
+		switch row.ColumnName {
+		case "observed_timestamp":
+			require.Equal(t, wantPassAll, matches(row, "2"))
+		case "trace_id":
+			require.False(t, matches(row, "2"))
+		}
+	}
+	require.Equal(t, map[string]bool{"observed_timestamp": true, "trace_id": true}, seen)
 }

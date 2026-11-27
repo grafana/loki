@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	dataobj_uploader "github.com/grafana/loki/v3/pkg/dataobj/uploader"
@@ -704,7 +703,7 @@ func newRealStack(t *testing.T) *realStack {
 	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, logsobj.NoTenantOverrides{})
 	require.NoError(t, err)
 	indexobjMetrics := indexobj.NewBuilderMetrics(reg)
-	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg), indexobjtest.NoBloomDenyList{})
+	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg), fakeTenantOverrides{})
 	require.NoError(t, err)
 	var (
 		uploader  = dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, bucket, logger)
@@ -852,3 +851,9 @@ func newTestMultiWindowRecord(t *testing.T, tenant string, windows []time.Time) 
 	require.NoError(t, err)
 	return &rec
 }
+
+// fakeTenantOverrides is a [index.TenantOverrides] that gives each tenant its own
+// bloom deny list. A tenant that is not in the map has an empty list.
+type fakeTenantOverrides map[string][]string
+
+func (o fakeTenantOverrides) DataObjBloomDenyList(tenant string) []string { return o[tenant] }

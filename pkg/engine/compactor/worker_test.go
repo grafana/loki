@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -34,12 +33,12 @@ func validWorkerCfg() WorkerConfig {
 // attempts DNS-SRV lookup, finds no scheduler, and shuts down cleanly.
 func TestWorker_BootShutdown(t *testing.T) {
 	w, err := NewWorker(WorkerParams{
-		BloomDenyList: indexobjtest.NoBloomDenyList{},
-		Config:        validWorkerCfg(),
-		Bucket:        objstore.NewInMemBucket(),
-		ScratchStore:  scratch.NewMemory(),
-		Logger:        log.NewNopLogger(),
-		Registerer:    prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          validWorkerCfg(),
+		Bucket:          objstore.NewInMemBucket(),
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, w)
@@ -66,12 +65,12 @@ func TestWorker_BootShutdown(t *testing.T) {
 // worker is useless without a bucket.
 func TestNewWorker_RequiresBucket(t *testing.T) {
 	_, err := NewWorker(WorkerParams{
-		BloomDenyList: indexobjtest.NoBloomDenyList{},
-		Config:        validWorkerCfg(),
-		Bucket:        nil,
-		ScratchStore:  scratch.NewMemory(),
-		Logger:        log.NewNopLogger(),
-		Registerer:    prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          validWorkerCfg(),
+		Bucket:          nil,
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "bucket")
@@ -84,12 +83,12 @@ func TestNewWorker_RequiresSchedulerLookupAddress(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.SchedulerLookupAddress = ""
 	_, err := NewWorker(WorkerParams{
-		BloomDenyList: indexobjtest.NoBloomDenyList{},
-		Config:        cfg,
-		Bucket:        objstore.NewInMemBucket(),
-		ScratchStore:  scratch.NewMemory(),
-		Logger:        log.NewNopLogger(),
-		Registerer:    prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          cfg,
+		Bucket:          objstore.NewInMemBucket(),
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "scheduler_lookup_address",
@@ -104,12 +103,12 @@ func TestNewWorker_RequiresAdvertiseAddr(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.AdvertiseAddr = ""
 	_, err := NewWorker(WorkerParams{
-		BloomDenyList: indexobjtest.NoBloomDenyList{},
-		Config:        cfg,
-		Bucket:        objstore.NewInMemBucket(),
-		ScratchStore:  scratch.NewMemory(),
-		Logger:        log.NewNopLogger(),
-		Registerer:    prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          cfg,
+		Bucket:          objstore.NewInMemBucket(),
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "advertise_addr",
@@ -124,12 +123,12 @@ func TestNewWorker_RequiresEndpoint(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.Endpoint = ""
 	_, err := NewWorker(WorkerParams{
-		BloomDenyList: indexobjtest.NoBloomDenyList{},
-		Config:        cfg,
-		Bucket:        objstore.NewInMemBucket(),
-		ScratchStore:  scratch.NewMemory(),
-		Logger:        log.NewNopLogger(),
-		Registerer:    prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          cfg,
+		Bucket:          objstore.NewInMemBucket(),
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "endpoint",
@@ -143,14 +142,20 @@ func TestNewWorker_InvalidAdvertiseAddr(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.AdvertiseAddr = "not-a-valid-host:port:::"
 	_, err := NewWorker(WorkerParams{
-		BloomDenyList: indexobjtest.NoBloomDenyList{},
-		Config:        cfg,
-		Bucket:        objstore.NewInMemBucket(),
-		ScratchStore:  scratch.NewMemory(),
-		Logger:        log.NewNopLogger(),
-		Registerer:    prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          cfg,
+		Bucket:          objstore.NewInMemBucket(),
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "resolve worker advertise address",
 		"error must mention the resolution step for operator clarity, got: %v", err)
 }
+
+// fakeTenantOverrides is a executor tenant overrides that gives each tenant its own
+// bloom deny list. A tenant that is not in the map has an empty list.
+type fakeTenantOverrides map[string][]string
+
+func (o fakeTenantOverrides) DataObjBloomDenyList(tenant string) []string { return o[tenant] }

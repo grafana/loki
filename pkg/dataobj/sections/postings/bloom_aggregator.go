@@ -31,7 +31,7 @@ type bloomPostingEntry struct {
 	UncompressedSize int64
 
 	// passAll is true when bloomFilter is the filter that matches every value.
-	// Observe then skips the filter. It still records the stream bitmap and
+	// addToFilter then does nothing. Observe still records the stream bitmap and
 	// the time range, because a merge needs equal time ranges for the rows
 	// of one section.
 	passAll bool
@@ -43,8 +43,11 @@ type bloomPostingEntry struct {
 }
 
 // addToFilter adds value to the bloom filter of e, unless e knows that the
-// filter already holds it.
+// filter already holds it. It does nothing if the filter matches every value.
 func (e *bloomPostingEntry) addToFilter(value string) {
+	if e.passAll {
+		return
+	}
 	if e.added != nil {
 		if _, ok := e.added[value]; ok {
 			return
@@ -208,9 +211,7 @@ func (a *bloomAggregator) Observe(obs BloomObservation) error {
 		return fmt.Errorf("bloom column not prepared: objectPath=%q sectionIndex=%d columnName=%q", obs.ObjectPath, obs.SectionIndex, obs.ColumnName)
 	}
 
-	if !entry.passAll {
-		entry.addToFilter(obs.Value)
-	}
+	entry.addToFilter(obs.Value)
 	entry.ShardBuckets = obs.ShardBuckets
 
 	// Grow bitmap if needed and set the bit for this stream ID.

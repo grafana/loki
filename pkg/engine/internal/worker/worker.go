@@ -80,9 +80,9 @@ type Config struct {
 	// IndexobjCfg is the builder config for compacted index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
-	// BloomDenyList gives the per-tenant bloom deny list of compacted index
+	// TenantOverrides provides the per-tenant settings of compacted index
 	// objects.
-	BloomDenyList executor.BloomDenyLister
+	TenantOverrides executor.TenantOverrides
 
 	// LogsobjCfg is the builder config for compacted log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
@@ -147,8 +147,8 @@ func New(config Config) (*Worker, error) {
 	if config.SchedulerAddress == nil && config.SchedulerLookupAddress == "" {
 		return nil, errors.New("at least one of scheduler address or lookup address is required")
 	}
-	if config.BloomDenyList == nil {
-		return nil, errors.New("bloom deny list is required")
+	if config.TenantOverrides == nil {
+		return nil, errors.New("tenant overrides are required")
 	}
 	if config.BuilderMetrics == nil {
 		config.BuilderMetrics = logsobj.NewBuilderMetrics()
@@ -204,14 +204,14 @@ func (w *Worker) run(ctx context.Context) error {
 			logMergeObserver = w.config.NewLogMergeObserver(i)
 		}
 		t := &thread{
-			Logger:         log.With(w.logger, "thread", i),
-			Bucket:         w.config.Bucket,
-			DataBucket:     w.config.DataBucket,
-			ScratchStore:   w.config.ScratchStore,
-			IndexobjCfg:    w.config.IndexobjCfg,
-			BloomDenyList:  w.config.BloomDenyList,
-			LogsobjCfg:     w.config.LogsobjCfg,
-			BuilderMetrics: w.config.BuilderMetrics,
+			Logger:          log.With(w.logger, "thread", i),
+			Bucket:          w.config.Bucket,
+			DataBucket:      w.config.DataBucket,
+			ScratchStore:    w.config.ScratchStore,
+			IndexobjCfg:     w.config.IndexobjCfg,
+			TenantOverrides: w.config.TenantOverrides,
+			LogsobjCfg:      w.config.LogsobjCfg,
+			BuilderMetrics:  w.config.BuilderMetrics,
 
 			IndexMergeObserver:   w.config.IndexMergeObserver,
 			LogMergeObserver:     logMergeObserver,

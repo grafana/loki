@@ -92,7 +92,7 @@ func (b keyBounds) keyRange() (postings.KeyRange, error) {
 // bucket of c. The log objects of its rows must have layout. The caller must
 // call reset when it is done with the output.
 func (c *Context) newIndexOutput(tenant string, layout streams.Layout) (*indexOutput, error) {
-	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, tenant, layout, c.bloomDenyList.DataObjBloomDenyList(tenant))
+	builder, err := indexobj.NewMergeBuilder(c.indexobjCfg, c.scratchStore, tenant, layout, c.tenantOverrides.DataObjBloomDenyList(tenant))
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}

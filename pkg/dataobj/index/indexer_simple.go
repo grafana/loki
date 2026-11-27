@@ -35,9 +35,11 @@ type Result struct {
 	ShardBuckets indexpointers.ShardBuckets
 }
 
-// BloomDenyLister returns the names of the structured metadata columns of a
-// tenant that get no bloom filter in the index.
-type BloomDenyLister interface {
+// TenantOverrides provides the per-tenant settings that a [SimpleIndexer]
+// reads.
+type TenantOverrides interface {
+	// DataObjBloomDenyList returns the names of the structured metadata
+	// columns of the tenant that get no bloom filter in the index.
 	DataObjBloomDenyList(tenant string) []string
 }
 
@@ -51,7 +53,7 @@ type SimpleIndexer struct {
 	metrics                *IndexerMetrics
 	indexObjBuilderMetrics *indexobj.BuilderMetrics
 	calculatorMetrics      *CalculatorMetrics
-	bloomDenyList          BloomDenyLister
+	tenantOverrides        TenantOverrides
 }
 
 // NewSimpleIndexer returns a new [SimpleIndexer].
@@ -63,7 +65,7 @@ func NewSimpleIndexer(
 	metrics *IndexerMetrics,
 	indexObjBuilderMetrics *indexobj.BuilderMetrics,
 	calculatorMetrics *CalculatorMetrics,
-	bloomDenyList BloomDenyLister,
+	tenantOverrides TenantOverrides,
 ) (*SimpleIndexer, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -77,7 +79,7 @@ func NewSimpleIndexer(
 		metrics:                metrics,
 		indexObjBuilderMetrics: indexObjBuilderMetrics,
 		calculatorMetrics:      calculatorMetrics,
-		bloomDenyList:          bloomDenyList,
+		tenantOverrides:        tenantOverrides,
 	}, nil
 }
 
@@ -106,7 +108,7 @@ func (s *SimpleIndexer) index(ctx context.Context, obj *dataobj.Object, objPath 
 		return Result{}, fmt.Errorf("%w: %w", ErrUnprocessableObject, err)
 	}
 
-	builder, err := indexobj.NewBuilder(tenant, s.cfg, s.scratchStore, s.indexObjBuilderMetrics, s.bloomDenyList.DataObjBloomDenyList(tenant))
+	builder, err := indexobj.NewBuilder(tenant, s.cfg, s.scratchStore, s.indexObjBuilderMetrics, s.tenantOverrides.DataObjBloomDenyList(tenant))
 	if err != nil {
 		return Result{}, fmt.Errorf("failed to create index object builder: %w", err)
 	}

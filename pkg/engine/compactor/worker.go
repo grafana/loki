@@ -30,8 +30,8 @@ type WorkerParams struct {
 
 	// IndexobjCfg controls index object construction parameters for compaction.
 	IndexobjCfg logsobj.BuilderBaseConfig
-	// BloomDenyList gives the per-tenant bloom deny list of compacted index objects.
-	BloomDenyList executor.BloomDenyLister
+	// TenantOverrides provides the per-tenant settings of compacted index objects.
+	TenantOverrides executor.TenantOverrides
 	// LogsobjCfg controls log object construction parameters for compaction.
 	LogsobjCfg logsobj.BuilderBaseConfig
 }
@@ -53,8 +53,8 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 	if params.Bucket == nil {
 		return nil, errors.New("dataobj compaction worker: bucket is required")
 	}
-	if params.BloomDenyList == nil {
-		return nil, errors.New("dataobj compaction worker: bloom deny list is required")
+	if params.TenantOverrides == nil {
+		return nil, errors.New("dataobj compaction worker: tenant overrides are required")
 	}
 	if params.ScratchStore == nil {
 		return nil, errors.New("dataobj compaction worker: scratch store is required")
@@ -101,7 +101,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		AdvertiseAddr:        advertiseAddr,
 		Endpoint:             params.Config.Endpoint,
 		IndexobjCfg:          params.IndexobjCfg,
-		BloomDenyList:        params.BloomDenyList,
+		TenantOverrides:      params.TenantOverrides,
 		LogsobjCfg:           params.LogsobjCfg,
 		IndexMergeObserver:   wm,
 		NewLogMergeObserver:  wm.logMergeObserver,

@@ -30,7 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj/indexobjtest"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections"
@@ -894,7 +893,7 @@ func newIntegrationCoordinatorWithIndexConfig(ctx context.Context, t *testing.T,
 	require.NoError(t, compactionCfg.Validate())
 
 	w, err := worker.New(worker.Config{
-		BloomDenyList:    indexobjtest.NoBloomDenyList{},
+		TenantOverrides:  fakeTenantOverrides{},
 		Logger:           log.NewNopLogger(),
 		Bucket:           bucket,
 		DataBucket:       bucket,

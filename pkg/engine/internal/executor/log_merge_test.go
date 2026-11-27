@@ -2062,3 +2062,45 @@ func logsPageBytes(t *testing.T, bucket objstore.Bucket, tenant string, paths ..
 	}
 	return total
 }
+
+func TestDoLogObjectMerge_BloomDenyList(t *testing.T) {
+	ctx := context.Background()
+	overrides := fakeTenantOverrides{"tenant-a": {"observed_timestamp"}}
+
+	for _, tc := range []struct {
+		tenant      string
+		wantPassAll bool
+	}{
+		{tenant: "tenant-a", wantPassAll: true},
+		{tenant: "tenant-b", wantPassAll: false},
+	} {
+		t.Run("indexes the compacted objects of "+tc.tenant, func(t *testing.T) {
+			dataBucket := objstore.NewInMemBucket()
+			indexBucket := objstore.NewInMemBucket()
+			base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+			// Every line has a real value in both columns.
+			entries := linesAt(base, 2)
+			for i := range entries {
+				entries[i].StructuredMetadata = push.LabelsAdapter{
+					{Name: "observed_timestamp", Value: "1"},
+					{Name: "trace_id", Value: "1"},
+				}
+			}
+			buildSourceLogObject(t, dataBucket, "objA", []string{"label:app"}, map[string][]testStream{
+				tc.tenant: {{labels: `{app="x"}`, entries: entries}},
+			})
+
+			c := newTestExecutorContext(t, indexBucket)
+			c.dataBucket = dataBucket
+			c.tenantOverrides = overrides
+			arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, &physical.LogMerge{
+				Tenant: tc.tenant,
+				Runs:   sourceLogRuns(t, dataBucket, tc.tenant, "objA"),
+			}))
+			require.NoError(t, err)
+
+			requireBloomFilters(t, readAllPostingsRowsFromBucket(ctx, t, indexBucket, arts.Path), tc.wantPassAll)
+		})
+	}
+}
