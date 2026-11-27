@@ -2272,6 +2272,131 @@ func BenchmarkLogfmtExpressionParserNames(b *testing.B) {
 	}
 }
 
+// renameLiteralKeyCase is a line that holds both a key that is renamed to foo_extracted (the stream
+// has a label foo) and a literal foo_extracted key.
+type renameLiteralKeyCase struct {
+	name   string
+	parser Stage
+	line   string
+	// want is the final value of foo_extracted.
+	want string
+}
+
+// renameLiteralKeyCases returns such lines in both orders for every parser. A line parser keeps the
+// first key of the line, as it does for two keys with the same name. An expression parser names its
+// keys, so the literal key wins in both orders.
+func renameLiteralKeyCases(t *testing.T) []renameLiteralKeyCase {
+	mustRegexp := func(re string) Stage {
+		p, err := NewRegexpParser(re)
+		require.NoError(t, err)
+		return p
+	}
+	mustPattern := func(pn string) Stage {
+		p, err := NewPatternParser(pn)
+		require.NoError(t, err)
+		return p
+	}
+
+	mustJSONExpr := func() Stage {
+		p, err := NewJSONExpressionParser([]LabelExtractionExpr{
+			NewLabelExtractionExpr("foo", "foo"),
+			NewLabelExtractionExpr("foo_extracted", "foo_extracted"),
+		})
+		require.NoError(t, err)
+		return p
+	}
+	mustLogfmtExpr := func() Stage {
+		p, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
+			NewLabelExtractionExpr("foo", "foo"),
+			NewLabelExtractionExpr("foo_extracted", "foo_extracted"),
+		}, false)
+		require.NoError(t, err)
+		return p
+	}
+
+	return []renameLiteralKeyCase{
+		{"json renamed first", NewJSONParser(false), `{"foo":"p","foo_extracted":"lit"}`, "p"},
+		{"json literal first", NewJSONParser(false), `{"foo_extracted":"lit","foo":"p"}`, "lit"},
+		{"logfmt renamed first", NewLogfmtParser(false, false), `foo=p foo_extracted=lit`, "p"},
+		{"logfmt literal first", NewLogfmtParser(false, false), `foo_extracted=lit foo=p`, "lit"},
+		{"regexp renamed first", mustRegexp(`(?P<foo>\w+)\|(?P<foo_extracted>\w+)`), `p|lit`, "p"},
+		{"regexp literal first", mustRegexp(`(?P<foo_extracted>\w+)\|(?P<foo>\w+)`), `lit|p`, "lit"},
+		{"pattern renamed first", mustPattern(`<foo> <foo_extracted>`), `p lit`, "p"},
+		{"pattern literal first", mustPattern(`<foo_extracted> <foo>`), `lit p`, "lit"},
+		{"unpack renamed first", NewUnpackParser(), `{"foo":"p","foo_extracted":"lit","_entry":"msg"}`, "p"},
+		{"unpack literal first", NewUnpackParser(), `{"foo_extracted":"lit","foo":"p","_entry":"msg"}`, "lit"},
+		{"json expression renamed first", mustJSONExpr(), `{"foo":"p","foo_extracted":"lit"}`, "lit"},
+		{"json expression literal first", mustJSONExpr(), `{"foo_extracted":"lit","foo":"p"}`, "lit"},
+		{"logfmt expression renamed first", mustLogfmtExpr(), `foo=p foo_extracted=lit`, "lit"},
+		{"logfmt expression literal first", mustLogfmtExpr(), `foo_extracted=lit foo=p`, "lit"},
+	}
+}
+
+func TestParserRenameLiteralKeyPrecedence(t *testing.T) {
+	// When a line contains both a key that collides with a stream label (and is therefore renamed to
+	// foo_extracted) and a literal foo_extracted, both target the same final label name. A line
+	// parser keeps the first one, as it does for two keys with the same name.
+	base := labels.FromStrings("foo", "l")
+
+	for _, tt := range renameLiteralKeyCases(t) {
+		t.Run(tt.name, func(t *testing.T) {
+			b := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false).
+				ForLabels(base, labels.StableHash(base))
+			b.Reset()
+			_, _ = tt.parser.Process(0, []byte(tt.line), b)
+			require.Equal(t, labels.FromStrings("foo", "l", "foo_extracted", tt.want), b.LabelsResult().Labels())
+		})
+	}
+}
+
+// A label filter after the parser lets the parser stop on a line early, when a label that it just
+// wrote fails the filter. That must not change the outcome: a parser must not write a value that a
+// later key of the line replaces, because the filter would judge a value that is not the final one.
+func TestParserRenameLiteralKeyPrecedenceWithLabelFilterHint(t *testing.T) {
+	base := labels.FromStrings("foo", "l")
+
+	for _, tt := range renameLiteralKeyCases(t) {
+		for _, value := range []string{"p", "lit"} {
+			t.Run(tt.name+" filter "+value, func(t *testing.T) {
+				filter := NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo_extracted", value))
+				process := func(hinted bool) (labels.Labels, bool) {
+					b := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false)
+					if hinted {
+						b = b.WithLabelFilterHints(NewLabelFilterHints(Stages{tt.parser, filter}))
+					}
+					lb := b.ForLabels(base, labels.StableHash(base))
+					lb.Reset()
+					_, ok := tt.parser.Process(0, []byte(tt.line), lb)
+					if ok {
+						_, ok = filter.Process(0, nil, lb)
+					}
+					return lb.LabelsResult().Labels(), ok
+				}
+
+				_, wantKept := process(false)
+				require.Equal(t, tt.want == value, wantKept, "the filter judges the final value")
+
+				lbs, kept := process(true)
+				require.Equal(t, wantKept, kept, "the hint changed the outcome")
+				if kept {
+					require.Equal(t, labels.FromStrings("foo", "l", "foo_extracted", tt.want), lbs)
+				}
+			})
+		}
+	}
+}
+
+// An unpack stage keeps the first of two keys with the same name, as the other line parsers do.
+func TestUnpackParserDuplicateKeys(t *testing.T) {
+	b := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false).
+		ForLabels(labels.EmptyLabels(), labels.StableHash(labels.EmptyLabels()))
+	b.Reset()
+	line, ok := NewUnpackParser().Process(0, []byte(`{"a":"1","a":"2","_entry":"msg"}`), b)
+	require.True(t, ok)
+	require.Equal(t, "msg", string(line))
+	require.Equal(t, labels.FromStrings("a", "1"), b.LabelsResult().Labels())
+}
+
 func TestLogfmtExpressionParserRenamedKeys(t *testing.T) {
 	exprs := []LabelExtractionExpr{
 		NewLabelExtractionExpr("foo", "foo"),

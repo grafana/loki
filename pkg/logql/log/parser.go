@@ -858,6 +858,12 @@ func (j *JSONExpressionParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBui
 
 		if lbs.BaseHas(key) || lbs.HasInCategory(key, StructuredMetadataLabel) {
 			key = key + DuplicateSuffix
+			// A renamed key must not overwrite a value that is already extracted under the final
+			// name, e.g. by another expression that asks for the literal key (mirrors
+			// LogfmtExpressionParser).
+			if lbs.ParserLabelHints().Extracted(key) || !lbs.ParserLabelHints().ShouldExtract(key) {
+				return
+			}
 		}
 
 		switch typ {
@@ -1012,6 +1018,11 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	// flush the buffer if we found a packed entry.
 	if isPacked {
 		for i := 0; i < len(u.lbsBuffer); i = i + 2 {
+			// The buffer can hold the same name twice, e.g. a key and a colliding key renamed to it.
+			// The first one wins, as in the other parsers.
+			if lbs.ParserLabelHints().Extracted(u.lbsBuffer[i]) {
+				continue
+			}
 			lbs.Set(ParsedLabel, u.lbsBuffer[i], u.lbsBuffer[i+1])
 			if !lbs.LabelFilterHints().ShouldContinueParsingLine(u.lbsBuffer[i], lbs) {
 				return entry, errLabelDoesNotMatch
