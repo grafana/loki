@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -195,6 +197,74 @@ func TestLiveTailQueryConnContextEstablishedConnection(t *testing.T) {
 			// Connection setup must leave no cancellation watcher behind.
 			server.Close()
 			goleak.VerifyNone(t, leaks)
+		})
+	}
+}
+
+func TestLiveTailProxy(t *testing.T) {
+	for _, key := range []string{
+		"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy",
+		"NO_PROXY", "no_proxy", "ALL_PROXY", "all_proxy", "REQUEST_METHOD",
+	} {
+		t.Setenv(key, "")
+	}
+
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		_ = conn.Close()
+	}))
+	t.Cleanup(server.Close)
+	// The fully qualified localhost name resolves locally and exercises proxy matching.
+	address := fmt.Sprintf("http://localhost.:%d", server.Listener.Addr().(*net.TCPAddr).Port)
+
+	tests := []struct {
+		name             string
+		environmentProxy bool
+		noProxy          string
+		explicitProxy    bool
+		wantProxy        bool
+	}{
+		{name: "environment enabled", environmentProxy: true, wantProxy: true},
+		{name: "environment disabled"},
+		{name: "NO_PROXY exclusion", environmentProxy: true, noProxy: "localhost."},
+		{name: "explicit proxy URL", explicitProxy: true, wantProxy: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var proxyMethod atomic.Value
+			proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				proxyMethod.Store(r.Method)
+				w.WriteHeader(http.StatusBadGateway)
+			}))
+			t.Cleanup(proxy.Close)
+
+			c := &DefaultClient{Address: address, EnvironmentProxy: tt.environmentProxy}
+			if tt.explicitProxy {
+				c.ProxyURL = proxy.URL
+			} else {
+				t.Setenv("HTTP_PROXY", proxy.URL)
+				t.Setenv("NO_PROXY", tt.noProxy)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			conn, err := c.LiveTailQueryConnContext(ctx, "", 0, 0, time.Time{}, true)
+			if conn != nil {
+				t.Cleanup(func() { _ = conn.Close() })
+			}
+
+			if tt.wantProxy {
+				require.Error(t, err)
+				require.Equal(t, http.MethodConnect, proxyMethod.Load())
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, conn)
+			require.Nil(t, proxyMethod.Load(), "tail connection used the proxy")
 		})
 	}
 }
