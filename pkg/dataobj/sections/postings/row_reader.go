@@ -79,7 +79,7 @@ func (r *RowReader) next() (Row, error) {
 		r.batch = nil
 		r.alloc.Reclaim()
 
-		rb, err := r.reader.readRecordBatch(r.ctx, r.alloc, rowReaderBatchSize)
+		rb, err := r.reader.Read(r.ctx, r.alloc, rowReaderBatchSize)
 		if errors.Is(err, io.EOF) {
 			return Row{}, io.EOF
 		} else if err != nil {
@@ -218,6 +218,10 @@ func binaryAt(arr columnar.Array, i int) []byte {
 // rowValues copies strings and byte slices out of the memory of a batch, which
 // the next read reuses. It packs the values of each column of one batch into
 // one buffer, so a row takes no allocation of its own.
+//
+// Rows that point into the batch would need a new allocator for each batch.
+// The read also takes its decode memory from that allocator, so a new one costs
+// about three times the allocations of this copy.
 //
 // rowValues never writes bytes that it returned. So a value stays valid after
 // later copies and after reset.

@@ -2,16 +2,11 @@ package index
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -52,27 +47,18 @@ func flushAndReadAllPostingsTable(t *testing.T, builder *indexobj.Builder) posti
 		sec, err := postings.Open(context.Background(), s)
 		require.NoError(t, err)
 
-		r := postings.NewReader(postings.ReaderOptions{
-			Columns:   sec.Columns(),
-			Allocator: memory.DefaultAllocator,
-		})
+		r := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
 		require.NoError(t, r.Open(context.Background()))
-		t.Cleanup(func() { _ = r.Close() })
+		rows := postings.NewRowReader(context.Background(), r)
+		t.Cleanup(func() { _ = rows.Close() })
 
-		tbl, err := readPostingsTable(context.Background(), r)
-		if errors.Is(err, io.EOF) {
-			continue
+		for rows.Next() {
+			row := rows.At()
+			result.opaque["bloom_filter.binary"] = append(result.opaque["bloom_filter.binary"], row.BloomFilter)
+			result.opaque["stream_id_bitmap.binary"] = append(result.opaque["stream_id_bitmap.binary"], row.StreamIDBitmap)
+			result.rows = append(result.rows, postingsRowFields(row))
 		}
-		require.NoError(t, err)
-
-		secRows, err := arrowtest.TableRows(memory.DefaultAllocator, tbl)
-		require.NoError(t, err)
-
-		blooms := extractBinaryColumn(t, tbl, "bloom_filter.binary")
-		bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
-		result.opaque["bloom_filter.binary"] = append(result.opaque["bloom_filter.binary"], blooms...)
-		result.opaque["stream_id_bitmap.binary"] = append(result.opaque["stream_id_bitmap.binary"], bitmaps...)
-		result.rows = append(result.rows, stripOpaqueCols(secRows, "bloom_filter.binary", "stream_id_bitmap.binary")...)
+		require.NoError(t, rows.Err())
 	}
 	return result
 }
@@ -99,64 +85,22 @@ func findRow(rows arrowtest.Rows, match map[string]any) int {
 	return -1
 }
 
-// readPostingsTable drains a postings.Reader into an arrow.Table.
-func readPostingsTable(ctx context.Context, r *postings.Reader) (arrow.Table, error) {
-	var recs []arrow.RecordBatch
-	for {
-		rec, err := r.Read(ctx, 128)
-		if rec != nil && rec.NumRows() > 0 {
-			recs = append(recs, rec)
-		}
-		if err != nil && errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			return nil, err
-		}
+// postingsRowFields returns the non-opaque fields of row, keyed by the names
+// that the assertions of this file use.
+func postingsRowFields(row postings.Row) arrowtest.Row {
+	return arrowtest.Row{
+		"kind.int64":              int64(row.Kind),
+		"object_path.utf8":        row.ObjectPath,
+		"shard_buckets.int64":     row.ShardBuckets,
+		"section_index.int64":     row.SectionIndex,
+		"column_name.utf8":        row.ColumnName,
+		"label_value.utf8":        row.LabelValue,
+		"uncompressed_size.int64": row.UncompressedSize,
+		"min_timestamp.timestamp": time.Unix(0, row.MinTimestamp).UTC(),
+		"max_timestamp.timestamp": time.Unix(0, row.MaxTimestamp).UTC(),
+		"min_shard_bucket.int64":  int64(row.MinShardBucket),
+		"max_shard_bucket.int64":  int64(row.MaxShardBucket),
 	}
-	if len(recs) == 0 {
-		return nil, io.EOF
-	}
-	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
-}
-
-// stripOpaqueCols returns a copy of rows with the named keys removed.
-func stripOpaqueCols(rows arrowtest.Rows, keys ...string) arrowtest.Rows {
-	out := make(arrowtest.Rows, len(rows))
-	for i, row := range rows {
-		cp := make(arrowtest.Row, len(row))
-		for k, v := range row {
-			cp[k] = v
-		}
-		for _, k := range keys {
-			delete(cp, k)
-		}
-		out[i] = cp
-	}
-	return out
-}
-
-// extractBinaryColumn extracts a named Binary arrow column as [][]byte.
-func extractBinaryColumn(t *testing.T, table arrow.Table, field string) [][]byte {
-	t.Helper()
-	idx := table.Schema().FieldIndices(field)
-	require.Len(t, idx, 1, "field %q not found in schema", field)
-	col := table.Column(idx[0])
-	var out [][]byte
-	for _, chunk := range col.Data().Chunks() {
-		bin, ok := chunk.(*array.Binary)
-		require.True(t, ok, "field %q is not a Binary column", field)
-		for i := 0; i < bin.Len(); i++ {
-			if bin.IsNull(i) {
-				out = append(out, nil)
-				continue
-			}
-			src := bin.Value(i)
-			cp := make([]byte, len(src))
-			copy(cp, src)
-			out = append(out, cp)
-		}
-	}
-	return out
 }
 
 func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {

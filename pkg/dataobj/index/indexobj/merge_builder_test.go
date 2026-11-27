@@ -425,50 +425,20 @@ func TestMergeBuilder_RecordsLayout(t *testing.T) {
 }
 
 // readAllPostingsRows opens a postings section and returns all decoded rows.
-// It drains the reader in batches and decodes each row from the Arrow record batches.
 func readAllPostingsRows(ctx context.Context, t *testing.T, sec *postings.Section) []postings.Row {
 	t.Helper()
 
-	r := postings.NewReader(postings.ReaderOptions{
-		Columns:   sec.Columns(),
-		Allocator: memory.DefaultAllocator,
-	})
+	r := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
 	require.NoError(t, r.Open(ctx))
-	t.Cleanup(func() { _ = r.Close() })
+	rows := postings.NewRowReader(ctx, r)
+	t.Cleanup(func() { _ = rows.Close() })
 
-	var (
-		rows    []postings.Row
-		columns postings.ColumnIndex
-	)
-	for {
-		batch, err := r.Read(ctx, 128)
-		if err != nil && !errors.Is(err, io.EOF) {
-			require.NoError(t, err)
-		}
-
-		if batch == nil || batch.NumRows() == 0 {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			continue
-		}
-
-		// Build column index on first batch.
-		if columns == nil {
-			columns = postings.BuildColumnIndex(batch.Schema())
-		}
-
-		// Decode each row in the batch.
-		for rowIdx := 0; rowIdx < int(batch.NumRows()); rowIdx++ {
-			rows = append(rows, postings.DecodeRow(batch, columns, rowIdx))
-		}
-
-		if errors.Is(err, io.EOF) {
-			break
-		}
+	var out []postings.Row
+	for rows.Next() {
+		out = append(out, rows.At())
 	}
-
-	return rows
+	require.NoError(t, rows.Err())
+	return out
 }
 
 // readAllStatsRows opens a stats section and returns all decoded rows.
