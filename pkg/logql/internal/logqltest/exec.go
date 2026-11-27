@@ -200,6 +200,8 @@ func (l execLimits) MaxQuerySeries(string) int {
 	return defaultMaxQuerySeries()
 }
 
+func (execLimits) MaxQueryIntermediateSeries(string) int { return 0 }
+
 func (execLimits) MaxQueryRange(context.Context, string) time.Duration { return 0 }
 
 func (execLimits) QueryTimeout(context.Context, string) time.Duration { return time.Hour }

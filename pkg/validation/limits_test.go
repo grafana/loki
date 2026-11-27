@@ -1676,3 +1676,17 @@ func TestOverrides_ShardLayout(t *testing.T) {
 		require.Equal(t, streams.DefaultShardLayout(), ov.DataObjShardLayout("custom"))
 	})
 }
+
+func TestOverrides_MaxQueryIntermediateSeries_ShouldReadThePerTenantValue(t *testing.T) {
+	var defaults Limits
+	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+	tenantLimits := map[string]*Limits{
+		"tenant-1": {MaxQueryIntermediateSeries: 1000},
+	}
+	ov, err := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
+	require.NoError(t, err)
+
+	require.Equal(t, 1000, ov.MaxQueryIntermediateSeries("tenant-1"))
+	require.Equal(t, 0, ov.MaxQueryIntermediateSeries("tenant-2"))
+}

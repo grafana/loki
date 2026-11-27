@@ -16,6 +16,8 @@ var NoLimits = &fakeLimits{
 // Limits allow the engine to fetch limits for a given users.
 type Limits interface {
 	MaxQuerySeries(userID string) int
+	// MaxQueryIntermediateSeries returns the limit of the label sets a querier job may hold. Zero means no limit.
+	MaxQueryIntermediateSeries(userID string) int
 	MaxQueryRange(ctx context.Context, userID string) time.Duration
 	QueryTimeout(context.Context, string) time.Duration
 	BlockedQueries(context.Context, string) []*validation.BlockedQuery
@@ -26,15 +28,20 @@ type Limits interface {
 }
 
 type fakeLimits struct {
-	maxSeries      int
-	timeout        time.Duration
-	blockedQueries []*validation.BlockedQuery
-	rangeLimit     time.Duration
-	requiredLabels []string
+	maxSeries             int
+	maxIntermediateSeries int
+	timeout               time.Duration
+	blockedQueries        []*validation.BlockedQuery
+	rangeLimit            time.Duration
+	requiredLabels        []string
 }
 
 func (f fakeLimits) MaxQuerySeries(_ string) int {
 	return f.maxSeries
+}
+
+func (f fakeLimits) MaxQueryIntermediateSeries(_ string) int {
+	return f.maxIntermediateSeries
 }
 
 func (f fakeLimits) MaxQueryRange(_ context.Context, _ string) time.Duration {
