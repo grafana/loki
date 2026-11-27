@@ -20,7 +20,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/model/metadata"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 func TestIntermediateSeriesCounter_ShouldTrackCurrentAndPeak(t *testing.T) {
@@ -775,4 +777,202 @@ func TestEngine_ShouldNotFailAJobThatCrossesAThresholdWithoutALogger(t *testing.
 	_, err = eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
 
 	require.NoError(t, err)
+}
+
+func TestStreamFirstRangeVectorIterator_ShouldCountEachSeriesOnce(t *testing.T) {
+	var (
+		start         = time.Unix(10, 0)
+		end           = time.Unix(30, 0)
+		step          = 5 * time.Second
+		countOverTime = mustRangeAggregation(t, `count_over_time({app="a"}[10s])`)
+		byApp         = &syntax.Grouping{Groups: []string{"app"}}
+	)
+
+	for name, tc := range map[string]struct {
+		it   iter.PeekingSampleIterator
+		want int64
+	}{
+		"repeated series count once": {
+			it:   repeatedSeriesIterator(3, start.Add(time.Second), start.Add(6*time.Second), start.Add(11*time.Second), start.Add(16*time.Second)),
+			want: 3,
+		},
+		"churning series count each new one": {
+			it:   distinctSeriesIterator(7, start.Add(time.Second)),
+			want: 7,
+		},
+		"empty windows count nothing": {
+			it:   iter.NewPeekingSampleIterator(iter.NoopSampleIterator),
+			want: 0,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			counter := newIntermediateSeriesCounter(0)
+			ctx := withIntermediateSeriesCounter(t.Context(), counter)
+			rangeIt, err := newStreamFirstRangeVectorIterator(ctx, tc.it, countOverTime, step.Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, byApp, 0, false)
+			require.NoError(t, err)
+
+			require.NoError(t, drain(rangeIt))
+			require.Equal(t, tc.want, counter.Peak())
+			require.Equal(t, tc.want, counter.Current(), "the stream-first iterator holds every series until Close")
+
+			require.NoError(t, rangeIt.Close())
+			require.Zero(t, counter.Current())
+		})
+	}
+}
+
+func TestStreamFirstRangeVectorIterator_ShouldNotCountASeriesItDoesNotHold(t *testing.T) {
+	var (
+		foo           = `{app="foo"}`
+		bar           = `{app="bar"}`
+		sec           = func(s int64) int64 { return s * int64(time.Second) }
+		countOverTime = mustRangeAggregation(t, `count_over_time({app="foo"}[10s])`)
+		byApp         = &syntax.Grouping{Groups: []string{"app"}}
+		drilldown     = func(ctx context.Context) context.Context {
+			return httpreq.InjectQueryTags(ctx, "Source=grafana-lokiexplore-app")
+		}
+	)
+
+	for name, tc := range map[string]struct {
+		input     []labeledSample
+		ctx       func(context.Context) context.Context
+		maxSeries int
+		wantErr   bool
+	}{
+		"labels that fail to parse": {
+			input:   []labeledSample{{foo, sec(4)}, {`{app=`, sec(5)}},
+			wantErr: true,
+		},
+		"a series that carries an error label": {
+			input:   []labeledSample{{foo, sec(4)}, {`{__error__="JSONParserErr", app="bar"}`, sec(5)}},
+			wantErr: true,
+		},
+		"a series over the series limit": {
+			input:     []labeledSample{{foo, sec(4)}, {bar, sec(5)}},
+			maxSeries: 1,
+			wantErr:   true,
+		},
+		"a series the series limit drops in a Logs Drilldown request": {
+			input:     []labeledSample{{foo, sec(4)}, {bar, sec(5)}},
+			ctx:       drilldown,
+			maxSeries: 1,
+		},
+		"a series without samples in any window": {
+			input: []labeledSample{{bar, sec(50)}, {foo, sec(5)}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			counter := newIntermediateSeriesCounter(0)
+			_, ctx := metadata.NewContext(withIntermediateSeriesCounter(t.Context(), counter))
+			if tc.ctx != nil {
+				ctx = tc.ctx(ctx)
+			}
+			rangeIt, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(tc.input), countOverTime, 0, sec(10), sec(10), 0, byApp, tc.maxSeries, false)
+			require.NoError(t, err)
+
+			if tc.wantErr {
+				require.Error(t, drain(rangeIt))
+			} else {
+				require.NoError(t, drain(rangeIt))
+			}
+			require.Equal(t, int64(1), counter.Current())
+			require.Equal(t, int64(1), counter.Peak())
+
+			require.NoError(t, rangeIt.Close())
+			require.Zero(t, counter.Current())
+		})
+	}
+}
+
+func TestStreamFirstRangeVectorIterator_ShouldFailWhenASeriesTakesTheCounterOverItsLimit(t *testing.T) {
+	sec := func(s int64) int64 { return s * int64(time.Second) }
+	input := []labeledSample{{`{app="foo"}`, sec(4)}, {`{app="bar"}`, sec(5)}}
+
+	counter := newIntermediateSeriesCounter(1)
+	ctx := withIntermediateSeriesCounter(t.Context(), counter)
+	rangeIt, err := newStreamFirstRangeVectorIterator(ctx, newLabeledSampleIterator(input), mustRangeAggregation(t, `count_over_time({app="foo"}[10s])`), 0, sec(10), sec(10), 0, &syntax.Grouping{}, 0, false)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, drain(rangeIt), errIntermediateSeriesLimit)
+	require.Equal(t, int64(1), counter.Current())
+
+	require.NoError(t, rangeIt.Close())
+	require.Zero(t, counter.Current())
+}
+
+func TestStreamFirstRangeVectorIterator_ShouldReleaseItsSeriesOnClose(t *testing.T) {
+	var (
+		start         = time.Unix(10, 0)
+		end           = time.Unix(30, 0)
+		countOverTime = mustRangeAggregation(t, `count_over_time({app="a"}[10s])`)
+	)
+	counter := newIntermediateSeriesCounter(0)
+	ctx := withIntermediateSeriesCounter(t.Context(), counter)
+	newIterator := func(n int) RangeVectorIterator {
+		rangeIt, err := newStreamFirstRangeVectorIterator(ctx, distinctSeriesIterator(n, start.Add(time.Second)), countOverTime, (5 * time.Second).Nanoseconds(), start.UnixNano(), end.UnixNano(), 0, &syntax.Grouping{}, 0, false)
+		require.NoError(t, err)
+		return rangeIt
+	}
+
+	first := newIterator(4)
+	require.NoError(t, drain(first))
+	require.Equal(t, int64(4), counter.Current())
+	require.NoError(t, first.Close())
+	require.Zero(t, counter.Current())
+
+	second := newIterator(3)
+	require.NoError(t, drain(second))
+	require.NoError(t, second.Close())
+	require.Zero(t, counter.Current())
+	require.Equal(t, int64(4), counter.Peak(), "sequential iterators must not add up")
+
+	// A repeated Close must not release what another iterator still holds.
+	third := newIterator(2)
+	require.NoError(t, drain(third))
+	require.NoError(t, third.Close())
+	other := newIterator(1)
+	require.NoError(t, drain(other))
+	_ = third.Close()
+	require.Equal(t, int64(1), counter.Current())
+}
+
+func TestDefaultEvaluator_ShouldCountStreamFirstSeriesAgainstTheCounterOfTheContext(t *testing.T) {
+	const numSeries = 3
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+	expr, err := syntax.ParseSampleExpr(`sum(count_over_time({app="a"}[1m]))`)
+	require.NoError(t, err)
+	params, err := NewLiteralParams(expr.String(), start, end, 30*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+	require.NoError(t, err)
+
+	series := make([]logproto.Series, 0, numSeries)
+	for i := range numSeries {
+		lbs := labels.FromStrings("app", "a", "id", fmt.Sprint(i))
+		series = append(series, logproto.Series{
+			Labels:     lbs.String(),
+			Samples:    []logproto.Sample{{Timestamp: time.Unix(90, 0).UnixNano(), Value: 1}},
+			StreamHash: labels.StableHash(lbs),
+		})
+	}
+	querier := &seriesQuerier{series: series}
+	limits := tenantStreamFirstLimits{enabled: map[string]bool{"a": true}}
+
+	counter := newIntermediateSeriesCounter(0)
+	ctx := withIntermediateSeriesCounter(contextForTenant(t, "a"), counter)
+	ev := NewDefaultEvaluator(querier, 0, 0, limits)
+	stepEv, err := ev.NewStepEvaluator(ctx, ev, expr, params, RootContext(expr, 0))
+	require.NoError(t, err)
+	for {
+		if next, _, _ := stepEv.Next(); !next {
+			break
+		}
+	}
+	require.NoError(t, stepEv.Error())
+	require.Equal(t, logproto.SAMPLE_ORDER_BY_STREAM, querier.sampleParams.Order)
+	require.Equal(t, int64(numSeries), counter.Peak())
+
+	require.NoError(t, stepEv.Close())
+	require.Zero(t, counter.Current())
 }
