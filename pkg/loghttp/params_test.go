@@ -204,6 +204,19 @@ func Test_parseTimestamp(t *testing.T) {
 		{"RFC3339 format", "2002-10-02T15:00:00Z", now, time.Date(2002, 10, 02, 15, 0, 0, 0, time.UTC), false},
 		{"RFC3339nano format", "2009-11-10T23:00:00.000000001Z", now, time.Date(2009, 11, 10, 23, 0, 0, 1, time.UTC), false},
 		{"invalid", "we", now, time.Time{}, true},
+		{"float seconds at the Unix epoch parse", "0.0", now, time.Unix(0, 0), false},
+		{"RFC3339 time at the Unix epoch parses", "1970-01-01T00:00:00Z", now, time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), false},
+		{"RFC3339 time at the upper bound parses", "2262-01-01T00:00:00Z", now, time.Date(2262, 1, 1, 0, 0, 0, 0, time.UTC), false},
+		{"milliseconds with a fraction return an out of range error", "1700000000000.5", now, time.Time{}, true},
+		{"nanoseconds with a fraction return an out of range error", "1700000000000000000.0", now, time.Time{}, true},
+		{"nanoseconds in scientific notation return an out of range error", "1.7e+18", now, time.Time{}, true},
+		{"float seconds that overflow int64 return an out of range error", "1.0e+30", now, time.Time{}, true},
+		{"negative float seconds return an out of range error", "-1.5", now, time.Time{}, true},
+		{"negative integer seconds return an out of range error", "-1", now, time.Time{}, true},
+		{"integer seconds after the upper bound return an out of range error", "9999999999", now, time.Time{}, true},
+		{"integer nanoseconds after the upper bound return an out of range error", "9220000000000000000", now, time.Time{}, true},
+		{"RFC3339 time before the Unix epoch returns an out of range error", "1969-12-31T23:59:59Z", now, time.Time{}, true},
+		{"RFC3339 time after the upper bound returns an out of range error", "3000-01-01T00:00:00Z", now, time.Time{}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -217,6 +230,11 @@ func Test_parseTimestamp(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("out of range error names the value and the valid range", func(t *testing.T) {
+		_, err := parseTimestamp("1700000000000.5", now)
+		require.EqualError(t, err, `timestamp "1700000000000.5" is out of range [1970-01-01T00:00:00Z, 2262-01-01T00:00:00Z]`)
+	})
 }
 
 func Test_determineBounds(t *testing.T) {
@@ -295,6 +313,48 @@ func Test_determineBounds(t *testing.T) {
 			end:   time.Time{},
 			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
 				return assert.ErrorContains(t, err, "could not parse 'start' parameter:", i...)
+			},
+		},
+		{
+			name: "end after the upper bound returns an error that names the end parameter and the value",
+			args: args{
+				now:         time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+				startString: "2022-12-17T00:00:00Z",
+				endString:   "1700000000000.5",
+				sinceString: "",
+			},
+			start: time.Time{},
+			end:   time.Time{},
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				return assert.ErrorContains(t, err, `could not parse 'end' parameter: timestamp "1700000000000.5" is out of range [1970-01-01T00:00:00Z, 2262-01-01T00:00:00Z]`, i...)
+			},
+		},
+		{
+			name: "start before the Unix epoch returns an error that names the start parameter and the value",
+			args: args{
+				now:         time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+				startString: "1969-12-31T23:59:59Z",
+				endString:   "2022-12-18T00:00:00Z",
+				sinceString: "",
+			},
+			start: time.Time{},
+			end:   time.Time{},
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				return assert.ErrorContains(t, err, `could not parse 'start' parameter: timestamp "1969-12-31T23:59:59Z" is out of range [1970-01-01T00:00:00Z, 2262-01-01T00:00:00Z]`, i...)
+			},
+		},
+		{
+			name: "since that gives a default start before the Unix epoch returns an error",
+			args: args{
+				now:         time.Date(2022, 12, 18, 0, 0, 0, 0, time.UTC),
+				startString: "",
+				endString:   "",
+				sinceString: "100y",
+			},
+			start: time.Time{},
+			end:   time.Time{},
+			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+				return assert.ErrorContains(t, err, "the start time that 'end' and 'since' give is before 1970-01-01T00:00:00Z", i...)
 			},
 		},
 		{
