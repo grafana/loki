@@ -21,6 +21,7 @@ const (
 	labelPhase   = "phase"
 	labelActor   = "actor"
 	labelKind    = "kind"
+	labelResult  = "result"
 
 	// labelWindowLookback is the position of a ToC window in a pass: 0 for
 	// the current window, 1 for the window before it, and so on up to the
@@ -131,6 +132,15 @@ type coordinatorMetrics struct {
 	// pairLegacyIndexRuns is the number of legacy index runs that the last
 	// scan of the coupled planner left as they are, per window.
 	pairLegacyIndexRuns *prometheus.GaugeVec // tenant, window_lookback
+
+	// pairStatsCacheIndexRuns and pairStatsCacheKeys are the size of the
+	// stats cache of the coupled planner.
+	pairStatsCacheIndexRuns *prometheus.GaugeVec // tenant
+	pairStatsCacheKeys      *prometheus.GaugeVec // tenant
+
+	// pairStatsCacheRequestsTotal counts the stats reads of index runs, by
+	// whether the cache held them.
+	pairStatsCacheRequestsTotal *prometheus.CounterVec // tenant, result
 }
 
 func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
@@ -254,6 +264,18 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 			Name: "loki_dataobj_compaction_pair_legacy_index_runs",
 			Help: "Index runs over more than one log run that the last scan of the coupled planner (planner version 2) left as they are, per window. The phased planner writes such index runs. The coupled planner splits them into pairs in the current window (window_lookback 0), and leaves them in older windows, which leave the planned range soon.",
 		}, []string{labelTenant, labelWindowLookback}),
+		pairStatsCacheIndexRuns: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_pair_stats_cache_index_runs",
+			Help: "Index runs whose stats the coupled planner (planner version 2) holds in memory for the tenant. The planner keeps only the index runs that the last ToC it read lists for each planned window.",
+		}, []string{labelTenant}),
+		pairStatsCacheKeys: f.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "loki_dataobj_compaction_pair_stats_cache_keys",
+			Help: "Sort prefix keys in the stats that the coupled planner (planner version 2) holds in memory for the tenant. Each key is one stats row of one log section. A key costs about 60 bytes, plus the label values that keys with the same values share.",
+		}, []string{labelTenant}),
+		pairStatsCacheRequestsTotal: f.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_compaction_pair_stats_cache_requests_total",
+			Help: "Stats reads of index runs by the coupled planner (planner version 2), by result. hit = the cache held the stats, miss = the planner read them from the bucket.",
+		}, []string{labelTenant, labelResult}),
 	}
 }
 
@@ -364,6 +386,9 @@ func (m *coordinatorMetrics) deleteTenant(tenant string) {
 	m.pairJobsTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.pairSkippedIndexesTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 	m.pairLegacyIndexRuns.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
+	m.pairStatsCacheIndexRuns.DeleteLabelValues(tenant)
+	m.pairStatsCacheKeys.DeleteLabelValues(tenant)
+	m.pairStatsCacheRequestsTotal.DeletePartialMatch(prometheus.Labels{labelTenant: tenant})
 }
 
 // workerMetrics holds the worker-side metrics that the IndexMerge and LogMerge

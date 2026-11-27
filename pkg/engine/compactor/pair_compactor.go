@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -72,8 +73,8 @@ type pairCompactor struct {
 }
 
 // newPairPlanner returns the planner of the coupled planner, with the
-// settings of c.
-func (c *coordinator) newPairPlanner() *pairPlanner {
+// settings of c. It reads the stats of index runs through cache.
+func (c *coordinator) newPairPlanner(cache *logSectionsCache) *pairPlanner {
 	return &pairPlanner{
 		logger:                      c.logger,
 		bucket:                      c.bucket,
@@ -83,6 +84,7 @@ func (c *coordinator) newPairPlanner() *pairPlanner {
 		minCompactionSize:           uint64(c.cfg.LogMinCompactionSize),
 		maxLogTaskSize:              uint64(c.cfg.LogMaxTaskSize),
 		maxKeySize:                  uint64(c.cfg.LogMaxKeySize),
+		cache:                       cache,
 	}
 }
 
@@ -92,7 +94,7 @@ func (c *coordinator) newPairCompactor(tenant string) *pairCompactor {
 	return &pairCompactor{
 		tenant:           tenant,
 		logger:           log.With(c.logger, "tenant", tenant, "planner", "pairs"),
-		planner:          c.newPairPlanner(),
+		planner:          c.newPairPlanner(newLogSectionsCache(tenant, c.metrics)),
 		bucket:           c.bucket,
 		publisher:        c.publisher,
 		dispatcher:       c.pairDispatcher,
@@ -135,14 +137,16 @@ func (p *pairCompactor) run(ctx context.Context) {
 // plans. It returns the number of jobs it started. A window that fails to plan
 // does not stop the other windows.
 //
-// planAndStart sets the last plan timestamp of the tenant only if it planned every
-// index run of every window.
+// planAndStart sets the last plan timestamp of the tenant only if it planned
+// every index run of every window, from the bucket or from the stats cache.
 func (p *pairCompactor) planAndStart(ctx context.Context) int {
 	var (
 		started  int
 		complete = true
 	)
-	for lookback, window := range p.windows() {
+	windows := p.windows()
+	p.planner.cache.dropWindowsExcept(windows)
+	for lookback, window := range windows {
 		leased := p.leases.snapshot()
 		legacy := ignoreLegacy
 		if lookback == 0 {
@@ -225,6 +229,15 @@ func (p *pairCompactor) runJob(ctx context.Context, job pairJob, planOrder uint6
 		p.metrics.pairJobsTotal.WithLabelValues(p.tenant, job.kind(), pairJobOutcomeStale).Inc()
 		return
 	}
+	// Planning can take the stats of a source from the cache, which does not
+	// open its index objects. A source that the ToC lists but the bucket lost
+	// must not be swapped out, because no read reports it.
+	if err := p.requireSourcesExist(ctx, paths); err != nil {
+		if ctx.Err() == nil {
+			p.jobFailed(logger, job, err)
+		}
+		return
+	}
 
 	env := jobEnv{
 		tenant:           p.tenant,
@@ -257,6 +270,22 @@ func (p *pairCompactor) runJob(ctx context.Context, job pairJob, planOrder uint6
 	p.metrics.indexesRemovedTotal.WithLabelValues(p.tenant).Add(float64(len(scope.sources)))
 	p.metrics.indexesAddedTotal.WithLabelValues(p.tenant).Add(float64(len(newRuns)))
 	p.metrics.tasksTotal.WithLabelValues(p.tenant).Add(float64(tasks))
+}
+
+// requireSourcesExist returns an error that wraps errCorruptIndex if the
+// bucket holds no index object at a path in paths.
+func (p *pairCompactor) requireSourcesExist(ctx context.Context, paths []string) error {
+	for _, path := range paths {
+		exists, err := p.bucket.Exists(ctx, path)
+		if err != nil {
+			return fmt.Errorf("check source index %s exists: %w", path, err)
+		}
+		if !exists {
+			p.metrics.corruptIndexesTotal.WithLabelValues(p.tenant, phaseLabelPairMerge).Inc()
+			return fmt.Errorf("%w: the ToC lists source index %s, but the bucket holds no such object", errCorruptIndex, path)
+		}
+	}
+	return nil
 }
 
 func (p *pairCompactor) jobFailed(logger log.Logger, job pairJob, err error) {

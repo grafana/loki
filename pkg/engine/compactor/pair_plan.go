@@ -185,15 +185,17 @@ func PlanPairs(ctx context.Context, logger log.Logger, bucket objstore.Bucket, t
 	if err != nil {
 		return PairPlan{}, fmt.Errorf("size levels: %w", err)
 	}
+	metrics := newCoordinatorMetrics(prometheus.NewRegistry())
 	planner := &pairPlanner{
 		logger:                      logger,
 		bucket:                      bucket,
-		metrics:                     newCoordinatorMetrics(prometheus.NewRegistry()),
+		metrics:                     metrics,
 		strategy:                    strategy,
 		maxLogsRunUncompressedBytes: func(string) uint64 { return cfg.LogsMaxRunUncompressedBytes },
 		minCompactionSize:           cfg.LogMinCompactionSize,
 		maxLogTaskSize:              cfg.LogMaxTaskSize,
 		maxKeySize:                  cfg.LogMaxKeySize,
+		cache:                       newLogSectionsCache(tenant, metrics),
 	}
 	now := cfg.Now
 	if now.IsZero() {

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -701,5 +702,40 @@ func TestKeySamples(t *testing.T) {
 
 	t.Run("returns no sizes when it sampled no rows", func(t *testing.T) {
 		require.Nil(t, keySamples{}.sizes(100))
+	})
+}
+
+func TestLogSectionFolderSortPrefix(t *testing.T) {
+	t.Run("rows with the same label values share one schema key string and one values slice", func(t *testing.T) {
+		folder := newLogSectionFolder([]string{"service_name"})
+		row := func(object string) stats.Stat {
+			return stats.Stat{ObjectPath: object, SortSchema: pairTestSchema, Labels: map[string]string{"service_name": strings.Clone("api")}, UncompressedSize: 10}
+		}
+
+		first := folder.sortPrefix(row("logs/a"))
+		second := folder.sortPrefix(row("logs/b"))
+
+		require.Equal(t, first, second)
+		require.Same(t, unsafe.StringData(first.prefix.SchemaKey), unsafe.StringData(second.prefix.SchemaKey))
+		require.Same(t, unsafe.SliceData(first.labels), unsafe.SliceData(second.labels))
+	})
+
+	t.Run("rows with different label values get different sort prefixes", func(t *testing.T) {
+		folder := newLogSectionFolder([]string{"service_name"})
+		api := folder.sortPrefix(stats.Stat{Labels: map[string]string{"service_name": "api"}})
+		web := folder.sortPrefix(stats.Stat{Labels: map[string]string{"service_name": "web"}})
+		require.NotEqual(t, api, web)
+		require.Equal(t, []string{"api"}, api.labels)
+		require.Equal(t, []string{"web"}, web.labels)
+	})
+
+	t.Run("rows whose values encode to the same schema key keep their own values", func(t *testing.T) {
+		folder := newLogSectionFolder([]string{"a", "b"})
+		first := folder.sortPrefix(stats.Stat{Labels: map[string]string{"a": "x\x00", "b": "y"}})
+		second := folder.sortPrefix(stats.Stat{Labels: map[string]string{"a": "x", "b": "\x00y"}})
+
+		require.Equal(t, first.prefix, second.prefix)
+		require.Equal(t, []string{"x\x00", "y"}, first.labels)
+		require.Equal(t, []string{"x", "\x00y"}, second.labels)
 	})
 }
