@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.0-rc.6](https://github.com/grafana/loki/compare/v4.0.0-rc.5...v4.0.0-rc.6) (2026-11-27)
+
+
+### Bug Fixes
+
+* **frontend:** Fail requests that cannot be encoded without closing the scheduler stream [release-4.0.0] ([#26771](https://github.com/grafana/loki/issues/26771)) ([765282b](https://github.com/grafana/loki/commit/765282b4e7e0f2693ceb4491ec06dab73e41af03))
+
 ## [4.0.0-rc.5](https://github.com/grafana/loki/compare/v4.0.0-rc.4...v4.0.0-rc.5) (2026-11-27)
 
 
