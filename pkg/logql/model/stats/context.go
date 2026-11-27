@@ -338,6 +338,11 @@ func (s *Summary) Merge(m Summary) {
 	if m.EstimatedQueryBytes > s.EstimatedQueryBytes {
 		s.EstimatedQueryBytes = m.EstimatedQueryBytes
 	}
+	// Max-merged, not summed: the same label set recurs in every split and shard, so a sum would
+	// report a multiple of what any one querier job held.
+	if m.IntermediateSeriesPeak > s.IntermediateSeriesPeak {
+		s.IntermediateSeriesPeak = m.IntermediateSeriesPeak
+	}
 }
 
 func (q *Querier) Merge(m Querier) {
@@ -727,6 +732,23 @@ func (c *Context) AddStreamFirstQueries(num int64) {
 
 func (c *Context) AddTimestampFirstQueries(num int64) {
 	atomic.AddInt64(&c.result.Summary.TimestampFirstQueries, num)
+}
+
+// RecordIntermediateSeriesPeak raises the recorded peak number of label sets held by the range
+// iterators of a job. It keeps the maximum rather than accumulating.
+func (c *Context) RecordIntermediateSeriesPeak(n int64) {
+	if c == nil {
+		return
+	}
+	for {
+		cur := atomic.LoadInt64(&c.result.Summary.IntermediateSeriesPeak)
+		if n <= cur {
+			return
+		}
+		if atomic.CompareAndSwapInt64(&c.result.Summary.IntermediateSeriesPeak, cur, n) {
+			return
+		}
+	}
 }
 
 // RecordDataobjSectionsResolutionTime records d as the section-resolution time of one data-object
