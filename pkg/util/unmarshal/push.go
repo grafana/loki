@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/grafana/jsonparser"
+	"github.com/buger/jsonparser"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
