@@ -149,6 +149,68 @@ func TestReaderWithTimestampPredicates(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
+func TestReader_Read(t *testing.T) {
+	t.Run("returns the next matching row, then an empty record and io.EOF, when the first batch has no match", func(t *testing.T) {
+		sec := buildSection(t, []indexpointers.IndexPointer{
+			{Path: "path1", StartTs: unixTime(10), EndTs: unixTime(20)},
+			{Path: "path2", StartTs: unixTime(30), EndTs: unixTime(40)},
+		})
+		pathCol := sec.Columns()[0]
+
+		r := indexpointers.NewReader(indexpointers.ReaderOptions{
+			Columns: []*indexpointers.Column{pathCol},
+			Predicates: []indexpointers.Predicate{
+				indexpointers.FuncPredicate{
+					Column: pathCol,
+					Keep: func(_ *indexpointers.Column, value scalar.Scalar) bool {
+						return scalar.Equals(value, scalar.NewStringScalar("path2"))
+					},
+				},
+			},
+		})
+		require.NoError(t, r.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+		rec, err := r.Read(t.Context(), 1)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), rec.NumRows())
+		require.Equal(t, "path2", rec.Column(0).(*array.String).Value(0))
+
+		rec, err = r.Read(t.Context(), 1)
+		require.ErrorIs(t, err, io.EOF)
+		require.NotNil(t, rec)
+		require.Zero(t, rec.NumRows())
+	})
+}
+
+func TestReader_Reset(t *testing.T) {
+	t.Run("reads the rows of the new section after Reset", func(t *testing.T) {
+		first := buildSection(t, []indexpointers.IndexPointer{
+			{Path: "first1", StartTs: unixTime(10), EndTs: unixTime(20)},
+			{Path: "first2", StartTs: unixTime(30), EndTs: unixTime(40)},
+		})
+		second := buildSection(t, []indexpointers.IndexPointer{
+			{Path: "second1", StartTs: unixTime(50), EndTs: unixTime(60)},
+		})
+
+		r := indexpointers.NewReader(indexpointers.ReaderOptions{Columns: first.Columns()[:1]})
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+		readPaths := func() arrowtest.Rows {
+			table, err := readTable(t.Context(), r)
+			require.NoError(t, err)
+			rows, err := arrowtest.TableRows(memory.DefaultAllocator, table)
+			require.NoError(t, err)
+			return rows
+		}
+
+		require.Equal(t, arrowtest.Rows{{"path.path.utf8": "first1"}, {"path.path.utf8": "first2"}}, readPaths())
+
+		r.Reset(indexpointers.ReaderOptions{Columns: second.Columns()[:1]})
+		require.Equal(t, arrowtest.Rows{{"path.path.utf8": "second1"}}, readPaths())
+	})
+}
+
 func buildSection(t *testing.T, ptrData []indexpointers.IndexPointer) *indexpointers.Section {
 	t.Helper()
 

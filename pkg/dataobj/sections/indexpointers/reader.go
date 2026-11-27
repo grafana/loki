@@ -128,7 +128,7 @@ type Reader struct {
 	schema *arrow.Schema // Set on [Reader.Reset].
 
 	ready bool
-	inner *columnar.ReaderAdapter
+	inner *dataset.RowReader
 
 	alloc *memoryv2.Allocator
 
@@ -178,19 +178,18 @@ func (r *Reader) Open(ctx context.Context) error {
 // record.
 //
 // If [ReaderOptions] has predicates, only rows that match the predicates are
-// returned. If none of the next batchSize rows matched the predicate, Read
-// returns a nil record with a nil error.
+// returned. A record with a nil error has between one and batchSize rows. A
+// record with fewer than batchSize rows does not mean that the section ended.
 //
-// Read will return an error if the next batch of rows could not be read due to
-// invalid options or I/O errors. At the end of the section, Read returns nil,
+// Read returns an error if batchSize is not positive, the Reader is not open,
+// or a read fails. At the end of the section, Read returns an empty record and
 // [io.EOF].
 //
-// Read may return a non-nil record with a non-nil error, including if the
-// error is [io.EOF]. Callers should always process the record before
-// processing the error value.
+// A record that comes with an error has no rows. Read never returns a nil record
+// with [io.EOF]. It can return a nil record with another error.
 //
-// When a record is returned, it will match the schema specified by
-// [Reader.Schema]. These records must always be released after use.
+// A returned record matches the schema specified by [Reader.Schema]. The caller
+// must release every returned record.
 func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
@@ -205,14 +204,12 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 
 	defer r.alloc.Reclaim()
 
-	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
+	rb, readErr := r.inner.ReadRecordBatch(ctx, r.alloc, batchSize)
 	result, err := arrowconv.ToRecordBatch(rb, r.schema)
 	if err != nil {
 		return nil, fmt.Errorf("convert columnar.RecordBatch to arrow.RecordBatch: %w", err)
 	}
 
-	// We only return readErr after processing n so that we properly handle n>0
-	// while also getting an error such as io.EOF.
 	return result, readErr
 }
 
@@ -259,7 +256,7 @@ func (r *Reader) init(ctx context.Context) error {
 		PrefetchAllOnOpen: true,
 	}
 	if r.inner == nil {
-		r.inner = columnar.NewReaderAdapter(innerOptions)
+		r.inner = dataset.NewRowReader(innerOptions)
 	} else {
 		r.inner.Reset(innerOptions)
 	}
