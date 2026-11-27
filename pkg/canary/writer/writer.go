@@ -82,7 +82,12 @@ func (w *Writer) run() {
 		case <-t.C:
 			t := time.Now()
 			if i := rand.Intn(100); i < w.outOfOrderPercentage { //#nosec G404 -- Random sampling for testing purposes, does not require secure random. -- nosemgrep: math-random-used
-				n := rand.Intn(int(w.outOfOrderMax.Seconds()-w.outOfOrderMin.Seconds())) + int(w.outOfOrderMin.Seconds()) //#nosec G404 -- Random sampling for testing purposes, does not require secure random. -- nosemgrep: math-random-used
+				n := int(w.outOfOrderMin.Seconds())
+				// rand.Intn panics for a non-positive argument, which happens when the max is
+				// equal to the min or less than a second above it.
+				if span := int(w.outOfOrderMax.Seconds() - w.outOfOrderMin.Seconds()); span > 0 {
+					n += rand.Intn(span) //#nosec G404 -- Random sampling for testing purposes, does not require secure random. -- nosemgrep: math-random-used
+				}
 				t = t.Add(-time.Duration(n) * time.Second)
 			}
 			ts := strconv.FormatInt(t.UnixNano(), 10)
