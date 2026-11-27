@@ -19,10 +19,10 @@ func (m *decolorizeStage) Run(in chan Entry) chan Entry {
 		for e := range in {
 			decolorizedLine, _ := decolorizer.Process(
 				e.Timestamp.Unix(),
-				[]byte(e.Line),
+				log.UnsafeBytes{UnsafeData: []byte(e.Line)},
 				nil,
 			)
-			e.Line = string(decolorizedLine)
+			e.Line = decolorizedLine.SafeCopyString()
 			out <- e
 		}
 	}()

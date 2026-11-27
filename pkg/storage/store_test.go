@@ -909,7 +909,7 @@ func (p *mockStreamPipeline) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamPipeline) Process(ts int64, line []byte, lbs labels.Labels) ([]byte, lokilog.LabelsResult, bool) {
+func (p *mockStreamPipeline) Process(ts int64, line lokilog.UnsafeBytes, lbs labels.Labels) (lokilog.UnsafeBytes, lokilog.LabelsResult, bool) {
 	p.called++
 	return p.wrappedSP.Process(ts, line, lbs)
 }
@@ -1024,7 +1024,7 @@ func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
+func (p *mockStreamExtractor) Process(ts int64, line lokilog.UnsafeBytes, lbs labels.Labels) (lokilog.ExtractedSample, bool) {
 	p.called++
 	return p.wrappedSP.Process(ts, line, lbs)
 }

@@ -219,7 +219,7 @@ func Test_IPLabelFilterTy(t *testing.T) {
 				wantErr = errJSON
 				lbb.SetErr(wantErr, nil)
 			}
-			_, ok := lf.Process(0, []byte("x"), lbb)
+			_, ok := lf.Process(0, UnsafeBytes{UnsafeData: []byte("x")}, lbb)
 			if c.fail {
 				assert.Error(t, lf.patError)
 				return

@@ -63,7 +63,7 @@ type LabelFilterHints interface {
 	// true when there are no requirements, and when the label is already set by the stream,
 	// structured metadata or an earlier stage. The parser drops a line that it returns false for
 	// without parsing it.
-	ShouldParseLine(line []byte, lbs *LabelsBuilder) bool
+	ShouldParseLine(line UnsafeBytes, lbs *LabelsBuilder) bool
 }
 
 type ParserHints struct {
@@ -199,19 +199,19 @@ type labelFilterHints struct {
 func (h *labelFilterHints) ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool {
 	for i := 0; i < len(h.labelNames); i++ {
 		if h.labelNames[i] == labelName {
-			_, matches := h.labelFilters[i].Process(0, nil, lbs)
+			_, matches := h.labelFilters[i].Process(0, UnsafeBytes{}, lbs)
 			return matches
 		}
 	}
 	return true
 }
 
-func (h *labelFilterHints) ShouldParseLine(line []byte, lbs *LabelsBuilder) bool {
+func (h *labelFilterHints) ShouldParseLine(line UnsafeBytes, lbs *LabelsBuilder) bool {
 	for _, r := range h.lineRequirements {
 		// labelSet comes first because it costs less than a search of the line.
-		if !r.labelSet(lbs) && !r.need.mayHold(line) {
+		if !r.labelSet(lbs) && !r.need.mayHold(line.UnsafeData) {
 			// json and logfmt can decode a \u escape into any byte that a requirement needs.
-			return h.decoded && bytes.Contains(line, unicodeEscape)
+			return h.decoded && bytes.Contains(line.UnsafeData, unicodeEscape)
 		}
 	}
 	return true

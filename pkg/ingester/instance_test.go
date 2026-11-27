@@ -854,7 +854,7 @@ func (p *mockStreamPipeline) BaseLabels() log.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamPipeline) Process(ts int64, line []byte, lbs labels.Labels) ([]byte, log.LabelsResult, bool) {
+func (p *mockStreamPipeline) Process(ts int64, line log.UnsafeBytes, lbs labels.Labels) (log.UnsafeBytes, log.LabelsResult, bool) {
 	p.called++
 	return p.wrappedSP.Process(ts, line, lbs)
 }
@@ -983,7 +983,7 @@ func (p *mockStreamExtractor) BaseLabels() log.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }
 
-func (p *mockStreamExtractor) Process(ts int64, line []byte, lbs labels.Labels) (log.ExtractedSample, bool) {
+func (p *mockStreamExtractor) Process(ts int64, line log.UnsafeBytes, lbs labels.Labels) (log.ExtractedSample, bool) {
 	p.called++
 	return p.wrappedSP.Process(ts, line, lbs)
 }

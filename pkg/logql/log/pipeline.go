@@ -26,7 +26,11 @@ type StreamPipeline interface {
 	// Process must not retain the input line, or any portion of it, after it returns. The returned
 	// line can alias the input line. The caller must not overwrite the input line until it has
 	// finished with the returned line.
-	Process(ts int64, line []byte, structuredMetadata labels.Labels) (resultLine []byte, resultLabels LabelsResult, matches bool)
+	Process(ts int64, line UnsafeBytes, structuredMetadata labels.Labels) (resultLine UnsafeBytes, resultLabels LabelsResult, matches bool)
+	// ProcessString is Process for a line that the caller holds as a string. The same rules apply
+	// to the line: ProcessString must not retain it, or any portion of it, after it returns. The
+	// returned line can alias the input line. The caller must not overwrite the memory of the
+	// input line until it has finished with the returned line.
 	ProcessString(ts int64, line string, structuredMetadata labels.Labels) (resultLine string, resultLabels LabelsResult, matches bool)
 	ReferencedStructuredMetadata() bool
 }
@@ -42,7 +46,7 @@ type Stage interface {
 	//
 	// A stage must not retain the input line, or any portion of it, after it returns. The returned
 	// line can alias the input line. The next stage gets the returned line as its input.
-	Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
+	Process(ts int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool)
 
 	RequiredLabelNames() []string
 
@@ -186,14 +190,14 @@ func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
 	return false
 }
 
-func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata labels.Labels) ([]byte, LabelsResult, bool) {
+func (n noopStreamPipeline) Process(_ int64, line UnsafeBytes, structuredMetadata labels.Labels) (UnsafeBytes, LabelsResult, bool) {
 	n.builder.Reset()
 	n.builder.Add(StructuredMetadataLabel, structuredMetadata)
 	return line, n.builder.LabelsResult(), true
 }
 
 func (n noopStreamPipeline) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (string, LabelsResult, bool) {
-	_, lr, ok := n.Process(ts, unsafeGetBytes(line), structuredMetadata)
+	_, lr, ok := n.Process(ts, UnsafeBytes{UnsafeData: unsafeGetBytes(line)}, structuredMetadata)
 	return line, lr, ok
 }
 
@@ -201,7 +205,7 @@ func (n noopStreamPipeline) BaseLabels() LabelsResult { return n.builder.current
 
 type noopStage struct{}
 
-func (noopStage) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+func (noopStage) Process(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
 	return line, true
 }
 
@@ -219,14 +223,14 @@ func (noopStage) Hints() StageHints {
 func (noopStage) RequiredLabelNames() []string { return []string{} }
 
 type StageFunc struct {
-	process        func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
+	process        func(ts int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool)
 	requiredLabels []string
 	hints          StageHints
 	lineFilter     Filterer // the line filter the stage runs, for the filters whose literals NewLabelFilterHints reads.
 }
 
 // NewStageFunc builds a StageFunc from its required label names, its hints, and its process function.
-func NewStageFunc(requiredLabels []string, hints StageHints, process func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)) StageFunc {
+func NewStageFunc(requiredLabels []string, hints StageHints, process func(ts int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool)) StageFunc {
 	return StageFunc{
 		process:        process,
 		requiredLabels: requiredLabels,
@@ -240,7 +244,7 @@ func (fn StageFunc) withLineFilter(f Filterer) StageFunc {
 	return fn
 }
 
-func (fn StageFunc) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (fn StageFunc) Process(ts int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	return fn.process(ts, line, lbs)
 }
 
@@ -330,7 +334,7 @@ func (p *streamPipeline) ReferencedStructuredMetadata() bool {
 	return p.builder.referencedStructuredMetadata
 }
 
-func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]byte, LabelsResult, bool) {
+func (p *streamPipeline) Process(ts int64, line UnsafeBytes, structuredMetadata labels.Labels) (UnsafeBytes, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
 
@@ -339,7 +343,7 @@ func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata label
 	for _, s := range p.stages {
 		line, ok = s.Process(ts, line, p.builder)
 		if !ok {
-			return nil, nil, false
+			return UnsafeBytes{}, nil, false
 		}
 	}
 	return line, p.builder.LabelsResult(), true
@@ -347,9 +351,9 @@ func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata label
 
 func (p *streamPipeline) ProcessString(ts int64, line string, structuredMetadata labels.Labels) (string, LabelsResult, bool) {
 	// Stages only read from the line.
-	lb, lr, ok := p.Process(ts, unsafeGetBytes(line), structuredMetadata)
+	lb, lr, ok := p.Process(ts, UnsafeBytes{UnsafeData: unsafeGetBytes(line)}, structuredMetadata)
 	// but the returned line needs to be copied.
-	return string(lb), lr, ok
+	return lb.SafeCopyString(), lr, ok
 }
 
 func (p *streamPipeline) BaseLabels() LabelsResult { return p.builder.currentResult }
@@ -430,7 +434,7 @@ func (sp *filteringStreamPipeline) BaseLabels() LabelsResult {
 	return sp.pipeline.BaseLabels()
 }
 
-func (sp *filteringStreamPipeline) Process(ts int64, line []byte, structuredMetadata labels.Labels) ([]byte, LabelsResult, bool) {
+func (sp *filteringStreamPipeline) Process(ts int64, line UnsafeBytes, structuredMetadata labels.Labels) (UnsafeBytes, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
@@ -438,7 +442,7 @@ func (sp *filteringStreamPipeline) Process(ts int64, line []byte, structuredMeta
 
 		_, _, matches := filter.pipeline.Process(ts, line, structuredMetadata)
 		if matches { // When the filter matches, don't run the next step
-			return nil, nil, false
+			return UnsafeBytes{}, nil, false
 		}
 	}
 
@@ -465,12 +469,12 @@ func ReduceStages(stages Stages) Stage {
 	if len(stages) == 0 {
 		return NoopStage
 	}
-	return NewStageFunc(stages.RequiredLabelNames(), stages.Hints(), func(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	return NewStageFunc(stages.RequiredLabelNames(), stages.Hints(), func(ts int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 		var ok bool
 		for _, p := range stages {
 			line, ok = p.Process(ts, line, lbs)
 			if !ok {
-				return nil, false
+				return UnsafeBytes{}, false
 			}
 		}
 		return line, true

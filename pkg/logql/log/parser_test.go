@@ -269,7 +269,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 				b.Set(StructuredMetadataLabel, key, value)
 			}
 
-			_, _ = j.Process(0, tt.line, b)
+			_, _ = j.Process(0, UnsafeBytes{UnsafeData: tt.line}, b)
 			labels := b.LabelsResult().Labels()
 			require.Equal(t, origLine, string(tt.line), "original log line was modified")
 			require.Equal(t, tt.want, labels)
@@ -289,7 +289,7 @@ func Test_jsonParser_Parse(t *testing.T) {
 		b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 		for range 2 {
 			b.Reset()
-			_, _ = j.Process(0, []byte(`{" ":"1","baz":"2"}`), b)
+			_, _ = j.Process(0, UnsafeBytes{UnsafeData: []byte(`{" ":"1","baz":"2"}`)}, b)
 			require.Equal(t, labels.FromStrings("baz", "2", "foo", "bar"), b.LabelsResult().Labels())
 		}
 	})
@@ -323,7 +323,7 @@ func TestKeyShortCircuit(t *testing.T) {
 	} {
 		lbs.Reset()
 		t.Run(tt.name, func(t *testing.T) {
-			_, result = tt.p.Process(0, tt.line, lbs)
+			_, result = tt.p.Process(0, UnsafeBytes{UnsafeData: tt.line}, lbs)
 
 			require.Equal(t, 1, lbs.LabelsResult().Labels().Len())
 			require.False(t, result)
@@ -355,7 +355,7 @@ func TestLineShortCircuit(t *testing.T) {
 				lbs.parserKeyHints = hints
 				lbs.labelFilterHints = hints
 
-				_, ok := tt.p.Process(0, tt.line, lbs)
+				_, ok := tt.p.Process(0, UnsafeBytes{UnsafeData: tt.line}, lbs)
 				if skipLine {
 					require.False(t, ok)
 					require.Zero(t, hints.checkCount, "the parser read a key of a line that the hints skip")
@@ -402,7 +402,7 @@ func TestLabelShortCircuit(t *testing.T) {
 	for _, tt := range tests {
 		lbs.Reset()
 		t.Run(tt.name, func(t *testing.T) {
-			_, result = tt.p.Process(0, tt.line, lbs)
+			_, result = tt.p.Process(0, UnsafeBytes{UnsafeData: tt.line}, lbs)
 
 			require.Equal(t, 1, lbs.LabelsResult().Labels().Len())
 			name, category, ok := lbs.GetWithCategory("name")
@@ -469,7 +469,7 @@ func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) b
 	return p.keepGoing
 }
 
-func (p *fakeParseHints) ShouldParseLine(_ []byte, _ *LabelsBuilder) bool {
+func (p *fakeParseHints) ShouldParseLine(_ UnsafeBytes, _ *LabelsBuilder) bool {
 	return !p.skipLine
 }
 
@@ -839,7 +839,7 @@ func TestJSONExpressionParser(t *testing.T) {
 			for key, value := range tt.structuredMetadata {
 				b.Set(StructuredMetadataLabel, key, value)
 			}
-			_, _ = j.Process(0, tt.line, b)
+			_, _ = j.Process(0, UnsafeBytes{UnsafeData: tt.line}, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
@@ -927,7 +927,7 @@ func Benchmark_Parser(b *testing.B) {
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = stage.Process(0, line, builder)
+					_, _ = stage.Process(0, UnsafeBytes{UnsafeData: line}, builder)
 					builder.LabelsResult()
 				}
 			})
@@ -940,7 +940,7 @@ func Benchmark_Parser(b *testing.B) {
 
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = stage.Process(0, line, builder)
+					_, _ = stage.Process(0, UnsafeBytes{UnsafeData: line}, builder)
 					builder.LabelsResult()
 				}
 			})
@@ -954,7 +954,7 @@ func Benchmark_Parser(b *testing.B) {
 				builder.labelFilterHints = NewLabelFilterHints(stages)
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = stage.Process(0, line, builder)
+					_, _ = stage.Process(0, UnsafeBytes{UnsafeData: line}, builder)
 					builder.LabelsResult()
 				}
 			})
@@ -1018,7 +1018,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = stage.Process(0, line, builder)
+					_, _ = stage.Process(0, UnsafeBytes{UnsafeData: line}, builder)
 					builder.LabelsResult()
 				}
 				expectedJSONPath := map[string][]string{
@@ -1059,7 +1059,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = stage.Process(0, line, builder)
+					_, _ = stage.Process(0, UnsafeBytes{UnsafeData: line}, builder)
 					builder.LabelsResult()
 				}
 
@@ -1081,7 +1081,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 				builder.labelFilterHints = NewLabelFilterHints(stages)
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
-					_, _ = stage.Process(0, line, builder)
+					_, _ = stage.Process(0, UnsafeBytes{UnsafeData: line}, builder)
 					builder.LabelsResult()
 				}
 
@@ -1133,7 +1133,7 @@ func BenchmarkKeyExtraction(b *testing.B) {
 
 			for n := 0; n < b.N; n++ {
 				lbs.Reset()
-				_, result = bb.p.Process(0, bb.line, lbs)
+				_, result = bb.p.Process(0, UnsafeBytes{UnsafeData: bb.line}, lbs)
 			}
 		})
 	}
@@ -1238,7 +1238,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 			for key, value := range tt.structuredMetadata {
 				b.Set(StructuredMetadataLabel, key, value)
 			}
-			_, ok := tt.parser.Process(0, tt.line, b)
+			_, ok := tt.parser.Process(0, UnsafeBytes{UnsafeData: tt.line}, b)
 			require.True(t, ok)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
@@ -1250,7 +1250,7 @@ func Test_regexpParser_Parse(t *testing.T) {
 		b := NewBaseLabelsBuilderWithGrouping(nil, hints, false, false).ForLabels(lbs, labels.StableHash(lbs))
 		b.Reset()
 
-		_, ok := mustStage(NewRegexpParser("status=(?P<status>\\w+)")).Process(0, []byte("status=200"), b)
+		_, ok := mustStage(NewRegexpParser("status=(?P<status>\\w+)")).Process(0, UnsafeBytes{UnsafeData: []byte("status=200")}, b)
 		require.True(t, ok)
 		require.Equal(t, lbs, b.LabelsResult().Labels())
 	})
@@ -1515,7 +1515,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 			for key, value := range tt.structuredMetadata {
 				b.Set(StructuredMetadataLabel, key, value)
 			}
-			_, _ = p.Process(0, tt.line, b)
+			_, _ = p.Process(0, UnsafeBytes{UnsafeData: tt.line}, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
@@ -1530,7 +1530,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 				for key, value := range tt.structuredMetadata {
 					b.Set(StructuredMetadataLabel, key, value)
 				}
-				_, _ = p.Process(0, tt.line, b)
+				_, _ = p.Process(0, UnsafeBytes{UnsafeData: tt.line}, b)
 
 				want := tt.want
 				if !tt.wantStrict.IsEmpty() {
@@ -1547,7 +1547,7 @@ func TestLogfmtParser_parse(t *testing.T) {
 		b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 		for range 2 {
 			b.Reset()
-			_, _ = p.Process(0, []byte("\u00a0=1 baz=2"), b)
+			_, _ = p.Process(0, UnsafeBytes{UnsafeData: []byte("\u00a0=1 baz=2")}, b)
 			require.Equal(t, labels.FromStrings("baz", "2", "foo", "bar"), b.LabelsResult().Labels())
 		}
 	})
@@ -1558,11 +1558,11 @@ func TestLogfmtParser_parse(t *testing.T) {
 		b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 		for i := range MaxParserFieldCacheSize + 1 {
 			b.Reset()
-			_, _ = p.Process(0, fmt.Appendf(nil, "key%d=x", i), b)
+			_, _ = p.Process(0, UnsafeBytes{UnsafeData: fmt.Appendf(nil, "key%d=x", i)}, b)
 		}
 
 		b.Reset()
-		_, _ = p.Process(0, []byte("\u00a0=1 late=1"), b)
+		_, _ = p.Process(0, UnsafeBytes{UnsafeData: []byte("\u00a0=1 late=1")}, b)
 		require.Equal(t, labels.FromStrings("foo", "bar", "late", "1"), b.LabelsResult().Labels())
 	})
 }
@@ -1611,12 +1611,12 @@ func TestParsers_collisionAcrossStreams(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.collidingStream, labels.StableHash(tt.collidingStream))
 			b.Reset()
-			_, _ = tt.parser.Process(0, []byte(tt.line), b)
+			_, _ = tt.parser.Process(0, UnsafeBytes{UnsafeData: []byte(tt.line)}, b)
 			require.Equal(t, tt.wantColliding, b.LabelsResult().Labels())
 
 			b = NewBaseLabelsBuilder().ForLabels(tt.freeStream, labels.StableHash(tt.freeStream))
 			b.Reset()
-			_, _ = tt.parser.Process(0, []byte(tt.line), b)
+			_, _ = tt.parser.Process(0, UnsafeBytes{UnsafeData: []byte(tt.line)}, b)
 			require.Equal(t, tt.wantFree, b.LabelsResult().Labels())
 		})
 	}
@@ -1679,7 +1679,7 @@ func TestLogfmtParser_keepEmpty(t *testing.T) {
 					b.Reset()
 
 					p := NewLogfmtParser(strict, tt.keepEmpty)
-					_, _ = p.Process(0, tt.line, b)
+					_, _ = p.Process(0, UnsafeBytes{UnsafeData: tt.line}, b)
 
 					want := tt.want
 					require.Equal(t, want, b.LabelsResult().Labels())
@@ -1704,10 +1704,10 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 
 		parser := NewLogfmtParser(true, true)
 
-		_, ok := parser.Process(0, []byte(line), metadataStream)
+		_, ok := parser.Process(0, UnsafeBytes{UnsafeData: []byte(line)}, metadataStream)
 		require.True(t, ok)
 
-		_, ok = parser.Process(0, []byte(line), basicStream)
+		_, ok = parser.Process(0, UnsafeBytes{UnsafeData: []byte(line)}, basicStream)
 		require.True(t, ok)
 
 		// structured metadata is preserved and parsed labels get _extracted suffix
@@ -1739,10 +1739,10 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 
 		parser := NewLogfmtParser(true, true)
 
-		_, ok := parser.Process(0, []byte(line), basicStream)
+		_, ok := parser.Process(0, UnsafeBytes{UnsafeData: []byte(line)}, basicStream)
 		require.True(t, ok)
 
-		_, ok = parser.Process(0, []byte(line), metadataStream)
+		_, ok = parser.Process(0, UnsafeBytes{UnsafeData: []byte(line)}, metadataStream)
 		require.True(t, ok)
 
 		// structured metadata is preserved and parsed labels get _extracted suffix
@@ -1925,7 +1925,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 			for key, value := range tt.structuredMetadata {
 				b.Set(StructuredMetadataLabel, key, value)
 			}
-			_, _ = l.Process(0, tt.line, b)
+			_, _ = l.Process(0, UnsafeBytes{UnsafeData: tt.line}, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
@@ -2094,10 +2094,10 @@ func Test_unpackParser_Parse(t *testing.T) {
 				b.Set(StructuredMetadataLabel, key, value)
 			}
 			cp := string(tt.line)
-			l, _ := j.Process(0, tt.line, b)
+			l, _ := j.Process(0, UnsafeBytes{UnsafeData: tt.line}, b)
 			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
-			require.Equal(t, string(tt.wantLine), string(l))
-			require.Equal(t, tt.wantLine, l)
+			require.Equal(t, string(tt.wantLine), string(l.UnsafeData))
+			require.Equal(t, tt.wantLine, l.UnsafeData)
 			require.Equal(t, cp, string(tt.line), "the original log line should not be mutated")
 		})
 	}
@@ -2174,7 +2174,7 @@ func Test_PatternParser(t *testing.T) {
 			}
 			pp, err := NewPatternParser(tt.pattern)
 			require.NoError(t, err)
-			_, _ = pp.Process(0, tt.line, b)
+			_, _ = pp.Process(0, UnsafeBytes{UnsafeData: tt.line}, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
@@ -2215,7 +2215,7 @@ func BenchmarkJsonExpressionParser(b *testing.B) {
 
 			for n := 0; n < b.N; n++ {
 				lbs.Reset()
-				_, result = bb.p.Process(0, bb.line, lbs)
+				_, result = bb.p.Process(0, UnsafeBytes{UnsafeData: bb.line}, lbs)
 			}
 		})
 	}
@@ -2266,7 +2266,7 @@ func BenchmarkLogfmtExpressionParserNames(b *testing.B) {
 
 			for n := 0; n < b.N; n++ {
 				builder.Reset()
-				_, result = p.Process(0, line, builder)
+				_, result = p.Process(0, UnsafeBytes{UnsafeData: line}, builder)
 			}
 		})
 	}
@@ -2312,7 +2312,7 @@ func TestLogfmtExpressionParserRenamedKeys(t *testing.T) {
 			b := NewBaseLabelsBuilderWithGrouping(nil, NoParserHints(), false, false).
 				ForLabels(base, labels.StableHash(base))
 			b.Reset()
-			_, _ = parser.Process(0, []byte(tt.line), b)
+			_, _ = parser.Process(0, UnsafeBytes{UnsafeData: []byte(tt.line)}, b)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 		})
 	}
@@ -2329,8 +2329,8 @@ func TestLogfmtExpressionParserKeepsTheValueOfAnEarlierStage(t *testing.T) {
 	base := labels.FromStrings("app", "x")
 	b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
 	b.Reset()
-	_, _ = NewJSONParser(false).Process(0, []byte(`{"foo":"first"}`), b)
-	_, _ = parser.Process(0, []byte(`other=x`), b)
+	_, _ = NewJSONParser(false).Process(0, UnsafeBytes{UnsafeData: []byte(`{"foo":"first"}`)}, b)
+	_, _ = parser.Process(0, UnsafeBytes{UnsafeData: []byte(`other=x`)}, b)
 	require.Equal(t, labels.FromStrings("app", "x", "foo", "first"), b.LabelsResult().Labels())
 }
 
@@ -2347,8 +2347,8 @@ func TestLogfmtExpressionParserEarlyExitDoesNotDependOnKeyOrder(t *testing.T) {
 		b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
 		b.parserKeyHints = NewParserHint(nil, []string{"app", "b"}, false, false, "")
 		b.Reset()
-		_, _ = NewJSONParser(false).Process(0, []byte(`{"b":"first"}`), b)
-		_, _ = parser.Process(0, []byte(line), b)
+		_, _ = NewJSONParser(false).Process(0, UnsafeBytes{UnsafeData: []byte(`{"b":"first"}`)}, b)
+		_, _ = parser.Process(0, UnsafeBytes{UnsafeData: []byte(line)}, b)
 		return b.LabelsResult().Labels()
 	}
 
@@ -2368,7 +2368,7 @@ func TestLogfmtExpressionParserReadsEveryRequiredName(t *testing.T) {
 	b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
 	b.parserKeyHints = NewParserHint(nil, []string{"a", "b"}, false, false, "")
 	b.Reset()
-	_, _ = parser.Process(0, []byte(`a=1 b=2`), b)
+	_, _ = parser.Process(0, UnsafeBytes{UnsafeData: []byte(`a=1 b=2`)}, b)
 	require.Equal(t, labels.FromStrings("app", "x", "a", "1", "b", "2"), b.LabelsResult().Labels())
 }
 
@@ -2386,7 +2386,7 @@ func TestLogfmtExpressionParserReadsTheSourceKeyOfARequiredName(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
 			b.parserKeyHints = NewParserHint(nil, []string{"status"}, false, false, "")
 			b.Reset()
-			_, _ = parser.Process(0, []byte(line), b)
+			_, _ = parser.Process(0, UnsafeBytes{UnsafeData: []byte(line)}, b)
 			require.Equal(t, labels.FromStrings("app", "x", "status", "200"), b.LabelsResult().Labels())
 		})
 	}
@@ -2466,7 +2466,7 @@ func TestLogfmtExpressionParserStopsWhenNoNameIsLeft(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(base, labels.StableHash(base))
 			b.parserKeyHints = hints
 			b.Reset()
-			_, ok := parser.Process(0, []byte(tt.line), b)
+			_, ok := parser.Process(0, UnsafeBytes{UnsafeData: []byte(tt.line)}, b)
 			require.True(t, ok)
 			require.Equal(t, tt.want, b.LabelsResult().Labels())
 			require.Equal(t, tt.wantFillers, hints.readFillers(), "asked: %v", hints.asked)
