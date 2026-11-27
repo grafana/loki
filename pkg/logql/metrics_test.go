@@ -377,74 +377,76 @@ func TestRecordBytesProcessedTotal(t *testing.T) {
 	type series struct {
 		tenant      string
 		multiTenant string
-		bytes       float64
 	}
 
 	// Tenant IDs are unique to this test so they do not collide with the shared,
 	// package-level counter incremented by other tests.
 	for _, tc := range []struct {
 		name    string
-		orgID   string
-		queries int
-		want    []series
+		tenants []string // tenants whose series are checked
+		orgIDs  []string // one query per org ID, in order
+		want    map[series]float64
 	}{
 		{
-			name:    "single tenant has no multi_tenant label value",
-			orgID:   "record-bytes-single",
-			queries: 1,
-			want:    []series{{tenant: "record-bytes-single", multiTenant: "", bytes: 100000}},
+			name:    "single tenant query usage",
+			tenants: []string{"record-bytes-single"},
+			orgIDs:  []string{"record-bytes-single"},
+			want:    map[series]float64{{"record-bytes-single", ""}: 100000},
 		},
 		{
 			name:    "single tenant accumulates across queries",
-			orgID:   "record-bytes-accumulate",
-			queries: 2,
-			want:    []series{{tenant: "record-bytes-accumulate", multiTenant: "", bytes: 200000}},
+			tenants: []string{"record-bytes-accumulate"},
+			orgIDs:  []string{"record-bytes-accumulate", "record-bytes-accumulate"},
+			want:    map[series]float64{{"record-bytes-accumulate", ""}: 200000},
 		},
 		{
 			name:    "multi-tenant query splits bytes equally and is labelled",
-			orgID:   "record-bytes-multi-b|record-bytes-multi-a",
-			queries: 1,
-			want: []series{
-				{tenant: "record-bytes-multi-a", multiTenant: "true", bytes: 50000},
-				{tenant: "record-bytes-multi-b", multiTenant: "true", bytes: 50000},
+			tenants: []string{"record-bytes-multi-a", "record-bytes-multi-b"},
+			orgIDs:  []string{"record-bytes-multi-b|record-bytes-multi-a"},
+			want: map[series]float64{
+				{"record-bytes-multi-a", "true"}: 50000,
+				{"record-bytes-multi-b", "true"}: 50000,
+			},
+		},
+		{
+			name:    "single-tenant and multi-tenant queries for the same tenant are separate series",
+			tenants: []string{"record-bytes-mixed-a", "record-bytes-mixed-b"},
+			orgIDs:  []string{"record-bytes-mixed-a", "record-bytes-mixed-a|record-bytes-mixed-b"},
+			want: map[series]float64{
+				{"record-bytes-mixed-a", ""}:     100000,
+				{"record-bytes-mixed-a", "true"}: 50000,
+				{"record-bytes-mixed-b", "true"}: 50000,
 			},
 		},
 		{
 			name:    "duplicate tenant IDs collapse to a single-tenant query",
-			orgID:   "record-bytes-dup|record-bytes-dup",
-			queries: 1,
-			want:    []series{{tenant: "record-bytes-dup", multiTenant: "", bytes: 100000}},
-		},
-		{
-			name:    "duplicate tenant IDs are de-duplicated before splitting",
-			orgID:   "record-bytes-dedup-b|record-bytes-dedup-a|record-bytes-dedup-b",
-			queries: 1,
-			want: []series{
-				{tenant: "record-bytes-dedup-a", multiTenant: "true", bytes: 50000},
-				{tenant: "record-bytes-dedup-b", multiTenant: "true", bytes: 50000},
-			},
+			tenants: []string{"record-bytes-dup"},
+			orgIDs:  []string{"record-bytes-dup|record-bytes-dup"},
+			want:    map[series]float64{{"record-bytes-dup", ""}: 100000},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, s := range tc.want {
-				bytesProcessedTotal.DeletePartialMatch(prometheus.Labels{"tenant": s.tenant})
+			for _, tenantID := range tc.tenants {
+				bytesProcessedTotal.DeletePartialMatch(prometheus.Labels{"tenant": tenantID})
 			}
 
-			ctx := user.InjectOrgID(context.Background(), tc.orgID)
-			for i := 0; i < tc.queries; i++ {
+			for _, orgID := range tc.orgIDs {
+				ctx := user.InjectOrgID(context.Background(), orgID)
 				RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil, nil)
 			}
 
-			for _, s := range tc.want {
-				require.Equal(t, s.bytes, testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(s.tenant, s.multiTenant)))
-
-				// The bytes must land only on the expected multi_tenant value.
-				other := "true"
-				if s.multiTenant == "true" {
-					other = ""
+			// Collect every series of the tested tenants, so an unexpected series fails the test.
+			got := map[series]float64{}
+			for _, tenantID := range tc.tenants {
+				for _, multiTenant := range []string{"", "true"} {
+					c, err := bytesProcessedTotal.GetMetricWithLabelValues(tenantID, multiTenant)
+					require.NoError(t, err)
+					if v := testutil.ToFloat64(c); v != 0 {
+						got[series{tenantID, multiTenant}] = v
+					}
 				}
-				require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(s.tenant, other)))
 			}
+			require.Equal(t, tc.want, got)
 		})
 	}
 
