@@ -70,6 +70,10 @@ The following changes affect rolling back to Loki 3.x:
 
 ## Main / Unreleased
 
+### Experimental per-push stream packing
+
+The new `distributor.pack_streams` setting defaults to `false`. Enabling it changes rate-shard assignments and packs each push toward the byte value of `shard_streams.desired_rate`. See [automatic stream sharding](../../operations/automatic-stream-sharding/#limit-the-number-of-shards-used-by-each-push) for sizing and ordering considerations.
+
 ### A `logfmt` expression no longer replaces a value from an earlier parser with an empty one
 
 A `logfmt` parser with label extraction expressions, for example `| logfmt foo, bar`, sets an empty label for a name that the log line does not contain. Loki used to set the empty label even when an earlier stage extracting or setting labels, for example `| json`, had already extracted a value with that name, so the empty value replaced the extracted value. Loki now keeps the value of the earlier stage.

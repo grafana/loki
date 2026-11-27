@@ -420,6 +420,7 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, sStart, 
 			ShardBuckets:        indexPointer.ShardBuckets,
 			TableOfContentsPath: path,
 			RunID:               indexPointer.RunID,
+			RunLength:           indexPointer.RunLength,
 			PostingKeys:         indexPointer.PostingKeys,
 		})
 	})
@@ -514,6 +515,10 @@ func (m *ObjectMetastore) streamSections(ctx context.Context, span *xcap.Span, r
 		skipped int
 	)
 	for _, run := range indexRuns(indexes.Indexes) {
+		if err := run.checkLength(); err != nil {
+			yield(nil, err)
+			return
+		}
 		kept, ok := run.withPostingsFor(req.Matchers, req.Predicates)
 		skipped += len(run.entries) - len(kept.entries)
 		if ok {

@@ -92,6 +92,26 @@ func TestIndexRun_String(t *testing.T) {
 	})
 }
 
+func TestIndexRun_CheckLength(t *testing.T) {
+	run := func(runLengths ...int32) indexRun {
+		var r indexRun
+		for i, runLength := range runLengths {
+			r.entries = append(r.entries, IndexEntry{Path: fmt.Sprintf("indexes/%d", i), TableOfContentsPath: "toc", RunID: 1, RunLength: runLength})
+		}
+		return r
+	}
+
+	t.Run("accepts a run whose index objects record the number of index objects that the ToC lists", func(t *testing.T) {
+		require.NoError(t, run(2, 2).checkLength())
+	})
+
+	t.Run("returns an incomplete run error that names the run when an index object records another length", func(t *testing.T) {
+		err := run(3, 3).checkLength()
+		require.ErrorIs(t, err, errIncompleteRun)
+		require.ErrorContains(t, err, "run 1 of toc")
+	})
+}
+
 func TestIndexRun_WithPostingsFor(t *testing.T) {
 	keyRange := func(t *testing.T, minKey, maxKey postings.Key) postings.KeyRange {
 		t.Helper()
@@ -177,6 +197,10 @@ type runFile struct {
 
 	// unknownKeys makes the ToC record no posting key bounds for the index object.
 	unknownKeys bool
+
+	// runLength is the run length that the ToC records for the index object.
+	// Zero records none.
+	runLength int32
 }
 
 // newRunMetastore returns a metastore whose ToC lists files as the index objects of one run. The ToC
@@ -193,6 +217,7 @@ func newRunMetastore(t *testing.T, files ...runFile) *ObjectMetastore {
 			StartTs:      runTestTime,
 			EndTs:        runTestTime.Add(time.Minute),
 			RunID:        1,
+			RunLength:    file.runLength,
 			ShardBuckets: file.shardBuckets,
 		}
 		if !file.unknownKeys {
@@ -343,6 +368,45 @@ func TestObjectMetastore_Sections_Runs(t *testing.T) {
 		resp, err := m.Sections(ctx, request(labels.MustNewMatcher(labels.MatchEqual, "namespace", "x")))
 		require.NoError(t, err)
 		require.Empty(t, resp.Sections)
+	})
+
+	withRunLength := func(file runFile, runLength int32) runFile {
+		file.runLength = runLength
+		return file
+	}
+
+	t.Run("matches a stream across the index objects of a run that records its length", func(t *testing.T) {
+		m := newRunMetastore(t, withRunLength(appFile, 2), withRunLength(envFile, 2))
+
+		resp, err := m.Sections(ctx, request(
+			labels.MustNewMatcher(labels.MatchEqual, "app", "api"),
+			labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+		))
+		require.NoError(t, err)
+		require.Equal(t, map[string][]int64{"obj-a/0": {1}}, streamsOf(resp.Sections))
+	})
+
+	t.Run("reads a run that records its length when key pruning skips some of its index objects", func(t *testing.T) {
+		m := newRunMetastore(t, withRunLength(appFile, 2), withRunLength(envFile, 2))
+
+		resp, err := m.Sections(ctx, request(labels.MustNewMatcher(labels.MatchEqual, "app", "web")))
+		require.NoError(t, err)
+		require.Equal(t, map[string][]int64{"obj-a/0": {3}}, streamsOf(resp.Sections))
+	})
+
+	t.Run("fails when the ToC lists fewer index objects than the run records", func(t *testing.T) {
+		m := newRunMetastore(t, withRunLength(appFile, 3), withRunLength(envFile, 3))
+
+		_, err := m.Sections(ctx, request(labels.MustNewMatcher(labels.MatchEqual, "app", "api")))
+		require.ErrorIs(t, err, errIncompleteRun)
+		require.ErrorContains(t, err, "records a run of 3 index objects, but the ToC lists 2")
+	})
+
+	t.Run("fails when the ToC lists only the index object of a run that the request reads", func(t *testing.T) {
+		m := newRunMetastore(t, withRunLength(appFile, 2))
+
+		_, err := m.Sections(ctx, request(labels.MustNewMatcher(labels.MatchEqual, "app", "api")))
+		require.ErrorIs(t, err, errIncompleteRun)
 	})
 
 	t.Run("fails when the index objects of the run record different shard layouts", func(t *testing.T) {

@@ -47,7 +47,7 @@ func (c *Context) executeIndexMerge(_ context.Context, node *physical.IndexMerge
 
 func (c *Context) doIndexMerge(ctx context.Context, node *physical.IndexMerge) ([]v2.ResultArtifact, error) {
 	// Check prerequisites
-	if c.bucket == nil {
+	if c.indexBucket == nil {
 		return nil, errors.New("no object store bucket configured")
 	}
 
@@ -174,7 +174,7 @@ func (c *Context) classifyRuns(ctx context.Context, node *physical.IndexMerge) (
 			if _, seen := objects[sectionRef.ObjectPath]; seen {
 				continue
 			}
-			obj, openErr := dataobj.FromBucket(ctx, c.bucket, sectionRef.ObjectPath, indexPrefetchBytes)
+			obj, openErr := dataobj.FromBucket(ctx, c.indexBucket, sectionRef.ObjectPath, indexPrefetchBytes)
 			if openErr != nil {
 				return nil, nil, streams.Layout{}, fmt.Errorf("opening object %q: %w", sectionRef.ObjectPath, openErr)
 			}

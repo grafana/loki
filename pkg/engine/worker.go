@@ -32,13 +32,14 @@ type WorkerConfig struct {
 
 // WorkerParams holds parameters for constructing a new [Worker].
 type WorkerParams struct {
-	Logger log.Logger      // Logger for optional log messages.
-	Bucket objstore.Bucket // Bucket to read stored data from.
+	Logger log.Logger // Logger for optional log messages.
 
-	// DataBucket reads source log objects during LogMerge compaction. When
-	// Bucket is prefixed with the index-storage prefix (compaction wiring),
-	// source log objects live at the unprefixed dataobj root and must be read
-	// through this bucket. Optional; nil falls back to Bucket.
+	// IndexBucket is the index storage. It is prefixed with
+	// metastore.IndexStoragePrefix and holds the ToCs and the index objects.
+	IndexBucket objstore.Bucket
+
+	// DataBucket is the root of the data object storage. It holds the log
+	// objects.
 	DataBucket objstore.Bucket
 
 	Config WorkerConfig // Configuration for the worker.
@@ -124,9 +125,9 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 	}
 
 	inner, err := worker.New(worker.Config{
-		Logger:     params.Logger,
-		Bucket:     params.Bucket,
-		DataBucket: params.DataBucket,
+		Logger:      params.Logger,
+		IndexBucket: params.IndexBucket,
+		DataBucket:  params.DataBucket,
 
 		Dialer:   dialer,
 		Listener: listener,

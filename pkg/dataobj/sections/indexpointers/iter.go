@@ -249,6 +249,19 @@ func RunLengthFromValue(value int64) (int32, error) {
 	return int32(value), nil
 }
 
+// CheckRunLength returns an error if pointer records a run length other than
+// listed, the number of index pointers of its run that a ToC lists. Then the
+// ToC lists only part of the run, or more than the ToC writer recorded.
+//
+// A run length of zero is unknown, so it matches any number. A ToC writer that
+// predates the run_length column drops the length when it rewrites the ToC.
+func CheckRunLength(pointer IndexPointer, listed int) error {
+	if pointer.RunLength != 0 && int(pointer.RunLength) != listed {
+		return fmt.Errorf("index %s records a run of %d index objects, but the ToC lists %d", pointer.Path, pointer.RunLength, listed)
+	}
+	return nil
+}
+
 // ShardBucketsFromCount returns the ShardBuckets with the given bucket count,
 // as the shard_buckets column stores it. It returns an error if buckets is not
 // a valid bucket count. A valid count is never zero, so the result is never

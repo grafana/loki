@@ -2246,7 +2246,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 
 	c, err := enginecompactor.New(enginecompactor.PlannerParams{
 		Config:          t.Cfg.DataObj.Compaction,
-		Bucket:          indexBucket,
+		IndexBucket:     indexBucket,
 		DataBucket:      store,
 		MetastoreWriter: tocWriter,
 		Limits:          t.Overrides,
@@ -2302,8 +2302,8 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 	indexBucket := metastore.NewIndexBucket(store)
 
 	w, err := enginecompactor.NewWorker(enginecompactor.WorkerParams{
-		Config: t.Cfg.DataObj.Compaction.Worker,
-		Bucket: indexBucket,
+		Config:      t.Cfg.DataObj.Compaction.Worker,
+		IndexBucket: indexBucket,
 		// Source log objects live at the unprefixed dataobj root, so the
 		// LogMerge executor reads them through the unprefixed store rather than
 		// the index-prefixed bucket used for index I/O and ToC.

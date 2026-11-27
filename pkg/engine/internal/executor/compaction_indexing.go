@@ -18,7 +18,7 @@ func (c *Context) uploadAndIndexObject(
 	uploadDestination string,
 	calc *dataobjindex.Calculator,
 ) (int64, error) {
-	size, err := uploadObject(ctx, c.dataObjectBucket(), uploadDestination, obj)
+	size, err := uploadObject(ctx, c.dataBucket, uploadDestination, obj)
 	if err != nil {
 		return 0, fmt.Errorf("uploading %q: %w", uploadDestination, err)
 	}
@@ -52,7 +52,7 @@ func (c *Context) flushAndUploadIndex(
 	if err != nil {
 		return v2.ResultArtifact{}, fmt.Errorf("generating index path: %w", err)
 	}
-	if _, err := uploadObject(ctx, c.bucket, path, obj); err != nil {
+	if _, err := uploadObject(ctx, c.indexBucket, path, obj); err != nil {
 		return v2.ResultArtifact{}, fmt.Errorf("uploading index %q: %w", path, err)
 	}
 	return v2.ResultArtifact{Path: path}, nil

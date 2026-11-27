@@ -38,13 +38,12 @@ type Config struct {
 	// Logger for optional log messages.
 	Logger log.Logger
 
-	// Bucket to read stored data from.
-	Bucket objstore.Bucket
+	// IndexBucket is the index storage. It is prefixed with
+	// metastore.IndexStoragePrefix and holds the ToCs and the index objects.
+	IndexBucket objstore.Bucket
 
-	// DataBucket reads source log objects during LogMerge compaction. When the
-	// compaction wiring prefixes Bucket with the index-storage prefix, source
-	// log objects (stored at the unprefixed dataobj root) must be read through
-	// this bucket. Optional; nil falls back to Bucket.
+	// DataBucket is the root of the data object storage. It holds the log
+	// objects.
 	DataBucket objstore.Bucket
 
 	// Dialer to establish connections to scheduler and remote workers.
@@ -205,7 +204,7 @@ func (w *Worker) run(ctx context.Context) error {
 		}
 		t := &thread{
 			Logger:          log.With(w.logger, "thread", i),
-			Bucket:          w.config.Bucket,
+			IndexBucket:     w.config.IndexBucket,
 			DataBucket:      w.config.DataBucket,
 			ScratchStore:    w.config.ScratchStore,
 			IndexobjCfg:     w.config.IndexobjCfg,

@@ -21,8 +21,12 @@ import (
 type WorkerParams struct {
 	Config WorkerConfig
 
-	Bucket       objstore.Bucket
-	DataBucket   objstore.Bucket // unprefixed bucket for reading source log objects; nil falls back to Bucket
+	// IndexBucket is the index storage. It is prefixed with
+	// metastore.IndexStoragePrefix and holds the ToCs and the index objects.
+	IndexBucket objstore.Bucket
+	// DataBucket is the root of the data object storage. It holds the log
+	// objects.
+	DataBucket   objstore.Bucket
 	ScratchStore scratch.Store
 
 	Logger     log.Logger
@@ -50,8 +54,11 @@ type Worker struct {
 // Config.Validate() so that planner-only deployments (which keep the
 // worker fields at their defaults) validate cleanly.
 func NewWorker(params WorkerParams) (*Worker, error) {
-	if params.Bucket == nil {
-		return nil, errors.New("dataobj compaction worker: bucket is required")
+	if params.IndexBucket == nil {
+		return nil, errors.New("dataobj compaction worker: index bucket is required")
+	}
+	if params.DataBucket == nil {
+		return nil, errors.New("dataobj compaction worker: data bucket is required")
 	}
 	if params.TenantOverrides == nil {
 		return nil, errors.New("dataobj compaction worker: tenant overrides are required")
@@ -90,7 +97,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 
 	inner, err := engine.NewWorker(engine.WorkerParams{
 		Logger:       log.With(logger, "component", "dataobj-compaction-worker"),
-		Bucket:       params.Bucket,
+		IndexBucket:  params.IndexBucket,
 		DataBucket:   params.DataBucket,
 		ScratchStore: params.ScratchStore,
 		Config: engine.WorkerConfig{

@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -303,7 +304,7 @@ func (s *Sweeper) findStoredCandidates(ctx context.Context, previous fileListHea
 // tenant ID, and logs it.
 func ListCompactedTenants(ctx context.Context, bucket objstore.BucketReader, logger log.Logger) (map[string]struct{}, error) {
 	tenants := make(map[string]struct{})
-	for _, root := range []string{"objects", path.Join(metastore.IndexStoragePrefix, "indexes")} {
+	for _, root := range []string{"objects", path.Join(metastore.IndexStoragePrefix, dataobj.IndexDirectory)} {
 		dir := tenantsDir(root)
 		err := bucket.Iter(ctx, dir, func(name string) error {
 			if !strings.HasSuffix(name, objstore.DirDelim) {

@@ -88,7 +88,7 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	Bucket          objstore.Bucket
+	IndexBucket     objstore.Bucket
 	DataBucket      objstore.Bucket
 	Logger          log.Logger
 	ScratchStore    scratch.Store
@@ -217,7 +217,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	level.Info(logger).Log(startFields...)
 
 	cfg := executor.Config{
-		Bucket:          t.Bucket,
+		IndexBucket:     t.IndexBucket,
 		DataBucket:      t.DataBucket,
 		ScratchStore:    t.ScratchStore,
 		IndexobjCfg:     t.IndexobjCfg,

@@ -84,6 +84,7 @@ type Config struct {
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring,omitempty"`
 	PushWorkerCount int        `yaml:"push_worker_count"`
+	PackStreams     bool       `yaml:"pack_streams"`
 
 	// Request parser
 	MaxInflightBytes int `yaml:"max_inflight_bytes"`
@@ -125,6 +126,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.OTLPAttributeLogging.RegisterFlagsWithPrefix("distributor.otlp-attribute-logging", fs)
 	fs.IntVar(&cfg.MaxInflightBytes, "distributor.max-inflight-bytes", 0, "The maximum number of inflight bytes at a time. 0 means disabled.")
+	fs.BoolVar(&cfg.PackStreams, "distributor.pack-streams", false, "Experimental. Pack each push into contiguous shards using the effective shard_streams.desired_rate as the expanded-byte target per output shard, capped by the recommended shard count. Applies to all tenants. Not a hard size or rate limit. A zero desired_rate disables packing.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
@@ -887,7 +889,7 @@ func (d *Distributor) enforceStreamLimits(
 				}
 				count = 1
 			}
-			liveStreams = append(liveStreams, d.shardStreamToCount(c.stream, c.labels, tenantID, c.policy, c.shardStreamsCfg, count)...)
+			liveStreams = append(liveStreams, d.shardStreamToCount(c.stream, c.labels, tenantID, c.policy, c.shardStreamsCfg, count, int(c.totalSize))...)
 		}
 	}
 
@@ -1451,21 +1453,17 @@ func shardingState(rateStoreShards, limitsShards int) string {
 // N is the sharding size for the given stream. shardSteam returns the smaller
 // streams and their associated keys for hashing to ingesters, along with the
 // shard count shardCountFor recommended. That count is not necessarily the
-// number of streams returned, as shardNested limits the shards to the number
-// of entries.
-//
-// The number of shards is limited by the number of entries.
+// number of streams returned: entry count and packing limit per-push fanout.
 func (d *Distributor) shardStream(stream logproto.InternalStreamAdapter, lbls labels.Labels, pushSize int, tenantID string, policy string, shardStreamsCfg shardstreams.Config) ([]KeyedStream, int) {
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, stream, pushSize, tenantID, shardStreamsCfg)
-	return d.shardStreamToCount(stream, lbls, tenantID, policy, shardStreamsCfg, shardCount), shardCount
+	return d.shardStreamToCount(stream, lbls, tenantID, policy, shardStreamsCfg, shardCount, pushSize), shardCount
 }
 
 // shardStreamToCount shards stream into shardCount smaller streams, whoever
 // decided that count, and returns them with their hash keys. The number of
-// streams returned is not necessarily shardCount, as shardNested limits the
-// shards to the number of entries.
-func (d *Distributor) shardStreamToCount(stream logproto.InternalStreamAdapter, lbls labels.Labels, tenantID string, policy string, shardStreamsCfg shardstreams.Config, shardCount int) []KeyedStream {
+// streams returned is limited by entry count and packing.
+func (d *Distributor) shardStreamToCount(stream logproto.InternalStreamAdapter, lbls labels.Labels, tenantID string, policy string, shardStreamsCfg shardstreams.Config, shardCount, pushSize int) []KeyedStream {
 	if shardCount <= 1 {
 		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream, Policy: policy}}
 	}
@@ -1475,18 +1473,27 @@ func (d *Distributor) shardStreamToCount(stream logproto.InternalStreamAdapter, 
 		level.Info(log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)).Log("msg", "sharding request", "shard_count", shardCount)
 	}
 
-	return d.divideEntriesBetweenShards(tenantID, lbls, shardCount, shardStreamsCfg, stream, policy)
+	return d.divideEntriesBetweenShards(tenantID, lbls, shardCount, shardStreamsCfg, stream, policy, pushSize)
 }
 
-func (d *Distributor) divideEntriesBetweenShards(tenantID string, lbls labels.Labels, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.InternalStreamAdapter, policy string) []KeyedStream {
+func (d *Distributor) divideEntriesBetweenShards(tenantID string, lbls labels.Labels, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.InternalStreamAdapter, policy string, pushSize int) []KeyedStream {
 	if totalShards <= 0 {
 		level.Error(d.logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", stream.EntryCount())
 		return nil
 	}
 
-	// Only nonempty shards advance the shard rotation.
-	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
-	shards := shardNested(stream, lbls, totalShards, startShard)
+	var shards []logproto.InternalStreamAdapter
+	packing := d.cfg.PackStreams && shardStreamsCfg.DesiredRate > 0
+	if packing {
+		shards = packNested(stream, totalShards, pushSize, uint64(shardStreamsCfg.DesiredRate))
+	} else {
+		shards = shardNested(stream, totalShards)
+	}
+	if len(shards) == 0 {
+		return nil
+	}
+	start := d.shardTracker.Reserve(tenantID, stream.Hash, totalShards, len(shards), packing)
+	labelShards(shards, lbls, totalShards, start)
 
 	derivedStreams := make([]KeyedStream, 0, len(shards))
 	for i := range shards {
@@ -1501,7 +1508,6 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, lbls labels.La
 			level.Info(d.logger).Log("msg", "stream derived from sharding", "src-stream", stream.Labels, "derived-stream", shards[i].Labels)
 		}
 	}
-	d.shardTracker.SetLastShardNum(tenantID, stream.Hash, startShard+len(shards))
 
 	return derivedStreams
 }

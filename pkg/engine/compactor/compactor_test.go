@@ -96,7 +96,7 @@ func TestPlanner_BootShutdown(t *testing.T) {
 	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	c, err := New(PlannerParams{
 		Config:          cfg,
-		Bucket:          bucket,
+		IndexBucket:     bucket,
 		MetastoreWriter: tocWriter,
 		Limits:          newFakeLimits(),
 		Logger:          log.NewNopLogger(),
@@ -197,7 +197,7 @@ func TestNew_InvalidAdvertiseAddr(t *testing.T) {
 	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	_, err := New(PlannerParams{
 		Config:          cfg,
-		Bucket:          bucket,
+		IndexBucket:     bucket,
 		MetastoreWriter: tocWriter,
 		Limits:          newFakeLimits(),
 	})
@@ -212,7 +212,7 @@ func TestNew_NilLimitsErrors(t *testing.T) {
 	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	_, err := New(PlannerParams{
 		Config:          Config{Enabled: true, Scheduler: SchedulerConfig{Endpoint: defaultEndpoint}},
-		Bucket:          bucket,
+		IndexBucket:     bucket,
 		MetastoreWriter: tocWriter,
 		// Limits intentionally nil
 	})
@@ -229,7 +229,7 @@ func TestNew_DeletionSweep(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		return PlannerParams{
 			Config:          cfg,
-			Bucket:          bucket,
+			IndexBucket:     bucket,
 			DataBucket:      dataBucket,
 			MetastoreWriter: metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
 			Limits:          newFakeLimits(),

@@ -19,12 +19,13 @@ import (
 // Config.Enabled is the user-facing YAML/CLI gate consulted by the Loki
 // module-init wiring: when false, the planner module returns a nil service
 // and [New] is never called. [New] therefore treats every Planner it
-// constructs as enabled — Bucket and MetastoreWriter are unconditionally
+// constructs as enabled — IndexBucket and MetastoreWriter are unconditionally
 // required.
 type PlannerParams struct {
 	Config Config
-	// Bucket is the index storage.
-	Bucket objstore.Bucket // required
+	// IndexBucket is the index storage. It is prefixed with
+	// metastore.IndexStoragePrefix and holds the ToCs and the index objects.
+	IndexBucket objstore.Bucket // required
 	// DataBucket is the root of the data object storage. It is required if
 	// the deletion sweep is enabled.
 	DataBucket      objstore.BucketReader
@@ -58,8 +59,8 @@ func New(params PlannerParams) (*Planner, error) {
 		logger = log.NewNopLogger()
 	}
 
-	if params.Bucket == nil {
-		return nil, errors.New("dataobj compaction planner: bucket is required")
+	if params.IndexBucket == nil {
+		return nil, errors.New("dataobj compaction planner: index bucket is required")
 	}
 	if params.MetastoreWriter == nil {
 		return nil, errors.New("dataobj compaction planner: metastore writer is required")
@@ -82,7 +83,7 @@ func New(params PlannerParams) (*Planner, error) {
 	coord, err := newCoordinator(
 		params.Config,
 		log.With(logger, "component", "dataobj-compaction-coordinator"),
-		params.Bucket,
+		params.IndexBucket,
 		params.DataBucket,
 		sched.inner,
 		params.MetastoreWriter,

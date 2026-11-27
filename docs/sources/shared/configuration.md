@@ -3187,6 +3187,13 @@ ring:
 # CLI flag: -distributor.push-worker-count
 [push_worker_count: <int> | default = 256]
 
+# Experimental. Pack each push into contiguous shards using the effective
+# shard_streams.desired_rate as the expanded-byte target per output shard,
+# capped by the recommended shard count. Applies to all tenants. Not a hard size
+# or rate limit. A zero desired_rate disables packing.
+# CLI flag: -distributor.pack-streams
+[pack_streams: <boolean> | default = false]
+
 # The maximum number of inflight bytes at a time. 0 means disabled.
 # CLI flag: -distributor.max-inflight-bytes
 [max_inflight_bytes: <int> | default = 0]

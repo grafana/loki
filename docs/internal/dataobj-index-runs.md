@@ -40,7 +40,7 @@ Each entry can carry these optional columns:
 | Column | Meaning | Missing value means |
 | --- | --- | --- |
 | `run_id` | The run that holds the index object. | The index object is a run of its own. |
-| `run_length` | The number of index objects of the run. | Unknown: planning skips the length check. |
+| `run_length` | The number of index objects of the run. | Unknown: planning and queries skip the length check. |
 | `min_posting_key` | The smallest posting key of the index object. | Unbounded: the object can hold any key. |
 | `max_posting_key` | The largest posting key of the index object. | Unbounded. |
 | `shard_buckets` | The shard bucket count of the tenant's shard layout in the index object. | Unknown: read it from the stats. |
@@ -106,6 +106,14 @@ It reads all postings sections of the index objects of a run with one stream sel
 A stream matches only if each matcher matches one of its labels, and those labels can sit in
 different index objects of the run.
 See `indexRuns` in `pkg/dataobj/metastore/index_run.go`.
+
+The query fails with `errIncompleteRun` if an index object records a `run_length` other than the
+number of index objects that the ToC lists for its run.
+A query over part of a run would miss streams whose labels sit in the missing index objects, and
+return wrong results without an error.
+The entries of a run share one time range, so the time filter keeps all of them or none, and the
+query checks the length before it prunes by key.
+See `indexRun.checkLength` in the same file.
 
 Before it reads, the query drops the index objects whose key range cannot hold a column that a
 matcher or an equality predicate names.

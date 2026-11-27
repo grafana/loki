@@ -1147,9 +1147,9 @@ func uploadObjectToBucket(ctx context.Context, bucket objstore.Bucket, path stri
 	return bucket.Upload(ctx, path, io.NopCloser(bytes.NewReader(objBytes)))
 }
 
-// newTestExecutorContext constructs a minimal *Context wired with the bucket,
-// an in-memory scratch store, a default indexobj BuilderBaseConfig, and a
-// no-op logger.
+// newTestExecutorContext constructs a minimal *Context. It uses bucket as both
+// the index bucket and the data bucket. It also sets an in-memory scratch
+// store, a default indexobj BuilderBaseConfig, and a no-op logger.
 func newTestExecutorContext(t testing.TB, bucket objstore.Bucket) *Context {
 	t.Helper()
 
@@ -1163,7 +1163,8 @@ func newTestExecutorContext(t testing.TB, bucket objstore.Bucket) *Context {
 	}
 
 	return &Context{
-		bucket:          bucket,
+		indexBucket:     bucket,
+		dataBucket:      bucket,
 		scratchStore:    scratch.NewMemory(),
 		indexobjCfg:     testBuilderCfg,
 		tenantOverrides: fakeTenantOverrides{},

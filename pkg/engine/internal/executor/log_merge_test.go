@@ -1198,6 +1198,20 @@ func TestDoLogObjectMerge(t *testing.T) {
 		return got
 	}
 
+	t.Run("returns an error when the index bucket is nil", func(t *testing.T) {
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.indexBucket = nil
+		_, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant})
+		require.ErrorContains(t, err, "LogMerge: no index bucket configured")
+	})
+
+	t.Run("returns an error when the data bucket is nil", func(t *testing.T) {
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = nil
+		_, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant})
+		require.ErrorContains(t, err, "LogMerge: no data object bucket configured")
+	})
+
 	for _, buckets := range []uint32{1, 8, streams.DefaultShardBuckets, 256} {
 		t.Run(fmt.Sprintf("splits shared sections across tasks without losing or duplicating records with a shard bucket count of %d", buckets), func(t *testing.T) {
 			layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(buckets), sortSchema)

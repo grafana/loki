@@ -253,7 +253,7 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 	return &coordinator{
 		cfg:             cfg,
 		logger:          logger,
-		bucket:          bucket,
+		indexBucket:     bucket,
 		indexDispatcher: newPlanDispatcher(logger, runner.run, 4, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		logDispatcher:   newPlanDispatcher(logger, runner.run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		pairDispatcher:  newPlanDispatcher(logger, runner.run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
@@ -747,8 +747,8 @@ func TestExecuteLogCompaction(t *testing.T) {
 
 	t.Run("dispatches nothing and returns an error when the ToC no longer references the source index", func(t *testing.T) {
 		c, runner, replacer := newExecutor(t)
-		require.NoError(t, c.bucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", window)))
-		writeToCReferencing(t.Context(), t, c.bucket, "acme", window, "indexes/replacement")
+		require.NoError(t, c.indexBucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", window)))
+		writeToCReferencing(t.Context(), t, c.indexBucket, "acme", window, "indexes/replacement")
 
 		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
 		require.ErrorIs(t, err, errStalePlan)
@@ -759,7 +759,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 
 	t.Run("dispatches nothing and returns an error when the window has no ToC", func(t *testing.T) {
 		c, runner, replacer := newExecutor(t)
-		require.NoError(t, c.bucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", window)))
+		require.NoError(t, c.indexBucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", window)))
 
 		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
 		require.ErrorContains(t, err, "exists in ToC:")
@@ -770,7 +770,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 
 	t.Run("dispatches nothing and returns an error when the ToC cannot be read", func(t *testing.T) {
 		c, runner, replacer := newExecutor(t)
-		c.bucket = errBucket{c.bucket}
+		c.indexBucket = errBucket{c.indexBucket}
 
 		stats, err := c.executeLogCompaction(t.Context(), "acme", plan)
 		require.ErrorContains(t, err, "exists in ToC:")
@@ -800,7 +800,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		t.Helper()
 		c, runner, _ := newExecutor(t)
 		c.publisher = &tocPublisher{
-			writer:  metastore.NewTableOfContentsWriter(c.bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
+			writer:  metastore.NewTableOfContentsWriter(c.indexBucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil)),
 			timeout: time.Minute,
 		}
 		section := func(path string, start, end time.Duration) *compactionv2pb.SectionRef {
@@ -841,7 +841,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, compactionStats{removed: 1, added: 2, dispatched: 2}, stats)
 
-		pointers := mustLoadTenantIndexes(t.Context(), t, c.bucket, window)["acme"]
+		pointers := mustLoadTenantIndexes(t.Context(), t, c.indexBucket, window)["acme"]
 		require.Len(t, pointers, 4)
 		byPath := make(map[string]indexpointers.IndexPointer, len(pointers))
 		for _, pointer := range pointers {
@@ -873,7 +873,7 @@ func TestExecuteLogCompaction(t *testing.T) {
 
 		_, err := c.executeLogCompaction(t.Context(), "acme", timedPlan)
 		require.ErrorContains(t, err, "has no posting key bounds")
-		pointers := mustLoadTenantIndexes(t.Context(), t, c.bucket, window)["acme"]
+		pointers := mustLoadTenantIndexes(t.Context(), t, c.indexBucket, window)["acme"]
 		require.Len(t, pointers, 1)
 		require.Equal(t, "indexes/source", pointers[0].Path)
 	})
@@ -2501,8 +2501,8 @@ func TestRunLogMergePhase(t *testing.T) {
 		runner.respond = func(ctx context.Context, _ workflow.Options, _ *physical.Plan) ([]v2.ResultArtifact, error) {
 			once.Do(func() {
 				pendingAtFirstTask = pendingBytes(c)
-				require.NoError(t, c.bucket.Delete(ctx, metastore.TableOfContentsPath("acme", previous)))
-				writeToCReferencing(ctx, t, c.bucket, "acme", previous, "indexes/previous/replacement")
+				require.NoError(t, c.indexBucket.Delete(ctx, metastore.TableOfContentsPath("acme", previous)))
+				writeToCReferencing(ctx, t, c.indexBucket, "acme", previous, "indexes/previous/replacement")
 			})
 			return []v2.ResultArtifact{{Path: "artifact"}}, nil
 		}
@@ -2521,7 +2521,7 @@ func TestRunLogMergePhase(t *testing.T) {
 	t.Run("runs the remaining indexes and does not set the plan timestamp when one index fails to load", func(t *testing.T) {
 		runner := &fakeRunner{}
 		c := newTwoWindowCoordinator(t, runner, &fakeReplacer{swapped: true})
-		require.NoError(t, c.bucket.Delete(t.Context(), "indexes/previous/a"))
+		require.NoError(t, c.indexBucket.Delete(t.Context(), "indexes/previous/a"))
 
 		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
 		require.Len(t, runner.snapshot(), 1)
@@ -2659,14 +2659,14 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, phaseOutcomeNoWork, c.runLogMergePhase(t.Context(), "acme"))
 		require.Equal(t, 4.0, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
 
-		require.NoError(t, c.bucket.Delete(t.Context(), "indexes/previous/a"))
+		require.NoError(t, c.indexBucket.Delete(t.Context(), "indexes/previous/a"))
 		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
 		require.Equal(t, 4.0, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
 	})
 
 	t.Run("does not set the single-object log runs when the first phase fails to load an index", func(t *testing.T) {
 		c := newTwoWindowCoordinator(t, &fakeRunner{}, &fakeReplacer{swapped: true})
-		require.NoError(t, c.bucket.Delete(t.Context(), "indexes/previous/a"))
+		require.NoError(t, c.indexBucket.Delete(t.Context(), "indexes/previous/a"))
 
 		require.Equal(t, phaseOutcomeError, c.runLogMergePhase(t.Context(), "acme"))
 		require.Zero(t, testutil.CollectAndCount(c.metrics.singleObjectLogRuns))
@@ -2678,7 +2678,7 @@ func TestRunLogMergePhase(t *testing.T) {
 		require.Equal(t, 4.0, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
 
 		previous := imWindow().Add(-metastore.MetastoreWindowSize)
-		require.NoError(t, c.bucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", previous)))
+		require.NoError(t, c.indexBucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", previous)))
 		require.Equal(t, phaseOutcomeNoWork, c.runLogMergePhase(t.Context(), "acme"))
 		require.Equal(t, 2.0, testutil.ToFloat64(c.metrics.singleObjectLogRuns.WithLabelValues("acme")))
 	})

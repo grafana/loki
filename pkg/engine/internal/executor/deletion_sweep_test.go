@@ -140,7 +140,7 @@ func TestExecuteDeletionSweep(t *testing.T) {
 	t.Run("fails without a write to the index bucket when no data bucket is configured", func(t *testing.T) {
 		indexBucket := newBucket(t)
 
-		_, err := run(t, Config{Bucket: indexBucket}, &physical.DeletionSweep{Tenant: "t1"})
+		_, err := run(t, Config{IndexBucket: indexBucket}, &physical.DeletionSweep{Tenant: "t1"})
 		require.ErrorContains(t, err, "no data object bucket configured")
 		exists, err := indexBucket.Exists(t.Context(), "deletion/t1/files.jsonl.gz")
 		require.NoError(t, err)
