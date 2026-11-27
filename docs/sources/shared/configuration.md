@@ -1244,11 +1244,13 @@ dataobj:
     # CLI flag: -dataobj.compaction.max-backoff
     [max_backoff: <duration> | default = 15m]
 
-    # Experimental: Number of prior metastore windows to compact in addition to
-    # the current window. Must be at least 1, which compacts the current and
-    # immediately prior window.
-    # CLI flag: -dataobj.compaction.window-lookback
-    [window_lookback: <int> | default = 1]
+    # Experimental: How far before the current 12h metastore window to compact.
+    # The coordinator compacts the current window and every older window that
+    # the lookback reaches into, so the lookback rounds up to whole windows.
+    # Must be at least 12h, which compacts the current and immediately prior
+    # window.
+    # CLI flag: -dataobj.compaction.lookback
+    [lookback: <duration> | default = 12h]
 
     # Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly
     # with K.

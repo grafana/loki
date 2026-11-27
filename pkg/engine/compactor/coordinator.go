@@ -160,12 +160,13 @@ func (c *coordinator) Run(ctx context.Context) error {
 }
 
 // windows returns the metastore-aligned windows the coordinator compacts on
-// each pass, newest first: the current window followed by cfg.WindowLookback
-// older windows.
+// each pass, newest first: the current window followed by the older windows
+// of cfg.Lookback.
 func (c *coordinator) windows() []time.Time {
 	current := c.clock().UTC().Truncate(metastore.MetastoreWindowSize)
-	out := make([]time.Time, 0, c.cfg.WindowLookback+1)
-	for i := 0; i <= c.cfg.WindowLookback; i++ {
+	lookback := c.cfg.lookbackWindows()
+	out := make([]time.Time, 0, lookback+1)
+	for i := 0; i <= lookback; i++ {
 		out = append(out, current.Add(-time.Duration(i)*metastore.MetastoreWindowSize))
 	}
 	return out
@@ -1127,7 +1128,7 @@ func (c *coordinator) runLogMergePhase(ctx context.Context, tenant string) phase
 	}
 
 	planTime := c.clock()
-	pending, pendingBytes := startPendingLogBytes(c.metrics.pendingLogBytes, tenant, newLogAgeBuckets(c.cfg.WindowLookback), planTime, plans)
+	pending, pendingBytes := startPendingLogBytes(c.metrics.pendingLogBytes, tenant, newLogAgeBuckets(c.cfg.lookbackWindows()), planTime, plans)
 	if !anyError {
 		c.metrics.lastPlanTimestampSeconds.WithLabelValues(tenant).Set(float64(planTime.UnixNano()) / 1e9)
 		c.metrics.singleObjectLogRuns.WithLabelValues(tenant).Set(float64(singleObjectRuns))

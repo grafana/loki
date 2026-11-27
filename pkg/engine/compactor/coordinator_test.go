@@ -2387,14 +2387,14 @@ func newTwoWindowCoordinatorAt(t *testing.T, runner *fakeRunner, replacer *fakeR
 	seedLogMergeIndexesAt(t.Context(), t, bucket, current, "acme", []string{"indexes/current/a"}, currentOldest)
 	seedLogMergeIndexesAt(t.Context(), t, bucket, current.Add(-metastore.MetastoreWindowSize), "acme", []string{"indexes/previous/a"}, previousOldest)
 	c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(current.Add(time.Hour)), newFakeLimits("acme"))
-	c.cfg.WindowLookback = 1
+	c.cfg.Lookback = 1 * metastore.MetastoreWindowSize
 	return c
 }
 
 // bytesByAge returns the pending log bytes of acme for every age label.
 func bytesByAge(c *coordinator) map[string]float64 {
 	bytes := map[string]float64{}
-	for _, age := range newLogAgeBuckets(c.cfg.WindowLookback).labels() {
+	for _, age := range newLogAgeBuckets(c.cfg.lookbackWindows()).labels() {
 		bytes[age] = testutil.ToFloat64(c.metrics.pendingLogBytes.WithLabelValues("acme", age))
 	}
 	return bytes
@@ -2760,7 +2760,7 @@ func TestRunPhase(t *testing.T) {
 		seedLogMergeIndexesAt(t.Context(), t, bucket, current, "acme", []string{"indexes/current/a"}, time.Unix(0, 10))
 		seedLogMergeIndexesAt(t.Context(), t, bucket, current.Add(-metastore.MetastoreWindowSize), "acme", []string{"indexes/previous/a", "indexes/previous/b"}, time.Unix(0, 10))
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true}, fixedClock(current.Add(time.Hour)), newFakeLimits("acme"))
-		c.cfg.WindowLookback = 1
+		c.cfg.Lookback = 1 * metastore.MetastoreWindowSize
 
 		c.runPhase(t.Context(), "acme", phaseIndexMerge)
 		require.Equal(t, 1.0, testutil.ToFloat64(c.metrics.indexesPerTenantWindow.WithLabelValues("acme", "0")))
@@ -2966,7 +2966,7 @@ func TestDiscoverTenants(t *testing.T) {
 	prev := current.Add(-metastore.MetastoreWindowSize)
 	newC := func(t *testing.T, bucket objstore.Bucket) *coordinator {
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(current.Add(time.Hour)), nil)
-		c.cfg.WindowLookback = 1
+		c.cfg.Lookback = 1 * metastore.MetastoreWindowSize
 		return c
 	}
 
@@ -3120,17 +3120,28 @@ func TestRunTenant(t *testing.T) {
 	})
 }
 
-func TestWindows_LookbackCountsBackFromCurrent(t *testing.T) {
+func TestCoordinatorWindows(t *testing.T) {
 	current := imWindow()
-	newC := func(lookback int) *coordinator {
-		return &coordinator{cfg: Config{WindowLookback: lookback}, clock: fixedClock(current.Add(time.Hour))}
+	newC := func(lookback time.Duration) *coordinator {
+		return &coordinator{cfg: Config{Lookback: lookback}, clock: fixedClock(current.Add(time.Hour))}
 	}
 
-	require.Equal(t, []time.Time{
-		current,
-		current.Add(-metastore.MetastoreWindowSize),
-		current.Add(-2 * metastore.MetastoreWindowSize),
-	}, newC(2).windows(), "lookback N yields the current window plus N older ones, newest first")
+	t.Run("returns the current window and the older windows of the lookback, newest first", func(t *testing.T) {
+		require.Equal(t, []time.Time{
+			current,
+			current.Add(-metastore.MetastoreWindowSize),
+			current.Add(-2 * metastore.MetastoreWindowSize),
+		}, newC(24*time.Hour).windows())
+	})
+
+	t.Run("rounds a lookback that is not a whole number of windows up", func(t *testing.T) {
+		require.Len(t, newC(13*time.Hour).windows(), 3)
+		require.Len(t, newC(12*time.Hour).windows(), 2)
+	})
+
+	t.Run("returns 61 windows for a lookback of 30 days", func(t *testing.T) {
+		require.Len(t, newC(30*24*time.Hour).windows(), 61)
+	})
 }
 
 func TestWorseOutcome(t *testing.T) {

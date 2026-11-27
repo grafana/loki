@@ -377,7 +377,7 @@ func TestPairCompactorPlanAndStart(t *testing.T) {
 		writeToCReferencing(t.Context(), t, bucket, "acme", previous, "indexes/previous-legacy")
 		runner := &fakeRunner{}
 		c := newPairTestCoordinator(t, bucket, runner, &fakeReplacer{swapped: true})
-		c.cfg.WindowLookback = 1
+		c.cfg.Lookback = 1 * metastore.MetastoreWindowSize
 		p := c.newPairCompactor("acme")
 
 		require.Equal(t, 1, p.planAndStart(t.Context()))

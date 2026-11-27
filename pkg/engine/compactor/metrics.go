@@ -25,7 +25,7 @@ const (
 
 	// labelWindowLookback is the position of a ToC window in a pass: 0 for
 	// the current window, 1 for the window before it, and so on up to the
-	// configured window lookback.
+	// number of older windows that the lookback reaches.
 	labelWindowLookback = "window_lookback"
 )
 
@@ -156,7 +156,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant}),
 		indexesPerTenantWindow: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_indexes_per_tenant_window",
-			Help: "Per-tenant index count for each ToC window that IndexMerge compacts. window_lookback is 0 for the current window and N for the window N windows before it. The index objects of one run count as one index. Bounded cardinality (window lookback + 1 series per tenant).",
+			Help: "Per-tenant index count for each ToC window that IndexMerge compacts. window_lookback is 0 for the current window and N for the window N windows before it. The index objects of one run count as one index. Bounded cardinality: one series per planned window per tenant, as -dataobj.compaction.lookback sets.",
 		}, []string{labelTenant, labelWindowLookback}),
 
 		// Operational counters / histograms.
@@ -262,7 +262,7 @@ func newCoordinatorMetrics(reg prometheus.Registerer) *coordinatorMetrics {
 		}, []string{labelTenant, labelReason}),
 		pairLegacyIndexRuns: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_pair_legacy_index_runs",
-			Help: "Index runs over more than one log run that the last scan of the coupled planner (planner version 2) left as they are, per window. The phased planner writes such index runs. The coupled planner splits them into pairs in the current window (window_lookback 0), and leaves them in older windows, which leave the planned range soon.",
+			Help: "Index runs over more than one log run that the last scan of the coupled planner (planner version 2) left as they are, per window. The phased planner writes such index runs. The coupled planner splits them into pairs in the current window (window_lookback 0), and leaves them in older windows, which get no new data.",
 		}, []string{labelTenant, labelWindowLookback}),
 		pairStatsCacheIndexRuns: f.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_dataobj_compaction_pair_stats_cache_index_runs",

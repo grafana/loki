@@ -28,9 +28,9 @@ type logAgeBucket struct {
 }
 
 // newLogAgeBuckets returns the buckets for a coordinator that compacts the
-// current window and windowLookback older windows.
-func newLogAgeBuckets(windowLookback int) logAgeBuckets {
-	span := time.Duration(windowLookback+1) * metastore.MetastoreWindowSize
+// current window and lookbackWindows older windows.
+func newLogAgeBuckets(lookbackWindows int) logAgeBuckets {
+	span := time.Duration(lookbackWindows+1) * metastore.MetastoreWindowSize
 	var b logAgeBuckets
 	for bound := time.Hour; ; bound *= 2 {
 		bound = min(bound, span)
