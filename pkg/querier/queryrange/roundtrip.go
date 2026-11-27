@@ -1207,6 +1207,7 @@ func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema conf
 		cfg,
 		merger,
 		newDefaultSplitter(limits, iqo),
+		iqo,
 		limits,
 		log,
 		metrics,
@@ -1298,6 +1299,7 @@ func NewIndexStatsTripperware(cfg Config, log log.Logger, limits Limits, schema 
 		cfg,
 		merger,
 		newDefaultSplitter(limits, iqo),
+		iqo,
 		limits,
 		log,
 		metrics,
@@ -1311,6 +1313,7 @@ func sharedIndexTripperware(
 	cfg Config,
 	merger base.Merger,
 	split splitter,
+	iqo util.IngesterQueryOptions,
 	limits Limits,
 	log log.Logger,
 	metrics *Metrics,
@@ -1321,8 +1324,10 @@ func sharedIndexTripperware(
 		middlewares := []base.Middleware{
 			IndexStatsContextCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
+			indexStatsHintsMiddleware(iqo, time.Now),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, limits, merger, split, metrics.SplitByMetrics),
+			emptyHintsIndexStatsMiddleware(),
 		}
 
 		if cacheMiddleware != nil {

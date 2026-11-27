@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -47,6 +48,59 @@ func Test_PreservesCachingOptions(t *testing.T) {
 		DocumentShard:     17,
 		DocumentShardBits: 5,
 	}}, splitReqs[2].(*LokiRequest).HintRanges)
+}
+
+func TestDefaultSplitter_IndexStatsHintRanges(t *testing.T) {
+	splitter := newDefaultSplitter(fakeLimits{splitDuration: map[string]time.Duration{"1": time.Hour}}, nil)
+	end := time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC)
+	hints := []logproto.HintTimeRange{
+		{Start: end.Add(-230 * time.Minute), End: end.Add(-220 * time.Minute)},
+		{Start: end.Add(-2 * time.Hour), End: end.Add(-time.Hour)},
+		{Start: end.Add(-30 * time.Minute), End: end.Add(30 * time.Minute)},
+	}
+	req := &logproto.IndexStatsRequest{
+		From:       model.TimeFromUnixNano(end.Add(-4 * time.Hour).UnixNano()),
+		Through:    model.TimeFromUnixNano(end.UnixNano()),
+		Matchers:   `{foo="bar"}`,
+		HintRanges: &logproto.HintTimeRanges{Ranges: append([]logproto.HintTimeRange(nil), hints...)},
+	}
+
+	splitReqs, enabled := splitter.split(time.Now().UTC(), []string{"1"}, req)
+	require.True(t, enabled)
+	require.Len(t, splitReqs, 4)
+
+	require.Equal(t, []logproto.HintTimeRange{
+		{Start: end.Add(-230 * time.Minute), End: end.Add(-220 * time.Minute)},
+	}, splitReqs[0].(*logproto.IndexStatsRequest).HintRanges.Ranges)
+	// A split without a hint keeps an empty set, so it counts nothing instead of everything.
+	require.NotNil(t, splitReqs[1].(*logproto.IndexStatsRequest).HintRanges)
+	require.Empty(t, splitReqs[1].(*logproto.IndexStatsRequest).HintRanges.Ranges)
+	// A split that the hints cover has no hints, because they filter nothing there.
+	require.Nil(t, splitReqs[2].(*logproto.IndexStatsRequest).HintRanges)
+	require.Equal(t, []logproto.HintTimeRange{
+		{Start: end.Add(-30 * time.Minute), End: end},
+	}, splitReqs[3].(*logproto.IndexStatsRequest).HintRanges.Ranges)
+	require.Equal(t, hints, req.HintRanges.Ranges)
+
+	req.HintRanges = nil
+	splitReqs, enabled = splitter.split(time.Now().UTC(), []string{"1"}, req)
+	require.True(t, enabled)
+	for _, splitReq := range splitReqs {
+		require.Nil(t, splitReq.(*logproto.IndexStatsRequest).HintRanges)
+	}
+
+	// A hint for one document shard spans every split, but covers none of them
+	// for every stream.
+	req.HintRanges = &logproto.HintTimeRanges{Ranges: []logproto.HintTimeRange{
+		{Start: end.Add(-4 * time.Hour), End: end, DocumentShard: 1, DocumentShardBits: 1},
+	}}
+	splitReqs, enabled = splitter.split(time.Now().UTC(), []string{"1"}, req)
+	require.True(t, enabled)
+	for _, splitReq := range splitReqs {
+		ranges := splitReq.(*logproto.IndexStatsRequest).HintRanges.GetRanges()
+		require.Len(t, ranges, 1)
+		require.Equal(t, uint32(1), ranges[0].DocumentShard)
+	}
 }
 
 func TestDefaultSplitter_split(t *testing.T) {

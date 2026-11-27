@@ -79,7 +79,8 @@ type SeriesScan interface {
 
 	// ChunkStats returns aggregated chunk statistics for the series
 	// identified by id. lbls follows the same ownership rule as Series.
-	ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error)
+	// If filter is not nil, only the chunks it includes are counted.
+	ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}, filter ChunkFilter) (uint64, ChunkStats, error)
 
 	// LabelValueFor returns the value of the given label name for the series
 	// referred to by id.

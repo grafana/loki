@@ -84,7 +84,7 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		request.Query = concrete.GetQuery()
 		request.UpdateStep()
 
-		result, err := h.api.IndexStatsHandler(ctx, request)
+		result, err := h.api.IndexStatsHandler(ctx, request, concrete.HintRanges)
 		if err != nil {
 			return nil, err
 		}

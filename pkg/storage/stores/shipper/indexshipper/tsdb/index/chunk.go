@@ -260,6 +260,21 @@ const DefaultMaxChunksToBypassMarkerLookup = 64
 
 type chunkPageMarkers []chunkPageMarker
 
+// ChunkFilter selects the chunks of the series with fingerprint fp by time.
+// Bounds are inclusive milliseconds.
+type ChunkFilter interface {
+	// Overlaps reports whether some chunk within [minT, maxT] may be included.
+	Overlaps(fp uint64, minT, maxT int64) bool
+	// Covers reports whether every chunk within [minT, maxT] is included.
+	Covers(fp uint64, minT, maxT int64) bool
+}
+
+// filterIncludes reports whether filter includes a chunk of the series with
+// fingerprint fp. A nil filter includes every chunk.
+func filterIncludes(filter ChunkFilter, fp uint64, minT, maxT int64) bool {
+	return filter == nil || filter.Overlaps(fp, minT, maxT)
+}
+
 type ChunkStats struct {
 	Chunks, KB, Entries uint64
 }

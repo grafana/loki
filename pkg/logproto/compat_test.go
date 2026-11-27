@@ -365,6 +365,64 @@ func TestIndexStatsRequestSpanLogging(t *testing.T) {
 	require.Equal(t, 2, found, "expected to find start and end attributes in span")
 }
 
+func TestIndexStatsRequestWithStartEndClipsHintRanges(t *testing.T) {
+	start := time.Date(2026, 3, 30, 0, 0, 0, 0, time.UTC)
+	hints := []HintTimeRange{
+		{Start: start.Add(-time.Hour), End: start.Add(30 * time.Minute)},
+		{Start: start.Add(3 * time.Hour), End: start.Add(4 * time.Hour)},
+	}
+
+	for _, tc := range []struct {
+		desc       string
+		hints      *HintTimeRanges
+		start, end time.Time
+		want       *HintTimeRanges
+	}{
+		{
+			desc:  "nil stays nil",
+			start: start,
+			end:   start.Add(time.Hour),
+		},
+		{
+			desc:  "ranges are clipped to the new bounds",
+			hints: &HintTimeRanges{Ranges: hints},
+			start: start,
+			end:   start.Add(time.Hour),
+			want:  &HintTimeRanges{Ranges: []HintTimeRange{{Start: start, End: start.Add(30 * time.Minute)}}},
+		},
+		{
+			desc:  "no overlap leaves an empty set",
+			hints: &HintTimeRanges{Ranges: hints},
+			start: start.Add(time.Hour),
+			end:   start.Add(2 * time.Hour),
+			want:  &HintTimeRanges{Ranges: []HintTimeRange{}},
+		},
+		{
+			desc:  "empty stays empty",
+			hints: &HintTimeRanges{},
+			start: start,
+			end:   start.Add(time.Hour),
+			want:  &HintTimeRanges{Ranges: nil},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			var original *HintTimeRanges
+			if tc.hints != nil {
+				original = &HintTimeRanges{Ranges: append([]HintTimeRange(nil), tc.hints.Ranges...)}
+			}
+			req := &IndexStatsRequest{
+				From:       model.TimeFromUnixNano(start.Add(-2 * time.Hour).UnixNano()),
+				Through:    model.TimeFromUnixNano(start.Add(5 * time.Hour).UnixNano()),
+				HintRanges: tc.hints,
+			}
+
+			got := req.WithStartEnd(tc.start, tc.end).(*IndexStatsRequest)
+			require.Equal(t, tc.want, got.HintRanges)
+			require.Equal(t, original, req.HintRanges)
+		})
+	}
+}
+
 func TestVolumeRequestSpanLogging(t *testing.T) {
 	now := time.Now()
 	end := now.Add(1000 * time.Second)

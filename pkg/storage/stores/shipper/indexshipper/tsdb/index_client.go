@@ -194,11 +194,12 @@ func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string
 	return c.idx.LabelNames(ctx, userID, from, through, matchers...)
 }
 
-func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
 	}
+	timeFilter := newHintChunkFilter(hints, from, through)
 
 	// split the query range to align with table intervals i.e. ObjectStorageIndexRequiredPeriod
 	// This is to avoid explicitly deduping chunks by leveraging the table intervals.
@@ -231,7 +232,7 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	}
 
 	for _, interval := range intervals {
-		if err := c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+		if err := c.idx.Stats(ctx, userID, interval.Start, interval.End, acc, shard, timeFilter, matchers...); err != nil {
 			return nil, err
 		}
 	}
@@ -254,6 +255,9 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 		attribute.Int64("bytes", int64(res.Bytes)),
 		attribute.Int64("entries", int64(res.Entries)),
 	)
+	if hints != nil {
+		sp.SetAttributes(attribute.Int("hint_ranges", len(hints.Ranges)))
+	}
 
 	return &res, nil
 }

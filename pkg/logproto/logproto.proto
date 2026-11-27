@@ -441,6 +441,11 @@ message IndexStatsRequest {
     (gogoproto.nullable) = false
   ];
   string matchers = 3;
+  // hintRanges are logline hint ranges. Only Loki components set them.
+  // If set, only stored chunks overlapping one of the ranges are counted, and
+  // an empty set counts no stored chunk. Ingester data is always counted. If
+  // unset, all chunks are counted.
+  HintTimeRanges hintRanges = 4 [(gogoproto.jsontag) = "hintRanges,omitempty"];
   // TODO(owen-d): add shards to grpc calls so we don't have
   // to extract via labels
 }

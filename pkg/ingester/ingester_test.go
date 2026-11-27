@@ -507,7 +507,7 @@ func (s *mockStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ *logproto.HintTimeRanges, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return &stats.Stats{
 		Streams: 2,
 		Chunks:  5,

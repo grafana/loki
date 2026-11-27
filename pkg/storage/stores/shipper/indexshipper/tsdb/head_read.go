@@ -136,7 +136,7 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 	return s.fp, nil
 }
 
-func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, index.ChunkStats, error) {
+func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}, timeFilter index.ChunkFilter) (uint64, index.ChunkStats, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
@@ -166,6 +166,9 @@ func (h *headIndexReader) ChunkStats(ref storage.SeriesRef, from, through int64,
 	s.Lock()
 	for _, chk := range s.chks {
 		if !Overlap(chk, queryBounds) {
+			continue
+		}
+		if timeFilter != nil && !timeFilter.Overlaps(s.fp, chk.MinTime, chk.MaxTime) {
 			continue
 		}
 		res.AddChunk(&chk, from, through)

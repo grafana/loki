@@ -1344,7 +1344,7 @@ func (s *testStore) Stop() {}
 
 func (s *testStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
-func (s *testStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+func (s *testStore) Stats(_ context.Context, _ string, _, _ model.Time, _ *logproto.HintTimeRanges, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return &stats.Stats{}, nil
 }
 

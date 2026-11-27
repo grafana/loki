@@ -76,7 +76,7 @@ func (r *LokiRequest) WithStartEnd(s time.Time, e time.Time) queryrangebase.Requ
 	clone := *r
 	clone.StartTs = s
 	clone.EndTs = e
-	clone.HintRanges = clipHintTimeRanges(r.HintRanges, s, e)
+	clone.HintRanges = logproto.ClipHintTimeRanges(r.HintRanges, s, e)
 	return &clone
 }
 
@@ -103,25 +103,6 @@ func (r *LokiRequest) WithDataObjOptions(options *logproto.DataObjOptions) *Loki
 	clone := *r
 	clone.DataObjOptions = options
 	return &clone
-}
-
-func clipHintTimeRanges(ranges []logproto.HintTimeRange, start, end time.Time) []logproto.HintTimeRange {
-	if len(ranges) == 0 {
-		return nil
-	}
-	clipped := make([]logproto.HintTimeRange, 0, len(ranges))
-	for _, hint := range ranges {
-		if hint.Start.Before(start) {
-			hint.Start = start
-		}
-		if hint.End.After(end) {
-			hint.End = end
-		}
-		if hint.Start.Before(hint.End) {
-			clipped = append(clipped, hint)
-		}
-	}
-	return clipped
 }
 
 func (r *LokiRequest) LogToSpan(sp trace.Span) {
@@ -427,12 +408,17 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
+		hintRanges, err := parseIndexStatsHintRanges(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.IndexStatsRequest{
-			From:     from,
-			Through:  through,
-			Matchers: req.Query,
-		}, err
+			From:       from,
+			Through:    through,
+			Matchers:   req.Query,
+			HintRanges: hintRanges,
+		}, nil
 	case IndexShardsOp:
 		req, targetBytes, err := loghttp.ParseIndexShardsQuery(r)
 		if err != nil {
@@ -622,12 +608,17 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 		if err != nil {
 			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
+		hintRanges, err := parseIndexStatsHintRanges(httpReq)
+		if err != nil {
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.IndexStatsRequest{
-			From:     from,
-			Through:  through,
-			Matchers: req.Query,
-		}, ctx, err
+			From:       from,
+			Through:    through,
+			Matchers:   req.Query,
+			HintRanges: hintRanges,
+		}, ctx, nil
 	case IndexShardsOp:
 		req, targetBytes, err := loghttp.ParseIndexShardsQuery(httpReq)
 		if err != nil {
@@ -920,6 +911,15 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
 			"query": []string{request.GetQuery()},
+		}
+		// An empty hint set is sent as an empty parameter, so it isn't decoded
+		// as no hints.
+		if request.HintRanges != nil {
+			hintRanges, err := marshalHintTimeRanges(request.HintRanges.Ranges)
+			if err != nil {
+				return nil, err
+			}
+			params["hintRanges"] = []string{string(hintRanges)}
 		}
 		u := &url.URL{
 			Path:     "/loki/api/v1/index/stats",
@@ -2528,6 +2528,19 @@ func marshalHintTimeRanges(ranges []logproto.HintTimeRange) ([]byte, error) {
 		return nil, errors.Wrap(err, "marshaling hint time ranges")
 	}
 	return data, nil
+}
+
+// parseIndexStatsHintRanges returns the hint ranges of an index stats request,
+// or nil when it carries none. An empty parameter is an empty set.
+func parseIndexStatsHintRanges(r *http.Request) (*logproto.HintTimeRanges, error) {
+	if _, ok := r.Form["hintRanges"]; !ok {
+		return nil, nil
+	}
+	hintRanges := &logproto.HintTimeRanges{}
+	if err := hintRanges.Unmarshal([]byte(r.Form.Get("hintRanges"))); err != nil {
+		return nil, errors.Wrap(err, "unmarshaling hint time ranges")
+	}
+	return hintRanges, nil
 }
 
 func parseHintTimeRanges(r *http.Request) ([]logproto.HintTimeRange, error) {

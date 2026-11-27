@@ -353,7 +353,7 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 	}
 	defer g.queryGate.Done()
 
-	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
+	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, req.HintRanges, matchers...)
 }
 
 func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {

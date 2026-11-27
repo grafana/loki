@@ -346,7 +346,7 @@ func (s *storeMock) GetSeries(_ context.Context, _ string, _, _ model.Time, _ ..
 	panic("don't call me please")
 }
 
-func (s *storeMock) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+func (s *storeMock) Stats(_ context.Context, _ string, _, _ model.Time, _ *logproto.HintTimeRanges, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return nil, nil
 }
 
@@ -630,7 +630,7 @@ func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (
 	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
 }
 
-func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*stats.Stats, error) {
+func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery, _ *logproto.HintTimeRanges) (*stats.Stats, error) {
 	return nil, nil
 }
 

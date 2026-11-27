@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
@@ -168,6 +169,42 @@ func TestQueryRequestWrapUnwrap_HintRanges(t *testing.T) {
 			require.Equal(t, hintRanges, unwrapped.(interface {
 				GetHintRanges() []logproto.HintTimeRange
 			}).GetHintRanges())
+		})
+	}
+}
+
+func TestQueryRequestWrapUnwrap_IndexStatsHintRanges(t *testing.T) {
+	start := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
+	ctx := user.InjectOrgID(context.Background(), "fake")
+
+	for _, tc := range []struct {
+		name  string
+		hints *logproto.HintTimeRanges
+	}{
+		{name: "nil", hints: nil},
+		{name: "empty", hints: &logproto.HintTimeRanges{}},
+		{name: "with ranges", hints: &logproto.HintTimeRanges{Ranges: []logproto.HintTimeRange{
+			{Start: start.Add(5 * time.Minute), End: start.Add(6 * time.Minute)},
+			{Start: start.Add(30 * time.Minute), End: start.Add(32 * time.Minute)},
+		}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &logproto.IndexStatsRequest{
+				From:       model.TimeFromUnixNano(start.UnixNano()),
+				Through:    model.TimeFromUnixNano(start.Add(time.Hour).UnixNano()),
+				Matchers:   `{app="a"}`,
+				HintRanges: tc.hints,
+			}
+			wrapped, err := (Codec{}).QueryRequestWrap(ctx, req)
+			require.NoError(t, err)
+			data, err := wrapped.Marshal()
+			require.NoError(t, err)
+
+			var decoded QueryRequest
+			require.NoError(t, decoded.Unmarshal(data))
+			unwrapped, _, err := (Codec{}).QueryRequestUnwrap(context.Background(), &decoded)
+			require.NoError(t, err)
+			require.Equal(t, tc.hints, unwrapped.(*logproto.IndexStatsRequest).HintRanges)
 		})
 	}
 }

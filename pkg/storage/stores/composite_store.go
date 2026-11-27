@@ -203,10 +203,10 @@ func (c CompositeStore) GetChunks(
 	return chunkIDs, fetchers, err
 }
 
-func (c CompositeStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c CompositeStore) Stats(ctx context.Context, userID string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	xs := make([]*stats.Stats, 0, len(c.stores))
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		x, err := store.Stats(innerCtx, userID, from, through, matchers...)
+		x, err := store.Stats(innerCtx, userID, from, through, hints, matchers...)
 		xs = append(xs, x)
 		return err
 	})

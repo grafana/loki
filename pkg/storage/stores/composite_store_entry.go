@@ -142,7 +142,7 @@ func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string
 	return c.indexReader.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
 }
 
-func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, hints *logproto.HintTimeRanges, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err
@@ -150,7 +150,7 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 		return nil, nil
 	}
 
-	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
+	return c.indexReader.Stats(ctx, userID, from, through, hints, matchers...)
 }
 
 func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {

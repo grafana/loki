@@ -1148,6 +1148,63 @@ func Test_codec_InstantRequestHintRangesRoundTrip(t *testing.T) {
 	require.Equal(t, toEncode.HintRanges, params.GetHintRanges())
 }
 
+func Test_codec_IndexStatsRequestHintRangesRoundTrip(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano())
+	hints := &logproto.HintTimeRanges{Ranges: []logproto.HintTimeRange{
+		{Start: start.Add(5 * time.Minute), End: start.Add(10 * time.Minute)},
+		{Start: start.Add(20 * time.Minute), End: start.Add(30 * time.Minute), DocumentShard: 17, DocumentShardBits: 5},
+	}}
+
+	for _, tc := range []struct {
+		desc      string
+		hints     *logproto.HintTimeRanges
+		wantParam bool
+		want      *logproto.HintTimeRanges
+	}{
+		{desc: "nil", hints: nil},
+		{desc: "empty", hints: &logproto.HintTimeRanges{}, wantParam: true, want: &logproto.HintTimeRanges{}},
+		{desc: "with ranges", hints: hints, wantParam: true, want: hints},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			toEncode := &logproto.IndexStatsRequest{
+				From:       from,
+				Through:    through,
+				Matchers:   `{foo="bar"}`,
+				HintRanges: tc.hints,
+			}
+			encoded, err := DefaultCodec.EncodeRequest(ctx, toEncode)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantParam, encoded.URL.Query().Has("hintRanges"))
+
+			req, err := DefaultCodec.DecodeRequest(context.TODO(), encoded, nil)
+			require.NoError(t, err)
+			decoded := req.(*logproto.IndexStatsRequest)
+			require.Equal(t, toEncode.From, decoded.From)
+			require.Equal(t, toEncode.Through, decoded.Through)
+			require.Equal(t, toEncode.Matchers, decoded.Matchers)
+			require.Equal(t, tc.want, decoded.HintRanges)
+
+			grpcReq, err := httpgrpc.FromHTTPRequest(encoded)
+			require.NoError(t, err)
+			req, _, err = DefaultCodec.DecodeHTTPGrpcRequest(ctx, grpcReq)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, req.(*logproto.IndexStatsRequest).HintRanges)
+		})
+	}
+
+	t.Run("malformed hint ranges are rejected", func(t *testing.T) {
+		r, err := http.NewRequest(http.MethodGet, `/loki/api/v1/index/stats?query={foo="bar"}&start=0&end=1&hintRanges=%ff`, nil)
+		require.NoError(t, err)
+		_, err = DefaultCodec.DecodeRequest(ctx, r, nil)
+		require.Error(t, err)
+		resp, ok := httpgrpc.HTTPResponseFromError(err)
+		require.True(t, ok)
+		require.Equal(t, int32(http.StatusBadRequest), resp.Code)
+		require.Contains(t, string(resp.Body), "hint time ranges")
+	})
+}
+
 func TestLokiRequestWithStartEndClipsHintRangesWithoutMutation(t *testing.T) {
 	original := &LokiRequest{
 		StartTs: start,

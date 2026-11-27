@@ -1937,12 +1937,11 @@ func TestShardedFiles_SeriesMatchesUnsplit(t *testing.T) {
 
 func TestShardedFiles_StatsMatchesUnsplit(t *testing.T) {
 	sharded, unsplit, streams := shardedAndUnsplit(t)
-	includeAll := func(index.ChunkMeta) bool { return true }
 	for name, fpFilter := range shardQueryFilters(streams) {
 		t.Run(name, func(t *testing.T) {
 			want, got := &stats.Stats{}, &stats.Stats{}
-			require.NoError(t, unsplit.Stats(context.Background(), "tenant", 0, 10, want, fpFilter, includeAll, shardTestMatcher))
-			require.NoError(t, sharded.Stats(context.Background(), "tenant", 0, 10, got, fpFilter, includeAll, shardTestMatcher))
+			require.NoError(t, unsplit.Stats(context.Background(), "tenant", 0, 10, want, fpFilter, nil, shardTestMatcher))
+			require.NoError(t, sharded.Stats(context.Background(), "tenant", 0, 10, got, fpFilter, nil, shardTestMatcher))
 			require.Equal(t, want.Stats(), got.Stats())
 		})
 	}

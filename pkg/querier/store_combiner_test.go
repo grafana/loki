@@ -278,7 +278,7 @@ func (m *mockStore) SelectSeries(_ context.Context, req logql.SelectLogParams) (
 	return m.series, nil
 }
 
-func (m *mockStore) Stats(_ context.Context, _ string, _ model.Time, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+func (m *mockStore) Stats(_ context.Context, _ string, _ model.Time, _ model.Time, _ *logproto.HintTimeRanges, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return m.stats, nil
 }
 
@@ -427,7 +427,7 @@ func TestStoreCombiner_Merging(t *testing.T) {
 			{Store: store2, From: model.Time(2)},
 		})
 
-		stats, err := sc.Stats(context.Background(), "user", 0, 2)
+		stats, err := sc.Stats(context.Background(), "user", 0, 2, nil)
 		require.NoError(t, err)
 		require.Equal(t, uint64(3), stats.Streams) // 1 + 2
 		require.Equal(t, uint64(30), stats.Chunks) // 10 + 20

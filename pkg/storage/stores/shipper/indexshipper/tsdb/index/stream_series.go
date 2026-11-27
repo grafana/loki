@@ -175,11 +175,11 @@ func (sc *seriesScan) Series(id storage.SeriesRef, from int64, through int64, lb
 	return fingerprint, nil
 }
 
-func (sc *seriesScan) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
+func (sc *seriesScan) ChunkStats(id storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}, filter ChunkFilter) (uint64, ChunkStats, error) {
 	content, err := sc.readSeriesRecord(seriesOffset(id))
 	if err != nil {
 		return 0, ChunkStats{}, err
 	}
 
-	return sc.reader.decoder.ChunkStats(sc.reader.version, content, id, from, through, lbls, by)
+	return sc.reader.decoder.ChunkStats(sc.reader.version, content, id, from, through, lbls, by, filter)
 }
