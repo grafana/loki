@@ -82,7 +82,7 @@ require (
 	github.com/oklog/run v1.2.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/oschwald/geoip2-golang/v2 v2.5.0
-	github.com/parquet-go/bitpack v1.1.0
+	github.com/parquet-go/bitpack v1.1.1
 	github.com/parquet-go/parquet-go v0.32.1
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.34

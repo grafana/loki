@@ -1,4 +1,4 @@
-//go:build !purego && !goexperiment.simd
+//go:build !purego && (!goexperiment.simd || go1.27)
 
 #include "textflag.h"
 

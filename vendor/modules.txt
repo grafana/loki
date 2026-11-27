@@ -1283,7 +1283,7 @@ github.com/oschwald/maxminddb-golang/v2/mmdbdata
 # github.com/pandatix/go-abnf v0.5.5
 ## explicit; go 1.26.0
 github.com/pandatix/go-abnf
-# github.com/parquet-go/bitpack v1.1.0
+# github.com/parquet-go/bitpack v1.1.1
 ## explicit; go 1.24.0
 github.com/parquet-go/bitpack
 github.com/parquet-go/bitpack/unsafecast

@@ -1,4 +1,4 @@
-//go:build goexperiment.simd
+//go:build goexperiment.simd && !go1.27
 
 package bitpack
 
