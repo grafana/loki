@@ -297,6 +297,8 @@ func stringEnd(data []byte) (int, bool) {
 	return stringEndConfig(DefaultConfig, data, '"')
 }
 
+var quoteRelated [256]bool = [256]bool{'"': true, '\'': true, '\\': true}
+
 // SYS-REQ-115
 func stringEndConfig(_ Config, data []byte, quote byte) (int, bool) {
 	// SWAR (SIMD-Within-A-Register) fast path: scan 8 bytes at a time for
@@ -326,31 +328,25 @@ func stringEndConfig(_ Config, data []byte, quote byte) (int, bool) {
 
 	i := 0
 	n := len(data)
-	for i+8 <= n {
-		w := binary.LittleEndian.Uint64(data[i:])
+	escaped := uint64(0)
+	for ; i+8 <= n; i += 8 {
+		w := binary.LittleEndian.Uint64(data[i : i+8])
 		xq := w ^ broadcastQuote
-		xb := w ^ broadcastBackslash
 		quoteHit := (xq - swarLsb) & ^xq & swarMsb
-		bsHit := (xb - swarLsb) & ^xb & swarMsb
-		if quoteHit|bsHit == 0 {
-			i += 8
-			continue
+		if quoteHit != 0 {
+			break
 		}
-		break
+		xb := w ^ broadcastBackslash
+		bsHit := (xb - swarLsb) & ^xb & swarMsb
+		escaped |= bsHit
 	}
-	escaped := false
 	for ; i < n; i++ {
-		// gjson trick: the only bytes this loop acts on are the closing quote
-		// and the backslash. For double-quote strings quote=0x22, for
-		// single-quote quote=0x27; backslash=0x5C. All three are <= 0x5C, so a
-		// single unsigned comparison skips every other byte (letters, digits,
-		// punctuation, high UTF-8 bytes) without touching them.
-		if data[i] > '\\' {
+		if !quoteRelated[data[i]] {
 			continue
 		}
 		c := data[i]
 		if c == quote {
-			if !escaped {
+			if escaped == 0 {
 				return i + 1, false
 			}
 			j := i - 1
@@ -365,10 +361,10 @@ func stringEndConfig(_ Config, data []byte, quote byte) (int, bool) {
 				j--
 			}
 		} else if c == '\\' {
-			escaped = true
+			escaped = 1
 		}
 	}
-	return -1, escaped
+	return -1, escaped != 0
 }
 
 // SYS-REQ-046
@@ -378,6 +374,8 @@ func blockEnd(data []byte, openSym byte, closeSym byte) int {
 	return blockEndConfig(DefaultConfig, data, openSym, closeSym)
 }
 
+var structural [256]bool = [256]bool{'"': true, '\'': true, '[': true, ']': true, '{': true, '}': true}
+
 // SYS-REQ-115
 func blockEndConfig(config Config, data []byte, openSym byte, closeSym byte) int {
 	level := 0
@@ -386,25 +384,10 @@ func blockEndConfig(config Config, data []byte, openSym byte, closeSym byte) int
 
 	for i < ln {
 		// Fast-skip non-structural bytes before dispatching to the switch.
-		// Two categories are skipped in bulk with a single comparison each:
-		//  1. Control/whitespace bytes (<= 0x20): indentation, spaces, newlines.
-		//  2. Bytes > 0x5C that are not the open/close symbol: lowercase letters
-		//     (true/false/null), and high UTF-8 bytes.
-		// The open/close symbols themselves (e.g. '{'=0x7B, '}'=0x7D, ']'=0x5D)
-		// are > 0x5C and must NOT be skipped, hence the explicit exclusions.
-		// '"' (0x22), '\'' (0x27) and '[' (0x5B) are <= 0x5C so they are never
-		// caught by the second clause and always reach the switch.
-		for i < ln {
-			c := data[i]
-			if c <= ' ' {
-				i++
-				continue
+		for ; i < ln; i++ {
+			if structural[data[i]] {
+				break
 			}
-			if c > '\\' && c != openSym && c != closeSym {
-				i++
-				continue
-			}
-			break
 		}
 		if i >= ln {
 			break
@@ -522,7 +505,7 @@ func searchKeysConfig(config Config, data []byte, keys ...string) int {
 				}
 
 				if level <= len(keys) {
-					if equalStr(&keyUnesc, keys[level-1]) {
+					if string(keyUnesc) == keys[level-1] {
 						lastMatched = true
 
 						// if key level match
@@ -710,7 +693,7 @@ func EachKey(data []byte, cb func(int, []byte, ValueType, error), paths ...[]str
 
 					pathsBuf[level-1] = bytesToString(&keyUnesc)
 					for pi, p := range paths {
-						if len(p) != level || pathFlags[pi] || !equalStr(&keyUnesc, p[level-1]) || !sameTree(p, pathsBuf[:level]) {
+						if len(p) != level || pathFlags[pi] || string(keyUnesc) != p[level-1] || !sameTree(p, pathsBuf[:level]) {
 							continue
 						}
 
@@ -926,7 +909,7 @@ func EachKeyErr(data []byte, cb func(idx int, value []byte, vt ValueType, err er
 
 					pathsBuf[level-1] = bytesToString(&keyUnesc)
 					for pi, p := range paths {
-						if len(p) != level || pathFlags[pi] || !equalStr(&keyUnesc, p[level-1]) || !sameTree(p, pathsBuf[:level]) {
+						if len(p) != level || pathFlags[pi] || string(keyUnesc) != p[level-1] || !sameTree(p, pathsBuf[:level]) {
 							continue
 						}
 
