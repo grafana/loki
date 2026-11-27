@@ -147,7 +147,7 @@ func readLabelsInto(d *json.Decoder, b *labels.ScratchBuilder) error {
 //
 // Prefer MarshalJSONTo, which json/v2 uses when available and which avoids an intermediate buffer.
 func (e Entry) MarshalJSON() ([]byte, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, len(e.Line)+64))
+	buf := bytes.NewBuffer(make([]byte, 0, len(e.Line)+64)) // Guess at enough space to encode the line plus timestamp and metadata.
 	// Escape <, > and & (Loki has done this since 2019); replace invalid UTF-8 rather than fail.
 	enc := jsontext.NewEncoder(buf, jsontext.EscapeForHTML(true), jsontext.AllowInvalidUTF8(true), jsontext.AllowDuplicateNames(true))
 	if err := e.MarshalJSONTo(enc); err != nil {
