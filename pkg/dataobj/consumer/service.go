@@ -114,13 +114,16 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 			return nil, fmt.Errorf("failed to set up partition ring: %w", err)
 		}
 	}
-	partitionInstanceLifecycler := ring.NewPartitionInstanceLifecycler(
+	partitionInstanceLifecycler, err := ring.NewPartitionInstanceLifecycler(
 		cfg.PartitionRingConfig.ToLifecyclerConfig(partitionID, instanceID),
 		PartitionRingName,
 		PartitionRingKey,
 		partitionRingKV,
 		logger,
 		prometheus.WrapRegistererWithPrefix("loki_", reg))
+	if err != nil {
+		return nil, fmt.Errorf("failed to set up partition instance lifecycler: %w", err)
+	}
 	s.partitionInstanceLifecycler = partitionInstanceLifecycler
 
 	// Set up the Kafka client that receives log entries. These entries are used to build

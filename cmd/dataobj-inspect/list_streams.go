@@ -24,7 +24,7 @@ type listStreamsCommand struct {
 	tenant *string
 }
 
-func (cmd *listStreamsCommand) run(c *kingpin.ParseContext) error {
+func (cmd *listStreamsCommand) run(_ *kingpin.ParseContext) error {
 	for _, f := range *cmd.files {
 		cmd.listStreamsInFile(f)
 	}

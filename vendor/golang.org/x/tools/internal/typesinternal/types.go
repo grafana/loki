@@ -9,7 +9,7 @@
 //   - functions for converting types to strings or syntax (e.g. [TypeExpr], FileQualifier]);
 //   - helpers for working with the [go/types] API (e.g. [NewTypesInfo]);
 //   - access to internal go/types APIs that are not yet
-//     exported (e.g. [SetUsesCgo], [ErrorCodeStartEnd], [VarKind]); and
+//     exported (e.g. [SetUsesCgo], [ErrorCodeStartEnd]); and
 //   - common algorithms related to types (e.g. [TooNewStdSymbols]).
 //
 // See also:
@@ -22,6 +22,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"iter"
 	"reflect"
 
 	"golang.org/x/tools/go/ast/inspector"
@@ -214,17 +215,17 @@ func ObjectKind(obj types.Object) string {
 		}
 	case *types.Var:
 		switch obj.Kind() {
-		case PackageVar:
+		case types.PackageVar:
 			return "package-level variable"
-		case LocalVar:
+		case types.LocalVar:
 			return "local variable"
-		case RecvVar:
+		case types.RecvVar:
 			return "receiver"
-		case ParamVar:
+		case types.ParamVar:
 			return "parameter"
-		case ResultVar:
+		case types.ResultVar:
 			return "result variable"
-		case FieldVar:
+		case types.FieldVar:
 			return "struct field"
 		}
 	case *types.Func:
@@ -241,4 +242,41 @@ func ObjectKind(obj types.Object) string {
 		return "untyped nil"
 	}
 	return "unknown symbol"
+}
+
+// ImplicitFieldSelections returns the sequence of implicit embedded fields
+// traversed by the given selection. It skips the final leaf field or method.
+// The boolean component indicates whether the traversal traversed a pointer.
+func ImplicitFieldSelections(seln *types.Selection) iter.Seq2[*types.Var, bool] {
+	return func(yield func(*types.Var, bool) bool) {
+		var (
+			t       = seln.Recv()
+			indices = seln.Index()
+		)
+		for _, idx := range indices[:len(indices)-1] {
+			ptr, isPtr := t.Underlying().(*types.Pointer)
+			if isPtr {
+				t = ptr.Elem()
+			}
+			structType, ok := t.Underlying().(*types.Struct)
+			if !ok {
+				break
+			}
+			field := structType.Field(idx)
+			if !yield(field, isPtr) {
+				break
+			}
+			t = field.Type()
+		}
+	}
+}
+
+// TupleOf returns a tuple type with the specified list of (unnamed)
+// var types. Neither the zero nor one cases are special.
+func TupleOf(elems ...types.Type) *types.Tuple {
+	params := make([]*types.Var, len(elems))
+	for i, elem := range elems {
+		params[i] = types.NewParam(token.NoPos, nil, "", elem)
+	}
+	return types.NewTuple(params...)
 }

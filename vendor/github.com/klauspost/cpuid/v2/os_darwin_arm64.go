@@ -126,4 +126,17 @@ func tryToFillCPUInfoFomSysctl(c *CPUInfo) {
 	setFeature(c, SM3, "hw.optional.arm.FEAT_SM3")                                      // SM3 instructions
 	setFeature(c, SM4, "hw.optional.arm.FEAT_SM4")                                      // SM4 instructions
 	setFeature(c, SVE, "hw.optional.arm.FEAT_SVE")                                      // Scalable Vector Extension
+	setFeature(c, SVE2, "hw.optional.arm.FEAT_SVE2")                                    // Scalable Vector Extension 2
+	setFeature(c, SB, "hw.optional.arm.FEAT_SB")                                        // Speculation barrier
+	setFeature(c, SSBS, "hw.optional.arm.FEAT_SSBS")                                    // Speculative Store Bypass Safe
+	setFeature(c, BTI, "hw.optional.arm.FEAT_BTI")                                      // Branch Target Identification
+	setFeature(c, FLAGM2, "hw.optional.arm.FEAT_FlagM2")                                // Condition flag manipulation version 2
+	setFeature(c, FRINTTS, "hw.optional.arm.FEAT_FRINTTS")                              // Floating-point to integer rounding
+	setFeature(c, DCPODP, "hw.optional.arm.FEAT_DPB2")                                  // Data cache clean to Point of Deep Persistence
+	setFeature(c, BF16, "hw.optional.arm.FEAT_BF16")                                    // BFloat16 instructions
+	setFeature(c, I8MM, "hw.optional.arm.FEAT_I8MM")                                    // Int8 matrix multiplication
+	setFeature(c, WFXT, "hw.optional.arm.FEAT_WFxT")                                    // WFE/WFI with timeout
+	setFeature(c, MOPS, "hw.optional.arm.FEAT_MOPS")                                    // Memory copy and set instructions
+	setFeature(c, HBC, "hw.optional.arm.FEAT_HBC")                                      // Hinted conditional branches
+	setFeature(c, CSSC, "hw.optional.arm.FEAT_CSSC")                                    // Common short sequence compression
 }

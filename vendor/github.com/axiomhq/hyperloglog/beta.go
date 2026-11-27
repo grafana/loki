@@ -5,30 +5,41 @@ import (
 	"math"
 )
 
-var betaMap = map[uint8]func(float64) float64{
-	4:  beta4,
-	5:  beta5,
-	6:  beta6,
-	7:  beta7,
-	8:  beta8,
-	9:  beta9,
-	10: beta10,
-	11: beta11,
-	12: beta12,
-	13: beta13,
-	14: beta14,
-	15: beta15,
-	16: beta16,
-	17: beta17,
-	18: beta18,
-}
-
 func beta(p uint8, ez float64) float64 {
-	f, ok := betaMap[p]
-	if !ok {
+	switch p {
+	case 4:
+		return beta4(ez)
+	case 5:
+		return beta5(ez)
+	case 6:
+		return beta6(ez)
+	case 7:
+		return beta7(ez)
+	case 8:
+		return beta8(ez)
+	case 9:
+		return beta9(ez)
+	case 10:
+		return beta10(ez)
+	case 11:
+		return beta11(ez)
+	case 12:
+		return beta12(ez)
+	case 13:
+		return beta13(ez)
+	case 14:
+		return beta14(ez)
+	case 15:
+		return beta15(ez)
+	case 16:
+		return beta16(ez)
+	case 17:
+		return beta17(ez)
+	case 18:
+		return beta18(ez)
+	default:
 		panic(fmt.Sprintf("invalid precision %d", p))
 	}
-	return f(ez)
 }
 
 /*

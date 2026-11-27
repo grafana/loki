@@ -34,15 +34,14 @@ type MexDocument struct {
 	bindings                 map[string]wsEndpointData
 }
 
-func updateEndpoint(cached *Endpoint, found Endpoint) {
-	if cached == nil || cached.Version == TrustUnknown {
-		*cached = found
-		return
+func updateEndpoint(cached Endpoint, found Endpoint) Endpoint {
+	if cached.Version == TrustUnknown {
+		return found
 	}
-	if (*cached).Version == Trust2005 && found.Version == Trust13 {
-		*cached = found
-		return
+	if cached.Version == Trust2005 && found.Version == Trust13 {
+		return found
 	}
+	return cached
 }
 
 // TODO(msal): Someone needs to write tests for everything below.
@@ -113,11 +112,12 @@ func bindings(defs Definitions, policies map[string]endpointType) (map[string]ws
 				bindingName := binding.Name
 				specVersion := binding.Operation.Operation.SoapAction
 
-				if specVersion == trust13Spec {
+				switch specVersion {
+				case trust13Spec:
 					bindings[bindingName] = wsEndpointData{Trust13, policy}
-				} else if specVersion == trust2005Spec {
+				case trust2005Spec:
 					bindings[bindingName] = wsEndpointData{Trust2005, policy}
-				} else {
+				default:
 					return nil, errors.New("found unknown spec version in mex document")
 				}
 			}
@@ -147,9 +147,9 @@ func endpoints(defs Definitions, bindings map[string]wsEndpointData) (userPass, 
 
 			switch binding.EndpointType {
 			case etUsernamePassword:
-				updateEndpoint(&userPass, endpoint)
+				userPass = updateEndpoint(userPass, endpoint)
 			case etWindowsTransport:
-				updateEndpoint(&windows, endpoint)
+				windows = updateEndpoint(windows, endpoint)
 			default:
 				return Endpoint{}, Endpoint{}, errors.New("found unknown port type in MEX document")
 			}

@@ -20,8 +20,6 @@ package xdsresource
 import (
 	"regexp"
 	"strings"
-
-	"google.golang.org/grpc/internal/grpcutil"
 )
 
 type pathMatcher interface {
@@ -94,7 +92,7 @@ func newPathRegexMatcher(re *regexp.Regexp) *pathRegexMatcher {
 }
 
 func (prm *pathRegexMatcher) match(path string) bool {
-	return grpcutil.FullMatchWithRegex(prm.re, path)
+	return prm.re.MatchString(path)
 }
 
 func (prm *pathRegexMatcher) String() string {

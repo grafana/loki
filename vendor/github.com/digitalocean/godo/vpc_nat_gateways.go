@@ -27,6 +27,7 @@ type VPCNATGatewayRequest struct {
 	Region             string        `json:"region"`
 	Size               uint32        `json:"size"`
 	VPCs               []*IngressVPC `json:"vpcs"`
+	Egresses           *Egresses     `json:"egresses,omitempty"`
 	UDPTimeoutSeconds  uint32        `json:"udp_timeout_seconds,omitempty"`
 	ICMPTimeoutSeconds uint32        `json:"icmp_timeout_seconds,omitempty"`
 	TCPTimeoutSeconds  uint32        `json:"tcp_timeout_seconds,omitempty"`
@@ -54,6 +55,7 @@ type VPCNATGateway struct {
 // IngressVPC defines the ingress configs supported by a VPC NAT Gateway
 type IngressVPC struct {
 	VpcUUID        string `json:"vpc_uuid"`
+	SubnetUUID     string `json:"subnet_uuid,omitempty"`
 	GatewayIP      string `json:"gateway_ip,omitempty"`
 	DefaultGateway bool   `json:"default_gateway,omitempty"`
 }
@@ -63,9 +65,12 @@ type Egresses struct {
 	PublicGateways []*PublicGateway `json:"public_gateways,omitempty"`
 }
 
-// PublicGateway defines the public egress supported by a VPC NAT Gateway
+// PublicGateway defines the public egress supported by a VPC NAT Gateway.
+// On create, set IP (preferred) or IPv4 to assign a BYOIP / reserved IP.
+// When omitted, a system-allocated reserved IP is provisioned.
 type PublicGateway struct {
-	IPv4 string `json:"ipv4"`
+	IPv4 string `json:"ipv4,omitempty"`
+	IP   string `json:"ip,omitempty"`
 }
 
 // VPCNATGatewaysListOptions define custom options for listing VPC NAT Gateways

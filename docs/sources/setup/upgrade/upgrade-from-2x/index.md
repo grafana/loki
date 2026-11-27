@@ -5,7 +5,7 @@ description: Upgrade the Helm chart from 2.x to 3.0.
 aliases:
   - ../installation/helm/upgrade
   - ../../installation/helm/upgrade-from-2.x/ 
-weight: 800
+weight: 700
 keywords:
   - upgrade
 ---
@@ -56,10 +56,15 @@ Similarly when using `extraVolumes`, the configuration is now nested under `.sin
 #### Dependencies
 
 The `grafana/loki` chart was only used to install Loki. New charts since `v3.x` also bundle two dependencies - **minio** and **grafana-agent-operator**. If you have already installed either of these independently and wish to continue managing them separately, you can explicitly disable these dependencies in your `values.yaml` as shown in the following examples:
+
 ```yaml
 minio:
   enabled: false
 ```
+
+{{< admonition type="note" >}}
+The `minio` key was removed entirely in chart 20.0.0. If you are using chart 20.0.0 or later, omit the `minio: enabled: false` block above. For more information, see [19.x to 20.0](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/upgrade-helm-to-community/#19x-to-200-built-in-minio-subchart-removed).
+{{< /admonition >}}
 
 ```yaml
 monitoring:

@@ -317,6 +317,7 @@ var _ Dialer = (*HTTP2Dialer)(nil)
 func NewHTTP2Dialer(path string) *HTTP2Dialer {
 	return &HTTP2Dialer{
 		client: &http.Client{
+			//nolint:staticcheck // SA1019: http2.Transport is deprecated in favor of http.Transport with Protocols; migrate on main.
 			Transport: &http2.Transport{
 				// No TLS
 				AllowHTTP: true,

@@ -312,6 +312,12 @@ type TableAutomatedBackupPolicy struct {
 	// How frequently automated backups should occur. The only
 	// supported value at this time is 24 hours.
 	Frequency optional.Duration
+	// Optional. A list of Cloud Bigtable zones where automated backups are
+	// allowed to be created. If empty, automated backups will be created in all
+	// zones of the instance. Locations are in the format
+	// `projects/{project}/locations/{zone}`.
+	// This field can only set for tables in Enterprise Plus instances.
+	Locations []string
 }
 
 func (*TableAutomatedBackupPolicy) isTableAutomatedBackupConfig() {}
@@ -352,6 +358,7 @@ func (abp *TableAutomatedBackupPolicy) toProto() (*btapb.Table_AutomatedBackupPo
 	pbAutomatedBackupPolicy := &btapb.Table_AutomatedBackupPolicy{
 		RetentionPeriod: durationpb.New(0),
 		Frequency:       durationpb.New(0),
+		Locations:       abp.Locations,
 	}
 	if abp.RetentionPeriod == nil && abp.Frequency == nil {
 		return nil, errors.New("at least one of RetentionPeriod and Frequency must be set")
@@ -561,6 +568,7 @@ const (
 	automatedBackupPolicyFieldMask = "automated_backup_policy"
 	retentionPeriodFieldMaskPath   = "retention_period"
 	frequencyFieldMaskPath         = "frequency"
+	locationsFieldMaskPath         = "locations"
 	rowKeySchemaMaskPath           = "row_key_schema"
 	tieredStorageConfigFieldMask   = "tiered_storage_config"
 )
@@ -665,6 +673,10 @@ func (ac *AdminClient) UpdateTableWithAutomatedBackupPolicy(ctx context.Context,
 	if abc.AutomatedBackupPolicy.Frequency.Seconds != 0 {
 		// Update Frequency
 		req.UpdateMask.Paths = append(req.UpdateMask.Paths, automatedBackupPolicyFieldMask+"."+frequencyFieldMaskPath)
+	}
+	if automatedBackupPolicy.Locations != nil {
+		// Update Locations
+		req.UpdateMask.Paths = append(req.UpdateMask.Paths, automatedBackupPolicyFieldMask+"."+locationsFieldMaskPath)
 	}
 	req.Table.AutomatedBackupConfig = abc
 	return ac.updateTableAndWait(ctx, req)
@@ -822,6 +834,7 @@ func (ac *AdminClient) TableInfo(ctx context.Context, table string) (*TableInfo,
 			ti.AutomatedBackupConfig = &TableAutomatedBackupPolicy{
 				RetentionPeriod: res.GetAutomatedBackupPolicy().GetRetentionPeriod().AsDuration(),
 				Frequency:       res.GetAutomatedBackupPolicy().GetFrequency().AsDuration(),
+				Locations:       res.GetAutomatedBackupPolicy().GetLocations(),
 			}
 		default:
 			return nil, fmt.Errorf("error: Unknown type of automated backup configuration")

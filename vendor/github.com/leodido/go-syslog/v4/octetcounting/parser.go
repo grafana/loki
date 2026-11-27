@@ -7,6 +7,7 @@ import (
 	"io"
 
 	syslog "github.com/leodido/go-syslog/v4"
+	"github.com/leodido/go-syslog/v4/auto"
 	"github.com/leodido/go-syslog/v4/rfc3164"
 	"github.com/leodido/go-syslog/v4/rfc5424"
 )
@@ -26,6 +27,11 @@ type parser struct {
 	last             Token
 	stepback         bool // Wheter to retrieve the last token or not
 	emit             syslog.ParserListener
+	stripTrailingNL  bool // Strip trailing \r\n or \n before passing to inner machine
+	// auto-detect fields
+	rfc3164Opts []syslog.MachineOption
+	rfc5424Opts []syslog.MachineOption
+	noFallback  bool
 }
 
 // NewParser returns a syslog.Parser suitable to parse syslog messages sent with transparent - ie. octet counting (RFC 5425) - framing.
@@ -65,10 +71,76 @@ func NewParserRFC3164(opts ...syslog.ParserOption) syslog.Parser {
 		p.internalOpts = append(p.internalOpts, rfc3164.WithBestEffort())
 	}
 
+	// Octet-counting framing knows the exact message length, so embedded
+	// newlines are unambiguous and must be preserved in the MSG field.
+	// The trailing \n is stripped before passing to the inner machine since
+	// many senders include it as a framing convention, not as message content.
+	p.internalOpts = append(p.internalOpts, rfc3164.WithEmbeddedNewlines())
+	p.stripTrailingNL = true
+
 	// Create internal parser with machine options
 	p.internal = rfc3164.NewMachine(p.internalOpts...)
 
 	return p
+}
+
+// NewParserAuto returns a syslog.Parser that auto-detects RFC 3164 vs RFC 5424
+// format per-message using octetcounting framing.
+//
+// Use auto.WithRFC3164MachineOptions and auto.WithRFC5424MachineOptions to
+// pass format-specific options. Use auto.WithoutParserFallback to disable
+// fallback to the other parser on failure.
+func NewParserAuto(opts ...syslog.ParserOption) syslog.Parser {
+	p := &parser{
+		emit:             func(*syslog.Result) { /* noop */ },
+		maxMessageLength: DefaultMaxSize,
+	}
+
+	for _, opt := range opts {
+		p = opt(p).(*parser)
+	}
+
+	// Forward generic machine options (from syslog.WithMachineOptions) to both
+	// inner parsers so callers migrating from NewParser get consistent behavior.
+	// Options are wrapped with SafeMachineOptions to recover from type-assertion
+	// panics when format-specific options are applied to the wrong machine type.
+	// Octet-counting framing knows the exact message length, so embedded
+	// newlines are unambiguous and must be preserved in the MSG field.
+	safeOpts := auto.SafeMachineOptions(p.internalOpts)
+	rfc3164Opts := append([]syslog.MachineOption{rfc3164.WithEmbeddedNewlines()}, safeOpts...)
+	rfc3164Opts = append(rfc3164Opts, p.rfc3164Opts...)
+	rfc5424Opts := append(append([]syslog.MachineOption{}, safeOpts...), p.rfc5424Opts...)
+
+	autoOpts := []auto.Option{
+		auto.WithRFC3164Options(rfc3164Opts...),
+		auto.WithRFC5424Options(rfc5424Opts...),
+	}
+	if p.noFallback {
+		autoOpts = append(autoOpts, auto.WithoutFallback())
+	}
+
+	p.internal = auto.NewMachine(autoOpts...)
+	if p.bestEffort {
+		p.internal.WithBestEffort()
+	}
+
+	// Strip trailing newline (framing convention, not message content).
+	p.stripTrailingNL = true
+
+	return p
+}
+
+// AutoParserConfigurer implementation for auto-detect parser options.
+func (p *parser) SetRFC3164Options(opts []syslog.MachineOption) {
+	p.rfc3164Opts = append(p.rfc3164Opts, opts...)
+}
+
+func (p *parser) SetRFC5424Options(opts []syslog.MachineOption) {
+	p.rfc5424Opts = append(p.rfc5424Opts, opts...)
+}
+
+func (p *parser) SetNoFallback() {
+	p.noFallback = true
 }
 
 // WithBestEffort implements the syslog.BestEfforter interface.
@@ -187,6 +259,16 @@ func (p *parser) run() {
 }
 
 func (p *parser) parse(input []byte) *syslog.Result {
+	if p.stripTrailingNL && len(input) > 0 {
+		// Strip a single trailing \r\n or \n. Many senders include a trailing
+		// newline as a framing convention; it is not part of the message content.
+		if input[len(input)-1] == '\n' {
+			input = input[:len(input)-1]
+			if len(input) > 0 && input[len(input)-1] == '\r' {
+				input = input[:len(input)-1]
+			}
+		}
+	}
 	sys, err := p.internal.Parse(input)
 
 	return &syslog.Result{

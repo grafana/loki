@@ -1,3 +1,4 @@
+//go:build appengine || appenginevm
 // +build appengine appenginevm
 
 package jsonparser
@@ -7,10 +8,6 @@ import (
 )
 
 // See fastbytes_unsafe.go for explanation on why *[]byte is used (signatures must be consistent with those in that file)
-
-func equalStr(b *[]byte, s string) bool {
-	return string(*b) == s
-}
 
 func parseFloat(b *[]byte) (float64, error) {
 	return strconv.ParseFloat(string(*b), 64)

@@ -35,7 +35,7 @@ type HTTPClient interface {
 	CloseIdleConnections()
 }
 
-// Client provides a wrapper to our *http.Client that handles compression and serialization needs.
+// Client provides a wrapper to our *http.Client that handles serialization needs.
 type Client struct {
 	client HTTPClient
 }
@@ -50,9 +50,9 @@ func New(httpClient HTTPClient) *Client {
 }
 
 // JSONCall connects to the REST endpoint passing the HTTP query values, headers and JSON conversion
-// of body in the HTTP body. It automatically handles compression and decompression with gzip. The response is JSON
-// unmarshalled into resp. resp must be a pointer to a struct. If the body struct contains a field called
-// "AdditionalFields" we use a custom marshal/unmarshal engine.
+// of body in the HTTP body. The response is JSON unmarshalled into resp. resp must be a pointer to
+// a struct. If the body struct contains a field called "AdditionalFields" we use a custom
+// marshal/unmarshal engine.
 func (c *Client) JSONCall(ctx context.Context, endpoint string, headers http.Header, qv url.Values, body, resp interface{}) error {
 	if qv == nil {
 		qv = url.Values{}
@@ -240,9 +240,10 @@ func (c *Client) do(ctx context.Context, req *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("server response error:\n %w", err)
 	}
-	defer reply.Body.Close()
 
 	data, err := c.readBody(reply)
+	// A close error can't change the result after the response body has been consumed.
+	_ = reply.Body.Close()
 	if err != nil {
 		return nil, fmt.Errorf("could not read the body of an HTTP Response: %w", err)
 	}
@@ -274,7 +275,7 @@ func (c *Client) do(ctx context.Context, req *http.Request) ([]byte, error) {
 
 // checkResp checks a response object o make sure it is a pointer to a struct.
 func (c *Client) checkResp(v reflect.Value) error {
-	if v.Kind() != reflect.Ptr {
+	if v.Kind() != reflect.Pointer {
 		return fmt.Errorf("bug: resp argument must a *struct, was %T", v.Interface())
 	}
 	v = v.Elem()
@@ -284,25 +285,17 @@ func (c *Client) checkResp(v reflect.Value) error {
 	return nil
 }
 
-// readBody reads the body out of an *http.Response. It supports gzip encoded responses.
+// readBody reads the body out of an *http.Response. Any Content-Encoding negotiated by the
+// underlying http.Transport (typically gzip) is transparently decoded by the standard library
+// before we get here.
 func (c *Client) readBody(resp *http.Response) ([]byte, error) {
-	var reader io.Reader = resp.Body
-	switch resp.Header.Get("Content-Encoding") {
-	case "":
-		// Do nothing
-	case "gzip":
-		reader = gzipDecompress(resp.Body)
-	default:
-		return nil, fmt.Errorf("bug: comm.Client.JSONCall(): content was send with unsupported content-encoding %s", resp.Header.Get("Content-Encoding"))
-	}
-	return io.ReadAll(reader)
+	return io.ReadAll(resp.Body)
 }
 
 var testID string
 
 // addStdHeaders adds the standard headers we use on all calls.
 func addStdHeaders(headers http.Header) http.Header {
-	headers.Set("Accept-Encoding", "gzip")
 	// So that I can have a static id for tests.
 	if testID != "" {
 		headers.Set("client-request-id", testID)
@@ -311,7 +304,7 @@ func addStdHeaders(headers http.Header) http.Header {
 		headers.Set("client-request-id", uuid.New().String())
 		headers.Set("Return-Client-Request-Id", "false")
 	}
-	headers.Set("x-client-sku", "MSAL.Go")
+	headers.Set("x-client-sku", version.SKU)
 	headers.Set("x-client-os", runtime.GOOS)
 	headers.Set("x-client-cpu", runtime.GOARCH)
 	headers.Set("x-client-ver", version.Version)

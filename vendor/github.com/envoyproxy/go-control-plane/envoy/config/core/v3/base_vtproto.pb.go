@@ -540,6 +540,51 @@ func (m *RuntimeUInt32) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *RuntimeUInt64) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RuntimeUInt64) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *RuntimeUInt64) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.RuntimeKey) > 0 {
+		i -= len(m.RuntimeKey)
+		copy(dAtA[i:], m.RuntimeKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.RuntimeKey)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.DefaultValue != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DefaultValue))
+		i--
+		dAtA[i] = 0x10
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *RuntimePercent) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -1146,6 +1191,16 @@ func (m *WatchedDirectory) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.WatchModify {
+		i--
+		if m.WatchModify {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x10
 	}
 	if len(m.Path) > 0 {
 		i -= len(m.Path)
@@ -2064,6 +2119,23 @@ func (m *RuntimeUInt32) SizeVT() (n int) {
 	return n
 }
 
+func (m *RuntimeUInt64) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.DefaultValue != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.DefaultValue))
+	}
+	l = len(m.RuntimeKey)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *RuntimePercent) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -2287,6 +2359,9 @@ func (m *WatchedDirectory) SizeVT() (n int) {
 	l = len(m.Path)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.WatchModify {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n

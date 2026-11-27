@@ -26,3 +26,39 @@ func ParseFlagsWithoutArguments(f *flag.FlagSet) error {
 
 	return nil
 }
+
+// ParseFlagsAndArgumentsWithEnv is like [ParseFlagsAndArguments] but also sets
+// flag values from environment variables using [SetFlagsFromEnv].
+// CLI flags take precedence over environment variables, which take precedence
+// over default values.
+func ParseFlagsAndArgumentsWithEnv(f *flag.FlagSet, prefix string) ([]string, error) {
+	if err := f.Parse(os.Args[1:]); err != nil {
+		return f.Args(), err
+	}
+
+	if err := SetFlagsFromEnv(f, prefix); err != nil {
+		return f.Args(), err
+	}
+
+	return f.Args(), nil
+}
+
+// ParseFlagsWithoutArgumentsWithEnv is like [ParseFlagsWithoutArguments] but also sets
+// flag values from environment variables using [SetFlagsFromEnv].
+// CLI flags take precedence over environment variables, which take precedence
+// over default values.
+func ParseFlagsWithoutArgumentsWithEnv(f *flag.FlagSet, prefix string) error {
+	if err := f.Parse(os.Args[1:]); err != nil {
+		return err
+	}
+
+	if err := SetFlagsFromEnv(f, prefix); err != nil {
+		return err
+	}
+
+	if f.NArg() > 0 {
+		return fmt.Errorf("the command does not support any argument, but some were provided: %s", strings.Join(f.Args(), " "))
+	}
+
+	return nil
+}

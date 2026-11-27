@@ -100,10 +100,11 @@ type Config struct {
 	GRPCCollectMaxStreamsByConn bool   `yaml:"grpc_collect_max_streams_by_conn"`
 	ProxyProtocolEnabled        bool   `yaml:"proxy_protocol_enabled"`
 
-	CipherSuites  string    `yaml:"tls_cipher_suites"`
-	MinVersion    string    `yaml:"tls_min_version"`
-	HTTPTLSConfig TLSConfig `yaml:"http_tls_config"`
-	GRPCTLSConfig TLSConfig `yaml:"grpc_tls_config"`
+	CipherSuites     string    `yaml:"tls_cipher_suites"`
+	MinVersion       string    `yaml:"tls_min_version"`
+	CurvePreferences string    `yaml:"tls_curve_preferences"`
+	HTTPTLSConfig    TLSConfig `yaml:"http_tls_config"`
+	GRPCTLSConfig    TLSConfig `yaml:"grpc_tls_config"`
 
 	RegisterInstrumentation                  bool `yaml:"register_instrumentation"`
 	ReportGRPCCodesInInstrumentationLabel    bool `yaml:"report_grpc_codes_in_instrumentation_label_enabled"`
@@ -142,6 +143,8 @@ type Config struct {
 	GRPCServerNumWorkers               int           `yaml:"grpc_server_num_workers"`
 	GRPCServerStatsTrackingEnabled     bool          `yaml:"grpc_server_stats_tracking_enabled"`
 	GRPCServerRecvBufferPoolsEnabled   bool          `yaml:"grpc_server_recv_buffer_pools_enabled"`
+	GRPCServerReadBufferSize           int           `yaml:"grpc_server_read_buffer_size"`
+	GRPCServerWriteBufferSize          int           `yaml:"grpc_server_write_buffer_size"`
 
 	LogFormat                    string           `yaml:"log_format"`
 	LogLevel                     log.Level        `yaml:"log_level"`
@@ -177,8 +180,9 @@ type Config struct {
 	// existing trace when the function returns true. A span link will be used
 	// to connect to any existing trace. It only works if using Open-Telemetry
 	// tracing.
-	PublicEndpointFn func(*http.Request) bool `yaml:"-"`
-	CreateNewTraces  bool                     `yaml:"create_new_traces"`
+	PublicEndpointFn                    func(*http.Request) bool `yaml:"-"`
+	CreateNewTraces                     bool                     `yaml:"create_new_traces"`
+	EnableOpenMetricsTextCreatedSamples bool                     `yaml:"enable_open_metrics_text_created_samples"`
 }
 
 type Throughput struct {
@@ -194,6 +198,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.HTTPListenNetwork, "server.http-listen-network", DefaultNetwork, "HTTP server listen network, default tcp")
 	f.StringVar(&cfg.CipherSuites, "server.tls-cipher-suites", "", "Comma-separated list of cipher suites to use. If blank, the default Go cipher suites is used.")
 	f.StringVar(&cfg.MinVersion, "server.tls-min-version", "", "Minimum TLS version to use. Allowed values: VersionTLS10, VersionTLS11, VersionTLS12, VersionTLS13. If blank, the Go TLS minimum version is used.")
+	f.StringVar(&cfg.CurvePreferences, "server.tls-curve-preferences", "", "Comma-separated list of TLS curve/group preferences for key exchange. Allowed values: CurveP256, CurveP384, CurveP521, X25519, X25519MLKEM768, SecP256r1MLKEM768, SecP384r1MLKEM1024. If blank, the default Go curve preferences are used.")
 	f.StringVar(&cfg.HTTPTLSConfig.TLSCertPath, "server.http-tls-cert-path", "", "HTTP server cert path.")
 	f.StringVar(&cfg.HTTPTLSConfig.TLSKeyPath, "server.http-tls-key-path", "", "HTTP server key path.")
 	f.StringVar(&cfg.HTTPTLSConfig.ClientAuth, "server.http-tls-client-auth", "", "HTTP TLS Client Auth type.")
@@ -230,6 +235,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.GRPCServerStatsTrackingEnabled, "server.grpc.stats-tracking-enabled", true, "If true, the request_message_bytes, response_message_bytes, and inflight_requests metrics will be tracked. Enabling this option prevents the use of memory pools for parsing gRPC request bodies and may lead to more memory allocations.")
 	f.BoolVar(&cfg.GRPCServerRecvBufferPoolsEnabled, "server.grpc.recv-buffer-pools-enabled", false, "Deprecated option, has no effect and will be removed in a future version.")
 	f.IntVar(&cfg.GRPCServerNumWorkers, "server.grpc.num-workers", 0, "If non-zero, configures the amount of GRPC server workers used to serve the requests.")
+	f.IntVar(&cfg.GRPCServerReadBufferSize, "server.grpc.read-buffer-size-bytes", 32*1024, "Size of the read buffer for each gRPC connection (bytes). A smaller buffer may reduce memory usage but may lead to more system calls.")
+	f.IntVar(&cfg.GRPCServerWriteBufferSize, "server.grpc.write-buffer-size-bytes", 32*1024, "Size of the write buffer for each gRPC connection (bytes). A smaller buffer may reduce memory usage but may lead to more system calls.")
 	f.StringVar(&cfg.PathPrefix, "server.path-prefix", "", "Base path to serve all API routes from (e.g. /v1/)")
 	f.StringVar(&cfg.LogFormat, "log.format", log.LogfmtFormat, "Output log messages in the given format. Valid formats: [logfmt, json]")
 	cfg.LogLevel.RegisterFlags(f)
@@ -249,9 +256,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Throughput.Unit, "server.throughput.unit", "samples_processed", "Unit of the server throughput metric, for example 'processed_bytes' or 'samples_processed'. Observed values are gathered from the 'Server-Timing' header with the 'val' key. If set, it is appended to the request_server_throughput metric name.")
 	cfg.ClusterValidation.RegisterFlagsWithPrefix("server.cluster-validation.", f)
 	f.BoolVar(&cfg.CreateNewTraces, "server.create-new-traces", false, "Creates new traces for each call rather than continuing the existing trace. A span link is used to allow navigation to the parent trace. Only works when using Open-Telemetry tracing.")
+	f.BoolVar(&cfg.EnableOpenMetricsTextCreatedSamples, "server.enable-open-metrics-text-created-samples", false, "Specifies if this handler should emit start timestamps for counters, histograms and summaries over OpenMetrics 1.0, which are defined as extra series with the same name and \"_created\" suffix. Only applies if -server.register-instrumentation is set to true.")
 }
 
 func (cfg *Config) Validate() error {
+	if cfg.EnableOpenMetricsTextCreatedSamples && !cfg.RegisterInstrumentation {
+		return fmt.Errorf("server.enable-open-metrics-text-created-samples can only be used if server.register-instrumentation is set to true")
+	}
 	return cfg.ClusterValidation.Validate()
 }
 
@@ -353,6 +364,10 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	curvePreferences, err := stringToCurvePreferences(cfg.CurvePreferences)
+	if err != nil {
+		return nil, err
+	}
 
 	// Setup TLS
 	var httpTLSConfig *tls.Config
@@ -360,15 +375,16 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		(len(cfg.HTTPTLSConfig.TLSKeyPath) > 0 || len(cfg.HTTPTLSConfig.TLSKey) > 0) {
 		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
 		httpTLSConfig, err = web.ConfigToTLSConfig(&web.TLSConfig{
-			TLSCert:       cfg.HTTPTLSConfig.TLSCert,
-			TLSKey:        config.Secret(cfg.HTTPTLSConfig.TLSKey),
-			ClientCAsText: cfg.HTTPTLSConfig.ClientCAsText,
-			TLSCertPath:   cfg.HTTPTLSConfig.TLSCertPath,
-			TLSKeyPath:    cfg.HTTPTLSConfig.TLSKeyPath,
-			ClientAuth:    cfg.HTTPTLSConfig.ClientAuth,
-			ClientCAs:     cfg.HTTPTLSConfig.ClientCAs,
-			CipherSuites:  cipherSuites,
-			MinVersion:    minVersion,
+			TLSCert:          cfg.HTTPTLSConfig.TLSCert,
+			TLSKey:           config.Secret(cfg.HTTPTLSConfig.TLSKey),
+			ClientCAsText:    cfg.HTTPTLSConfig.ClientCAsText,
+			TLSCertPath:      cfg.HTTPTLSConfig.TLSCertPath,
+			TLSKeyPath:       cfg.HTTPTLSConfig.TLSKeyPath,
+			ClientAuth:       cfg.HTTPTLSConfig.ClientAuth,
+			ClientCAs:        cfg.HTTPTLSConfig.ClientCAs,
+			CipherSuites:     cipherSuites,
+			CurvePreferences: curvePreferences,
+			MinVersion:       minVersion,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("error generating http tls config: %v", err)
@@ -379,15 +395,16 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		(len(cfg.GRPCTLSConfig.TLSKeyPath) > 0 || len(cfg.GRPCTLSConfig.TLSKey) > 0) {
 		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
 		grpcTLSConfig, err = web.ConfigToTLSConfig(&web.TLSConfig{
-			TLSCert:       cfg.GRPCTLSConfig.TLSCert,
-			TLSKey:        config.Secret(cfg.GRPCTLSConfig.TLSKey),
-			ClientCAsText: cfg.GRPCTLSConfig.ClientCAsText,
-			TLSCertPath:   cfg.GRPCTLSConfig.TLSCertPath,
-			TLSKeyPath:    cfg.GRPCTLSConfig.TLSKeyPath,
-			ClientAuth:    cfg.GRPCTLSConfig.ClientAuth,
-			ClientCAs:     cfg.GRPCTLSConfig.ClientCAs,
-			CipherSuites:  cipherSuites,
-			MinVersion:    minVersion,
+			TLSCert:          cfg.GRPCTLSConfig.TLSCert,
+			TLSKey:           config.Secret(cfg.GRPCTLSConfig.TLSKey),
+			ClientCAsText:    cfg.GRPCTLSConfig.ClientCAsText,
+			TLSCertPath:      cfg.GRPCTLSConfig.TLSCertPath,
+			TLSKeyPath:       cfg.GRPCTLSConfig.TLSKeyPath,
+			ClientAuth:       cfg.GRPCTLSConfig.ClientAuth,
+			ClientCAs:        cfg.GRPCTLSConfig.ClientCAs,
+			CipherSuites:     cipherSuites,
+			CurvePreferences: curvePreferences,
+			MinVersion:       minVersion,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("error generating grpc tls config: %v", err)
@@ -409,7 +426,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		router = router.PathPrefix(cfg.PathPrefix).Subrouter()
 	}
 	if cfg.RegisterInstrumentation {
-		RegisterInstrumentationWithGatherer(router, gatherer)
+		RegisterInstrumentationWithGathererAndCreatedSamples(router, gatherer, cfg.EnableOpenMetricsTextCreatedSamples)
 	}
 
 	// Setup gRPC server
@@ -497,6 +514,8 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		grpc.MaxSendMsgSize(cfg.GRPCServerMaxSendMsgSize),
 		grpc.MaxConcurrentStreams(uint32(cfg.GRPCServerMaxConcurrentStreams)),
 		grpc.NumStreamWorkers(uint32(cfg.GRPCServerNumWorkers)),
+		grpc.ReadBufferSize(cfg.GRPCServerReadBufferSize),
+		grpc.WriteBufferSize(cfg.GRPCServerWriteBufferSize),
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	}
 
@@ -574,12 +593,20 @@ func RegisterInstrumentation(router *mux.Router) {
 	RegisterInstrumentationWithGatherer(router, prometheus.DefaultGatherer)
 }
 
-// RegisterInstrumentationWithGatherer on the given router.
-func RegisterInstrumentationWithGatherer(router *mux.Router, gatherer prometheus.Gatherer) {
+// RegisterInstrumentationWithGathererAndCreatedSamples registers metrics and pprof handlers.
+// If enableOpenMetricsTextCreatedSamples is true, OpenMetrics 1.0 responses include _created samples.
+func RegisterInstrumentationWithGathererAndCreatedSamples(router *mux.Router, gatherer prometheus.Gatherer, enableOpenMetricsTextCreatedSamples bool) {
 	router.Handle("/metrics", promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{
-		EnableOpenMetrics: true,
+		EnableOpenMetrics:                   true,
+		EnableOpenMetricsTextCreatedSamples: enableOpenMetricsTextCreatedSamples,
 	}))
+	router.Handle("/debug/pprof/cmdline", http.NotFoundHandler())
 	router.PathPrefix("/debug/pprof").Handler(http.DefaultServeMux)
+}
+
+// RegisterInstrumentationWithGatherer registers metrics and pprof handlers.
+func RegisterInstrumentationWithGatherer(router *mux.Router, gatherer prometheus.Gatherer) {
+	RegisterInstrumentationWithGathererAndCreatedSamples(router, gatherer, false)
 }
 
 func BuildHTTPMiddleware(cfg Config, router *mux.Router, metrics *Metrics, logger gokit_log.Logger) ([]middleware.Interface, error) {
@@ -728,7 +755,12 @@ func newProxyProtocolListener(httpListener net.Listener, readHeaderTimeout time.
 	// NOTE: go-proxyproto supports non-PROXY, PROXY v1 and PROXY v2 protocols via the same listener.
 	// Therefore, enabling this feature does not break existing setups.
 	return &proxyproto.Listener{
-		Listener:          httpListener,
+		Listener: httpListener,
+		// go-proxyproto defaults to requiring a PROXY header. Dskit deliberately supports
+		// mixed PROXY and non-PROXY connections when this listener is enabled.
+		ConnPolicy: func(proxyproto.ConnPolicyOptions) (proxyproto.Policy, error) {
+			return proxyproto.USE, nil
+		},
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 }

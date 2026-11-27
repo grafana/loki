@@ -1,6 +1,6 @@
 // Package mimetype uses magic number signatures to detect the MIME type of a file.
 //
-// File formats are stored in a hierarchy with application/octet-stream at its root.
+// File formats are stored in a hierarchy with "application/octet-stream" at its root.
 // For example, the hierarchy for HTML format is application/octet-stream ->
 // text/plain -> text/html.
 package mimetype
@@ -12,14 +12,14 @@ import (
 	"sync/atomic"
 )
 
-const defaultLimit uint32 = 3072
+const defaultLimit uint32 = 4096
 
 // readLimit is the maximum number of bytes from the input used when detecting.
 var readLimit uint32 = defaultLimit
 
 // Detect returns the MIME type found from the provided byte slice.
 //
-// The result is always a valid MIME type, with application/octet-stream
+// The result is always a valid MIME type, with "application/octet-stream"
 // returned when identification failed.
 func Detect(in []byte) *MIME {
 	// Using atomic because readLimit can be written at the same time in other goroutine.
@@ -34,7 +34,7 @@ func Detect(in []byte) *MIME {
 
 // DetectReader returns the MIME type of the provided reader.
 //
-// The result is always a valid MIME type, with application/octet-stream
+// The result is always a valid MIME type, with "application/octet-stream"
 // returned when identification failed with or without an error.
 // Any error returned is related to the reading from the input reader.
 //
@@ -72,7 +72,7 @@ func DetectReader(r io.Reader) (*MIME, error) {
 
 // DetectFile returns the MIME type of the provided file.
 //
-// The result is always a valid MIME type, with application/octet-stream
+// The result is always a valid MIME type, with "application/octet-stream"
 // returned when identification failed with or without an error.
 // Any error returned is related to the opening and reading from the input file.
 func DetectFile(path string) (*MIME, error) {
@@ -112,7 +112,7 @@ func SetLimit(limit uint32) {
 }
 
 // Extend adds detection for other file formats.
-// It is equivalent to calling Extend() on the root MIME type "application/octet-stream".
+// It is equivalent to calling [MIME.Extend] on the root MIME type "application/octet-stream".
 func Extend(detector func(raw []byte, limit uint32) bool, mime, extension string, aliases ...string) {
 	root.Extend(detector, mime, extension, aliases...)
 }

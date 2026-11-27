@@ -186,3 +186,20 @@ func Skip(ctx context.Context, self TProtocol, fieldType TType, maxDepth int) (e
 		return NewTProtocolExceptionWithType(INVALID_DATA, fmt.Errorf("Unknown data type %d", fieldType))
 	}
 }
+
+// maxPreallocSize is the largest number of elements a wire-supplied container
+// count may reserve up front. Element counts are read before any element is,
+// so a peer can name a count it never backs with data; capping what the count
+// reserves keeps the cost of that proportional to the bytes actually sent,
+// while still reserving the exact capacity for the containers that fit under
+// the cap. Larger containers grow by append, which costs a few reallocations.
+const maxPreallocSize = 1024
+
+// PreallocSize returns the capacity to reserve for a container whose declared
+// element count is size. It is used by generated code.
+func PreallocSize(size int) int {
+	if size < 0 {
+		return 0
+	}
+	return min(size, maxPreallocSize)
+}

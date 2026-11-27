@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -13,14 +12,14 @@ import (
 	"time"
 
 	"github.com/containerd/fifo"
-	"github.com/docker/docker/api/types/backend"
-	"github.com/docker/docker/api/types/plugins/logdriver"
-	"github.com/docker/docker/daemon/logger"
-	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	protoio "github.com/gogo/protobuf/io"
+	"github.com/moby/moby/v2/daemon/logger"
+	"github.com/moby/moby/v2/daemon/logger/jsonfilelog"
+	"github.com/moby/moby/v2/daemon/server/backend"
 	"github.com/pkg/errors"
+
+	"github.com/grafana/loki/v3/clients/cmd/docker-driver/logdriver"
 )
 
 type driver struct {
@@ -136,17 +135,16 @@ func (d *driver) StopLogging(file string) {
 }
 
 func consumeLog(lf *logPair) {
-	dec := protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
-	defer dec.Close()
-	defer lf.Close()
+	dec := logdriver.NewLogEntryDecoder(lf.stream)
 	var buf logdriver.LogEntry
 	for {
-		if err := dec.ReadMsg(&buf); err != nil {
+		if err := dec.Decode(&buf); err != nil {
 			if err == io.EOF || err == os.ErrClosed || strings.Contains(err.Error(), "file already closed") {
 				level.Debug(lf.logger).Log("msg", "shutting down log logger", "id", lf.info.ContainerID, "err", err)
 				return
 			}
-			dec = protoio.NewUint32DelimitedReader(lf.stream, binary.BigEndian, 1e6)
+			dec = logdriver.NewLogEntryDecoder(lf.stream)
+			continue
 		}
 		var msg logger.Message
 		msg.Line = buf.Line
@@ -197,8 +195,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 	go func() {
 		watcher := lr.ReadLogs(context.Background(), config)
 
-		enc := protoio.NewUint32DelimitedWriter(w, binary.BigEndian)
-		defer enc.Close()
+		enc := logdriver.NewLogEntryEncoder(w)
 		defer watcher.ConsumerGone()
 
 		var buf logdriver.LogEntry
@@ -215,7 +212,7 @@ func (d *driver) ReadLogs(info logger.Info, config logger.ReadConfig) (io.ReadCl
 				buf.TimeNano = msg.Timestamp.UnixNano()
 				buf.Source = msg.Source
 
-				if err := enc.WriteMsg(&buf); err != nil {
+				if err := enc.Encode(&buf); err != nil {
 					_ = w.CloseWithError(err)
 					return
 				}

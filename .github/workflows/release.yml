@@ -7,7 +7,7 @@ env:
   IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PLUGIN_IMAGE_PREFIX: "us-docker.pkg.dev/grafanalabs-global/dockerhub-loki-prod-mirror"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "a02bbf94332600fbf72b9258861b32c4559cd134"
+  RELEASE_LIB_REF: "6cba58c3b7083631092af8e8fbaeb71a647fab93"
   RELEASE_REPO: "grafana/loki"
 jobs:
   createRelease:
@@ -50,7 +50,7 @@ jobs:
       run: "corepack enable"
     - id: "get_github_app_token"
       name: "get github app token"
-      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - name: "Login to GAR"
@@ -155,7 +155,7 @@ jobs:
         echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
     - id: "get_github_app_token"
       name: "get github app token"
-      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:
@@ -253,14 +253,37 @@ jobs:
           --version=$(echo ${SHA} | tr -d '"') \
           --destination=plugins/
         mkdir -p "release/clients/cmd/docker-driver"
+    - name: "start local registry for plugins"
+      run: |
+        set -euo pipefail
+        crane_version="v0.21.6"
+        curl -sSL "https://github.com/google/go-containerregistry/releases/download/${crane_version}/go-containerregistry_Linux_x86_64.tar.gz" \
+          | tar -xz crane
+        nohup ./crane registry serve --address localhost:5000 >crane-registry.log 2>&1 &
+        for _ in $(seq 1 30); do
+          curl -sf http://localhost:5000/v2/ >/dev/null && break
+          sleep 1
+        done
+        curl -sf http://localhost:5000/v2/ >/dev/null || { echo "local registry failed to start" >&2; cat crane-registry.log >&2 || true; exit 1; }
     - name: "publish docker driver"
       uses: "./lib/actions/push-images"
       with:
         buildDir: "release/clients/cmd/docker-driver"
         imageDir: "plugins"
-        imagePrefix: "${{ env.PLUGIN_IMAGE_PREFIX }}"
+        imagePrefix: "localhost:5000"
         isLatest: "${{ needs.createRelease.outputs.isLatest }}"
         isPlugin: true
+    - name: "mirror plugins to GAR with crane"
+      run: |
+        set -euo pipefail
+        for repo in $(./crane catalog localhost:5000 --insecure); do
+          for tag in $(./crane ls "localhost:5000/${repo}" --insecure); do
+            layout="$(mktemp -d)"
+            echo "mirroring ${repo}:${tag} to ${PLUGIN_IMAGE_PREFIX}/${repo}:${tag}"
+            ./crane pull --insecure --format=oci "localhost:5000/${repo}:${tag}" "${layout}"
+            ./crane push "${layout}" "${PLUGIN_IMAGE_PREFIX}/${repo}:${tag}"
+          done
+        done
   publishImages:
     needs:
     - "createRelease"
@@ -322,7 +345,7 @@ jobs:
         repository: "${{ env.RELEASE_REPO }}"
     - id: "get_github_app_token"
       name: "get github app token"
-      uses: "grafana/shared-workflows/actions/create-github-app-token@580590a644e82e79bb2598bdaba0be245a14dda0"
+      uses: "grafana/shared-workflows/actions/create-github-app-token@46f48da11e78ebdba7a8747ae456b11062fac83e"
       with:
         github_app: "${{ env.GITHUB_APP }}"
     - env:

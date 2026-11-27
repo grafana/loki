@@ -317,7 +317,7 @@ func CopyAnyValue(dest, src *AnyValue) *AnyValue {
 		} else {
 			ov = ProtoPoolAnyValue_BytesValue.Get().(*AnyValue_BytesValue)
 		}
-		ov.BytesValue = t.BytesValue
+		ov.BytesValue = append(ov.BytesValue[:0], t.BytesValue...)
 		dest.Value = ov
 
 	case *AnyValue_StringValueStrindex:
@@ -523,7 +523,7 @@ func (orig *AnyValue) UnmarshalJSON(iter *json.Iterator) {
 			}
 
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

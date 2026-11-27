@@ -145,7 +145,7 @@ func (orig *UnixAddr) UnmarshalJSON(iter *json.Iterator) {
 		case "net":
 			orig.Net = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

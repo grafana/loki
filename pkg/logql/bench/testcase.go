@@ -10,6 +10,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
+const (
+	kindLog    = "log"
+	kindMetric = "metric"
+)
+
 // TestCase represents a LogQL test case for benchmarking and testing
 type TestCase struct {
 	Query     string
@@ -53,9 +58,9 @@ func (c TestCase) Kind() string {
 		return "invalid"
 	}
 	if _, ok := expr.(syntax.SampleExpr); ok {
-		return "metric"
+		return kindMetric
 	}
-	return "log"
+	return kindLog
 }
 
 // Description returns a detailed description of the test case including time range

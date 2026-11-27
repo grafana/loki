@@ -1,0 +1,68 @@
+name: SBOM on Release
+
+# Attaches a Socket-generated SPDX SBOM to Loki GitHub releases.
+#
+# Loki releases are drafted and published by release.yml with the loki-gh-app token, so the
+# `published` event is expected to start this workflow. If it ever stops firing, run it by hand
+# with workflow_dispatch.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The release tag to export an SBOM for, with or without a leading `v` (e.g. v3.7.8)
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  export-sbom:
+    name: Export SBOM and attach to release
+    # Only Loki server releases (v*). Operator (operator/v*) and Helm releases are skipped.
+    if: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'v') }}
+    runs-on: ubuntu-x64
+    permissions:
+      contents: write # to upload the SBOM as a release asset
+      id-token: write # to authenticate to Vault
+    steps:
+      - name: Resolve release tag
+        id: version
+        env:
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${EVENT_TAG:-$INPUT_VERSION}"
+          echo "tag=v${version#v}" >> "$GITHUB_OUTPUT"
+
+      # Socket scans the manifests on disk, so check out the exact tag the release points at.
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.version.outputs.tag }}
+          persist-credentials: false
+
+      - name: Get Socket API token from Vault
+        id: vault-secrets
+        uses: grafana/shared-workflows/actions/get-vault-secrets@e46fe1e9a2bf9e618bcf8d8d32f3a7381b45c06d # get-vault-secrets/v2.0.0
+        with:
+          common_secrets: |
+            SOCKET_API_TOKEN=socket:SOCKET_API_KEY
+
+      - name: Export SPDX SBOM from Socket
+        id: export-sbom
+        uses: grafana/shared-workflows/actions/socket-export-sbom@73f73d35ceadf46221741d45faefec0c5a990e6b # socket-export-sbom/v1.0.0
+        with:
+          socket_api_token: ${{ fromJSON(steps.vault-secrets.outputs.secrets).SOCKET_API_TOKEN }}
+          socket_org: grafana
+          branch: ${{ steps.version.outputs.tag }}
+          output_file: ${{ github.event.repository.name }}-${{ steps.version.outputs.tag }}.spdx.json
+
+      - name: Upload SBOM to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+          SBOM_PATH: ${{ steps.export-sbom.outputs.path }}
+        run: gh release upload "$TAG" "$SBOM_PATH" --clobber

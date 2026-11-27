@@ -70,6 +70,11 @@ func readLine[R lineReader](r *bufio.Reader, buff R) (*Item, error) {
 	it := new(Item)
 	size, err := scanGetResponseLine(line, it)
 	if err != nil {
+		// The line is not a VALUE line: check whether it's a protocol-level
+		// server error before reporting it as unexpected.
+		if serverErr := serverErrorFromLine(line); serverErr != nil {
+			return nil, serverErr
+		}
 		return nil, err
 	}
 

@@ -19,4 +19,4 @@
 // [Prometheus Golang client library]: https://github.com/prometheus/client_golang
 // [HistogramOpts]: https://pkg.go.dev/github.com/prometheus/client_golang/prometheus#HistogramOpts
 // [benchmarks]: https://github.com/open-telemetry/opentelemetry-go-contrib/blob/main/bridges/prometheus/BENCHMARKS.md
-package prometheus // import "go.opentelemetry.io/contrib/bridges/prometheus"
+package prometheus

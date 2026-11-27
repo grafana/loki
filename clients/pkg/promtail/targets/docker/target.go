@@ -8,10 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/moby/moby/client"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -89,14 +88,14 @@ func (t *Target) processLoop(ctx context.Context) {
 	t.wg.Add(1)
 	defer t.wg.Done()
 
-	opts := container.LogsOptions{
+	opts := client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
 		Timestamps: true,
 		Since:      strconv.FormatInt(t.since, 10),
 	}
-	inspectInfo, err := t.client.ContainerInspect(ctx, t.containerName)
+	inspectInfo, err := t.client.ContainerInspect(ctx, t.containerName, client.ContainerInspectOptions{})
 	if err != nil {
 		level.Error(t.logger).Log("msg", "could not inspect container info", "container", t.containerName, "err", err)
 		t.err = err
@@ -122,7 +121,7 @@ func (t *Target) processLoop(ctx context.Context) {
 		}()
 		var written int64
 		var err error
-		if inspectInfo.Config.Tty {
+		if inspectInfo.Container.Config.Tty {
 			written, err = framedstdcopy.NoHeaderFramedStdCopy(cstdout, logs)
 		} else {
 			written, err = framedstdcopy.FramedStdCopy(cstdout, cstderr, logs)

@@ -14,4 +14,5 @@ const (
 	RefreshToken     = "refresh_token"
 	ClientCredential = "client_credentials"
 	ClientAssertion  = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+	UserFIC          = "user_fic"
 )

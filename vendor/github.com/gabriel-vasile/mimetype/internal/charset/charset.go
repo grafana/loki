@@ -84,19 +84,8 @@ func FromPlain(content []byte) string {
 			break
 		}
 	}
-	hasHighBit := false
-	for _, c := range content {
-		if c >= 0x80 {
-			hasHighBit = true
-			break
-		}
-	}
-	if hasHighBit && utf8.Valid(content) {
-		return "utf-8"
-	}
-
 	// ASCII is a subset of UTF8. Follow W3C recommendation and replace with UTF8.
-	if ascii(origContent) {
+	if utf8.Valid(content) {
 		return "utf-8"
 	}
 
@@ -121,15 +110,6 @@ func latin(content []byte) string {
 		return "windows-1252"
 	}
 	return "iso-8859-1"
-}
-
-func ascii(content []byte) bool {
-	for _, b := range content {
-		if textChars[b] != T {
-			return false
-		}
-	}
-	return true
 }
 
 // FromXML returns the charset of an XML document. It relies on the XML

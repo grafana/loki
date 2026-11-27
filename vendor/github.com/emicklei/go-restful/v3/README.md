@@ -2,7 +2,6 @@ go-restful
 ==========
 package for building REST-style Web Services using Google Go
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/emicklei/go-restful)](https://goreportcard.com/report/github.com/emicklei/go-restful)
 [![Go Reference](https://pkg.go.dev/badge/github.com/emicklei/go-restful.svg)](https://pkg.go.dev/github.com/emicklei/go-restful/v3)
 [![codecov](https://codecov.io/gh/emicklei/go-restful/branch/master/graph/badge.svg)](https://codecov.io/gh/emicklei/go-restful)
 
@@ -84,6 +83,7 @@ func (u UserResource) findUser(request *restful.Request, response *restful.Respo
 - Configurable (trace) logging
 - Customizable gzip/deflate readers and writers using CompressorProvider registration
 - Inject your own http.Handler using the `HttpMiddlewareHandlerToFilter` function
+- Added `SetPathTokenCacheEnabled` and `SetCustomVerbCacheEnabled` to disable regexp caching (default=true)
 
 ## How to customize
 There are several hooks to customize the behavior of the go-restful package.

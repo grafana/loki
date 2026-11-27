@@ -16,7 +16,16 @@ type NfsActionsService interface {
 	Detach(ctx context.Context, nfsShareId string, vpcID string, region string) (*NfsAction, *Response, error)
 	Reassign(ctx context.Context, nfsShareId, oldVpcID, newVpcID string) (*NfsAction, *Response, error)
 	SwitchPerformanceTier(ctx context.Context, nfsShareId string, tier string) (*NfsAction, *Response, error)
+	// Get retrieves an NFS action by ID, e.g. to poll an action to completion.
+	Get(ctx context.Context, actionID string) (*NfsAction, *Response, error)
 }
+
+// NfsActionStatus values as returned by the NFS API.
+const (
+	NfsActionStatusInProgress = "IN_PROGRESS"
+	NfsActionStatusCompleted  = "COMPLETED"
+	NfsActionStatusFailed     = "ACTION_FAILED"
+)
 
 // NfsActionsServiceOp handles communication with the NFS action related
 // methods of the DigitalOcean API.
@@ -154,6 +163,29 @@ func (s *NfsActionsServiceOp) SwitchPerformanceTier(ctx context.Context, nfsShar
 
 	return s.doAction(ctx, nfsShareId, request)
 }
+
+// Get retrieves an NFS action by ID.
+func (s *NfsActionsServiceOp) Get(ctx context.Context, actionID string) (*NfsAction, *Response, error) {
+	if actionID == "" {
+		return nil, nil, NewArgError("actionID", "cannot be empty")
+	}
+
+	path := fmt.Sprintf("%s/actions/%s", nfsBasePath, actionID)
+
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(nfsActionRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.Event, resp, nil
+}
+
 func (s *NfsActionsServiceOp) doAction(ctx context.Context, nfsShareId string, request *NfsActionRequest) (*NfsAction, *Response, error) {
 	if request == nil {
 		return nil, nil, NewArgError("request", "request can't be nil")

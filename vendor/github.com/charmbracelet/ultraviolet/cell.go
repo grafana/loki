@@ -65,6 +65,12 @@ func (c *Cell) IsZero() bool {
 	return *c == Cell{}
 }
 
+// isWidePlaceholder reports whether the cell is the continuation column of a
+// wide cell, marked with a zero display width.
+func (c *Cell) isWidePlaceholder() bool {
+	return c != nil && c.Width == 0
+}
+
 // Clone returns a copy of the cell.
 func (c *Cell) Clone() (n *Cell) {
 	n = new(Cell)

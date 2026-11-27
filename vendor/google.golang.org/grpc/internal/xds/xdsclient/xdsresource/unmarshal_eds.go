@@ -26,6 +26,7 @@ import (
 	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	v3endpointpb "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	v3typepb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"google.golang.org/grpc/experimental/balancer/hostname"
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/pretty"
 	xdsinternal "google.golang.org/grpc/internal/xds"
@@ -36,27 +37,12 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// hostnameKeyType is the key to store the hostname attribute in
-// a resolver.Endpoint.
-type hostnameKeyType struct{}
-
-// SetHostname returns a copy of the given endpoint with hostname added
-// as an attribute.
-func SetHostname(endpoint resolver.Endpoint, hostname string) resolver.Endpoint {
-	// Only set if non-empty; xds_cluster_impl uses this to trigger :authority
-	// rewriting.
-	if hostname == "" {
-		return endpoint
-	}
-	endpoint.Attributes = endpoint.Attributes.WithValue(hostnameKeyType{}, hostname)
-	return endpoint
-}
-
-// Hostname returns the hostname from the BalancerAttributes of the given
-// Address. If this attribute is not set, it returns the empty string.
+// Hostname returns the hostname from the BalancerAttributes of the
+// given Address. If this attribute is not set, it returns the empty
+// string.
 func Hostname(addr resolver.Address) string {
-	hostname, _ := addr.BalancerAttributes.Value(hostnameKeyType{}).(string)
-	return hostname
+	ep := resolver.Endpoint{Attributes: addr.BalancerAttributes}
+	return hostname.FromEndpoint(ep)
 }
 
 func unmarshalEndpointsResource(r *anypb.Any) (string, EndpointsUpdate, error) {
@@ -91,7 +77,7 @@ func parseAddress(socketAddress *v3corepb.SocketAddress) string {
 	return net.JoinHostPort(socketAddress.GetAddress(), strconv.Itoa(int(socketAddress.GetPortValue())))
 }
 
-func parseDropPolicy(dropPolicy *v3endpointpb.ClusterLoadAssignment_Policy_DropOverload) OverloadDropConfig {
+func parseDropPolicy(dropPolicy *v3endpointpb.ClusterLoadAssignment_Policy_DropOverload) (OverloadDropConfig, error) {
 	percentage := dropPolicy.GetDropPercentage()
 	var (
 		numerator   = percentage.GetNumerator()
@@ -104,12 +90,14 @@ func parseDropPolicy(dropPolicy *v3endpointpb.ClusterLoadAssignment_Policy_DropO
 		denominator = 10000
 	case v3typepb.FractionalPercent_MILLION:
 		denominator = 1000000
+	default:
+		return OverloadDropConfig{}, fmt.Errorf("EDS response contains a drop policy with unsupported denominator: %v", percentage.GetDenominator())
 	}
 	return OverloadDropConfig{
 		Category:    dropPolicy.GetCategory(),
 		Numerator:   numerator,
 		Denominator: denominator,
-	}
+	}, nil
 }
 
 func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs map[string]bool) ([]Endpoint, error) {
@@ -166,7 +154,7 @@ func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs 
 			}
 		}
 		endpoint := resolver.Endpoint{Addresses: address}
-		endpoint = SetHostname(endpoint, lbEndpoint.GetEndpoint().GetHostname())
+		endpoint = hostname.Set(endpoint, lbEndpoint.GetEndpoint().GetHostname())
 		endpoint = ringhash.SetHashKey(endpoint, hashKey)
 		endpoints = append(endpoints, Endpoint{
 			ResolverEndpoint: endpoint,
@@ -193,7 +181,11 @@ func hashKeyFromMetadata(metadata map[string]any) string {
 func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment) (EndpointsUpdate, error) {
 	ret := EndpointsUpdate{}
 	for _, dropPolicy := range m.GetPolicy().GetDropOverloads() {
-		ret.Drops = append(ret.Drops, parseDropPolicy(dropPolicy))
+		drop, err := parseDropPolicy(dropPolicy)
+		if err != nil {
+			return EndpointsUpdate{}, err
+		}
+		ret.Drops = append(ret.Drops, drop)
 	}
 	priorities := make(map[uint32]map[string]bool)
 	sumOfWeights := make(map[uint32]uint64)
@@ -268,6 +260,8 @@ func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment) (EndpointsUpdate, 
 	return ret, nil
 }
 
+// validateAndConstructMetadata processes the metadata from the xDS resource
+// and returns a map of parsed metadata values.
 func validateAndConstructMetadata(metadataProto *v3corepb.Metadata) (map[string]any, error) {
 	if metadataProto == nil {
 		return nil, nil

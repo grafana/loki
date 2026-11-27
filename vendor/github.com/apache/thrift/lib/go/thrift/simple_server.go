@@ -245,7 +245,7 @@ func (p *TSimpleServer) AcceptLoop() error {
 }
 
 func (p *TSimpleServer) Serve() error {
-	p.logContext.CompareAndSwap(nil, Pointer(context.Background()))
+	p.logContext.CompareAndSwap(nil, new(context.Background()))
 
 	err := p.Listen()
 	if err != nil {

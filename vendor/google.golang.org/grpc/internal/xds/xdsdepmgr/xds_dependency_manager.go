@@ -203,6 +203,12 @@ func (m *DependencyManager) Close() {
 		dnsResolver.stop()
 		delete(m.dnsResolvers, name)
 	}
+
+	// Drop references to externally-owned collaborators so the dependency
+	// manager itself doesn't retain them once Close returns. All in-flight
+	// callbacks re-check m.stopped under m.mu before touching these fields.
+	m.watcher = nil
+	m.xdsClient = nil
 }
 
 // annotateErrorWithNodeID annotates the given error with the provided xDS node
@@ -498,6 +504,16 @@ func (m *DependencyManager) applyRouteConfigUpdateLocked(update *xdsresource.Rou
 }
 
 func (m *DependencyManager) onListenerResourceUpdate(update *xdsresource.ListenerUpdate, onDone func()) {
+	// A client-side listener update must contain API listener configuration. If
+	// it is nil, it indicates that a server-side listener (TCP Listener) resource
+	// was received instead. We report this error to the resolver watcher so it
+	// can transition the channel into TRANSIENT_FAILURE.
+	if update.APIListener == nil {
+		err := fmt.Errorf("client-side listener resource %q does not contain API listener configuration", m.ldsResourceName)
+		m.onListenerResourceError(err, onDone)
+		return
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -512,7 +528,7 @@ func (m *DependencyManager) onListenerResourceUpdate(update *xdsresource.Listene
 
 	m.listenerWatcher.setLastUpdate(update)
 
-	if update.APIListener != nil && update.APIListener.InlineRouteConfig != nil {
+	if update.APIListener.InlineRouteConfig != nil {
 		// If there was a previous route config watcher because of a non-inline
 		// route configuration, cancel it.
 		m.rdsResourceName = ""
@@ -527,10 +543,6 @@ func (m *DependencyManager) onListenerResourceUpdate(update *xdsresource.Listene
 	// We get here only if there was no inline route configuration. If the route
 	// config name has not changed, send an update with existing route
 	// configuration and the newly received listener configuration.
-	if update.APIListener == nil {
-		m.logger.Errorf("Received a listener resource with no api_listener configuration")
-		return
-	}
 	if m.rdsResourceName == update.APIListener.RouteConfigName {
 		m.maybeSendUpdateLocked()
 		return
@@ -993,6 +1005,13 @@ func (m *DependencyManager) SubscribeToCluster(name string) func() {
 func (m *DependencyManager) unsubscribeFromCluster(name string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// Balancers can invoke the unsubscribe closure returned by
+	// SubscribeToCluster after Close has already torn down all watchers and
+	// dropped m.watcher / m.xdsClient. Match the m.stopped guard used by
+	// every other post-Close callback in this file.
+	if m.stopped {
+		return
+	}
 	c := m.clusterSubscriptions[name]
 	c.dynamicRefCount--
 	// This should not happen as unsubscribe returned from the

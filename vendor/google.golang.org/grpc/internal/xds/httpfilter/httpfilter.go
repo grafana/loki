@@ -21,7 +21,12 @@
 package httpfilter
 
 import (
+	"context"
+
+	"google.golang.org/grpc"
+	estats "google.golang.org/grpc/experimental/stats"
 	iresolver "google.golang.org/grpc/internal/resolver"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -30,6 +35,27 @@ import (
 type FilterConfig interface {
 	isFilterConfig()
 }
+
+// ParseOptions contains additional information passed to the HTTP filter's
+// config parsing methods.
+type ParseOptions struct {
+	// BootstrapConfig contains the complete bootstrap configuration used by the
+	// xDS client that received the resource being parsed.
+	BootstrapConfig *bootstrap.Config
+	// ServerConfig contains the configuration of the xDS management server that
+	// sent the resource being parsed.
+	ServerConfig *bootstrap.ServerConfig
+}
+
+// DisabledFilterConfig represents a disabled filter override. It implements the
+// FilterConfig interface and can be returned by ParseFilterConfigOverride to
+// indicate that the filter should be disabled. It is not used as a config for
+// any filter, and is only used as a marker in the override configuration. For
+// more information, see
+// envoyproxy.io/docs/envoy/latest/intro/arch_overview/http/http_filters#route-based-filter-chain
+type DisabledFilterConfig struct{}
+
+func (DisabledFilterConfig) isFilterConfig() {}
 
 // Builder defines the parsing functionality of an HTTP filter.  A Builder may
 // optionally implement either ClientFilterBuilder or ServerFilterBuilder or
@@ -44,23 +70,48 @@ type Builder interface {
 	// udpa.type.v1.TypedStruct, or an xds.type.v3.TypedStruct for filters that
 	// do not accept a custom type. The resulting FilterConfig will later be
 	// passed to Build.
-	ParseFilterConfig(proto.Message) (FilterConfig, error)
+	ParseFilterConfig(proto.Message, ParseOptions) (FilterConfig, error)
 	// ParseFilterConfigOverride parses the provided override configuration
 	// proto.Message from the RDS override configuration of this filter.  This
 	// may be an anypb.Any, a udpa.type.v1.TypedStruct, or an
 	// xds.type.v3.TypedStruct for filters that do not accept a custom type.
 	// The resulting FilterConfig will later be passed to Build.
-	ParseFilterConfigOverride(proto.Message) (FilterConfig, error)
+	ParseFilterConfigOverride(proto.Message, ParseOptions) (FilterConfig, error)
 	// IsTerminal returns whether this Filter is terminal or not (i.e. it must
 	// be last filter in the filter chain).
 	IsTerminal() bool
+}
+
+// ClientInterceptor is an interceptor for gRPC client streams.
+type ClientInterceptor interface {
+	// NewStream creates a ClientStream for an RPC.
+	//
+	// Implementations may delegate stream creation to the provided newStream
+	// function, passing the provided CallOption slice along with any new
+	// CallOption instances they wish to add. To intercept or override stream
+	// behavior, implementations may wrap the ClientStream returned by the
+	// delegate.
+	//
+	// Note: RPCInfo.Context is currently unused and will be nil.
+	NewStream(ctx context.Context, ri iresolver.RPCInfo, newStream func(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStream, error), opts ...grpc.CallOption) (grpc.ClientStream, error)
+
+	// Close closes the interceptor. No new RPCs will be dispatched to this
+	// interceptor, but ongoing calls to NewStream are allowed to complete.
+	Close()
+}
+
+// ClientFilterOptions contains options for building a client filter.
+type ClientFilterOptions struct {
+	FilterName      string                 // FilterName is the filter name from the xDS configuration.
+	MetricsRecorder estats.MetricsRecorder // MetricsRecorder is the metrics recorder to capture metrics for the filter.
+	Target          string                 // Target is the target string of the channel.
 }
 
 // ClientFilterBuilder is an optional interface that a Builder can implement to
 // indicate its capability to build client-side filters.
 type ClientFilterBuilder interface {
 	// BuildClientFilter constructs a ClientFilter.
-	BuildClientFilter() ClientFilter
+	BuildClientFilter(opts ClientFilterOptions) ClientFilter
 }
 
 // ClientFilter represents the actual filter implementation on the client side.
@@ -74,9 +125,28 @@ type ClientFilter interface {
 	//
 	// It is valid for this method to return a nil Interceptor and a nil error.
 	// In this case, the RPC will not be intercepted by this filter.
-	BuildClientInterceptor(config, override FilterConfig) (iresolver.ClientInterceptor, error)
+	BuildClientInterceptor(config, override FilterConfig) (ClientInterceptor, error)
 
 	// Close is called when the filter is no longer needed.
+	Close()
+}
+
+// ServerInterceptor is an interceptor for incoming RPC's on gRPC server side.
+type ServerInterceptor interface {
+	// InterceptRPC intercepts an incoming RPC on the server side.
+	//
+	// On success, implementations must return either the original ServerStream
+	// or a wrapped ServerStream, with a nil error.
+	//
+	// Returning a non-nil error will terminate the RPC with that error.
+	// Implementations are expected to return an error created using the status
+	// package; otherwise, the RPC will fail with an UNKNOWN status code.
+	//
+	// Implementations should never return (nil, nil).
+	InterceptRPC(ss grpc.ServerStream) (grpc.ServerStream, error)
+
+	// Close closes the interceptor. No new RPCs will be dispatched to this
+	// interceptor, but ongoing calls to InterceptRPC are allowed to complete.
 	Close()
 }
 
@@ -98,7 +168,7 @@ type ServerFilter interface {
 	//
 	// It is valid for this method to return a nil Interceptor and a nil error.
 	// In this case, the RPC will not be intercepted by this filter.
-	BuildServerInterceptor(config, override FilterConfig) (iresolver.ServerInterceptor, error)
+	BuildServerInterceptor(config, override FilterConfig) (ServerInterceptor, error)
 
 	// Close is called when the filter is no longer needed.
 	Close()

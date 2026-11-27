@@ -30,7 +30,7 @@ func (s *TerminalRenderer) updateHashmap(newbuf *RenderBuffer) {
 	if len(s.oldhash) >= height && len(s.newhash) >= height {
 		// rehash changed lines
 		for i := range height {
-			if newbuf.Touched == nil || newbuf.Touched[i] != nil {
+			if newbuf.Touched[i] != nil {
 				// TODO: Investigate why this is needed. If we remove this
 				// line, scroll optimization does not work correctly. This
 				// should happen else where.

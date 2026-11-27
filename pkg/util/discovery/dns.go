@@ -24,7 +24,7 @@ type DNS struct {
 }
 
 func NewDNS(logger log.Logger, cleanupPeriod time.Duration, address string, reg prometheus.Registerer) *DNS {
-	dnsProvider := dns.NewProvider(logger, reg, dns.GolangResolverType)
+	dnsProvider := dns.NewProvider(dns.GolangResolverType, 0, logger, reg)
 	d := &DNS{
 		logger:        logger,
 		cleanupPeriod: cleanupPeriod,

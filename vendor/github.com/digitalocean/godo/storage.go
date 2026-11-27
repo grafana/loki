@@ -13,6 +13,29 @@ const (
 	storageSnapPath  = storageBasePath + "/snapshots"
 )
 
+// Block storage error codes. These constant are only supposed to be string matched against
+// the error message which API/godo returns. Later this may return proper error codes like
+// volume_capacity_limit_exceeded or snapshot_capacity_limit_exceeded once error responses
+// support proper error codes.
+const (
+	// ErrVolumeCapacityLimitExceeded means the account is at its volume/snapshot capacity limit.
+	ErrVolumeCapacityLimitExceeded = "capacity limit exceeded"
+
+	// ErrVolumeAlreadyAttached means volume is already attached to an existing droplet.
+	ErrVolumeAlreadyAttached = "This volume is already attached"
+
+	// ErrDropletPendingEvent means the volume couldn't be attached because the droplet has a pending
+	// volume event.
+	ErrDropletPendingEvent = "Droplet already has a pending event"
+
+	// ErrPerDropletVolumeCountLimit means number of volumes which can be attached to a droplet has reached
+	// its limit.
+	ErrPerDropletVolumeCountLimit = "cannot attach more volumes to the Droplet"
+
+	// ErrAttachmentNotFound means the volume to be detached from a droplet is not attached currently.
+	ErrAttachmentNotFound = "Attachment not found"
+)
+
 // StorageService is an interface for interfacing with the storage
 // endpoints of the Digital Ocean API.
 // See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Block-Storage

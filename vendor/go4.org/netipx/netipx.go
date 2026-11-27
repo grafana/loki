@@ -51,6 +51,21 @@ func FromStdIPRaw(std net.IP) (ip netip.Addr, ok bool) {
 	return netip.AddrFromSlice(std)
 }
 
+// ParsePrefixOrAddr parses s as an IP address prefix or IP address. If s parses
+// as an IP address prefix, its [net/netip.Prefix.Addr] is returned. The string
+// s can be an IPv4 address ("192.0.2.1"), IPv6 address ("2001:db8::68"), IPv4
+// prefix ("192.0.2.1/32"), or IPv6 prefix ("2001:db:68/96").
+func ParsePrefixOrAddr(s string) (netip.Addr, error) {
+	// Factored out of netip.ParsePrefix to avoid allocating an empty netip.Prefix in case it's
+	// an address and not a prefix.
+	i := strings.LastIndexByte(s, '/')
+	if i < 0 {
+		return netip.ParseAddr(s)
+	}
+	prefix, err := netip.ParsePrefix(s)
+	return prefix.Addr(), err
+}
+
 // AddrNext returns the IP following ip.
 // If there is none, it returns the IP zero value.
 //
@@ -174,22 +189,16 @@ func PrefixLastIP(p netip.Prefix) netip.Addr {
 	if !p.IsValid() {
 		return netip.Addr{}
 	}
-	a16 := p.Addr().As16()
-	var off uint8
-	var bits uint8 = 128
+	if p.Bits() == p.Addr().BitLen() {
+		// Single-IP prefix; no host bits to set.
+		// (An addr in a valid Prefix never has a zone.)
+		return p.Addr()
+	}
+	u := u128From16(p.Addr().As16())
 	if p.Addr().Is4() {
-		off = 12
-		bits = 32
+		return u.bitsSetFrom(uint8(96 + p.Bits())).IP4()
 	}
-	for b := uint8(p.Bits()); b < bits; b++ {
-		byteNum, bitInByte := b/8, 7-(b%8)
-		a16[off+byteNum] |= 1 << uint(bitInByte)
-	}
-	if p.Addr().Is4() {
-		return netip.AddrFrom16(a16).Unmap()
-	} else {
-		return netip.AddrFrom16(a16) // doesn't unmap
-	}
+	return u.bitsSetFrom(uint8(p.Bits())).IP6() // doesn't unmap
 }
 
 // IPRange represents an inclusive range of IP addresses
@@ -544,4 +553,26 @@ func appendRangePrefixes(dst []netip.Prefix, makePrefix prefixMaker, a, b uint12
 	dst = appendRangePrefixes(dst, makePrefix, a, a.bitsSetFrom(common+1))
 	dst = appendRangePrefixes(dst, makePrefix, b.bitsClearedFrom(common+1), b)
 	return dst
+}
+
+// ComparePrefix is a compare function (returning -1, 0 or 1)
+// sorting prefixes first by address family (IPv4 before IPv6),
+// then by prefix length (smaller prefixes first), then by
+// address.
+func ComparePrefix(a, b netip.Prefix) int {
+	aa, ba := a.Addr(), b.Addr()
+	if al, bl := aa.BitLen(), ba.BitLen(); al != bl {
+		if al < bl {
+			return -1
+		}
+		return 1
+	}
+	ab, bb := a.Bits(), b.Bits()
+	if ab != bb {
+		if ab < bb {
+			return -1
+		}
+		return 1
+	}
+	return aa.Compare(ba)
 }

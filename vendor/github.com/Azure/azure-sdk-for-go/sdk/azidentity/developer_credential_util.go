@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -9,6 +6,7 @@ package azidentity
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -45,12 +43,15 @@ var shellExec = func(ctx context.Context, credName, command string) ([]byte, err
 		return stdout, nil
 	}
 	if err != nil {
-		msg := stderr.String()
+		msg := strings.Trim(stderr.String(), "\r\n")
 		var exErr *exec.ExitError
 		if errors.As(err, &exErr) && exErr.ExitCode() == 127 || strings.Contains(msg, "' is not recognized") {
 			return nil, newCredentialUnavailableError(credName, "executable not found on path")
 		}
-		if credName == credNameAzurePowerShell {
+		switch credName {
+		case credNameAzureDeveloperCLI:
+			msg = extractAzdError(msg)
+		case credNameAzurePowerShell:
 			if strings.Contains(msg, "Connect-AzAccount") {
 				msg = `Please run "Connect-AzAccount" to set up an account`
 			}
@@ -80,9 +81,47 @@ func unavailableIfInDAC(err error, inDefaultChain bool) error {
 // validScope is for credentials authenticating via external tools. The authority validates scopes for all other credentials.
 func validScope(scope string) bool {
 	for _, r := range scope {
-		if !(alphanumeric(r) || r == '.' || r == '-' || r == '_' || r == '/' || r == ':') {
+		if !alphanumeric(r) && r != '.' && r != '-' && r != '_' && r != '/' && r != ':' {
 			return false
 		}
 	}
 	return true
+}
+
+// extractAzdError extracts a human-readable error message from azd's stderr JSON output.
+// azd writes JSON error messages to stderr. The format depends on the azd version:
+//   - v1.23.7+: {"error":"...","message":"...","suggestion":"..."} (may be preceded by an empty consoleMessage line)
+//   - pre-v1.23.7: {"type":"consoleMessage","data":{"message":"..."}}
+//
+// Prefer the structured "error" format, fall back to legacy consoleMessage.
+func extractAzdError(msg string) string {
+	lines := strings.Split(msg, "\n")
+	fallback := ""
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		var errObj struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal([]byte(line), &errObj) == nil && errObj.Error != "" {
+			return errObj.Error
+		}
+
+		if fallback == "" {
+			var obj struct {
+				Data struct {
+					Message string `json:"message"`
+				} `json:"data"`
+			}
+			if json.Unmarshal([]byte(line), &obj) == nil {
+				if m := strings.TrimSpace(obj.Data.Message); m != "" {
+					fallback = m
+				}
+			}
+		}
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return msg
 }

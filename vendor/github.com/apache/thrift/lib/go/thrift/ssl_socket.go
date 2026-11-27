@@ -51,9 +51,8 @@ type TSSLSocket struct {
 //	    }
 //	})
 func NewTSSLSocketConf(hostPort string, conf *TConfiguration) *TSSLSocket {
-	if cfg := conf.GetTLSConfig(); cfg != nil && cfg.MinVersion == 0 {
-		cfg.MinVersion = tls.VersionTLS10
-	}
+	// Leave an unset MinVersion alone so crypto/tls applies its own default
+	// floor rather than pinning an older minimum here.
 	return &TSSLSocket{
 		hostPort: hostPort,
 		cfg:      conf,
@@ -255,8 +254,7 @@ func (p *TSSLSocket) Interrupt() error {
 }
 
 func (p *TSSLSocket) RemainingBytes() (num_bytes uint64) {
-	const maxSize = ^uint64(0)
-	return maxSize // the truth is, we just don't know unless framed is used
+	return UnknownRemainingBytes
 }
 
 var _ TConfigurationSetter = (*TSSLSocket)(nil)

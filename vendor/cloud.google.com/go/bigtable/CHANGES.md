@@ -1,5 +1,9 @@
 # Changes
 
+## [1.45.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.45.0) (2026-03-31)
+
+## [1.44.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.44.0) (2026-03-30)
+
 ## [1.43.0](https://github.com/googleapis/google-cloud-go/releases/tag/bigtable%2Fv1.43.0) (2026-03-16)
 
 ### Features

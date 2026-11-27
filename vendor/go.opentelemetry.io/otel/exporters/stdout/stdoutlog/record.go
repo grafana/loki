@@ -1,79 +1,18 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package stdoutlog // import "go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
+package stdoutlog
 
 import (
-	"encoding/json"
-	"errors"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/trace"
 )
-
-func newValue(v log.Value) value {
-	return value{Value: v}
-}
-
-type value struct {
-	log.Value
-}
-
-// MarshalJSON implements a custom marshal function to encode log.Value.
-func (v value) MarshalJSON() ([]byte, error) {
-	var jsonVal struct {
-		Type  string
-		Value any
-	}
-	jsonVal.Type = v.Kind().String()
-
-	switch v.Kind() {
-	case log.KindString:
-		jsonVal.Value = v.AsString()
-	case log.KindInt64:
-		jsonVal.Value = v.AsInt64()
-	case log.KindFloat64:
-		jsonVal.Value = v.AsFloat64()
-	case log.KindBool:
-		jsonVal.Value = v.AsBool()
-	case log.KindBytes:
-		jsonVal.Value = v.AsBytes()
-	case log.KindMap:
-		m := v.AsMap()
-		values := make([]keyValue, 0, len(m))
-		for _, kv := range m {
-			values = append(values, keyValue{
-				Key:   kv.Key,
-				Value: newValue(kv.Value),
-			})
-		}
-
-		jsonVal.Value = values
-	case log.KindSlice:
-		s := v.AsSlice()
-		values := make([]value, 0, len(s))
-		for _, e := range s {
-			values = append(values, newValue(e))
-		}
-
-		jsonVal.Value = values
-	case log.KindEmpty:
-		jsonVal.Value = nil
-	default:
-		return nil, errors.New("invalid Kind")
-	}
-
-	return json.Marshal(jsonVal)
-}
-
-type keyValue struct {
-	Key   string
-	Value value
-}
 
 // recordJSON is a JSON-serializable representation of a Record.
 type recordJSON struct {
@@ -82,8 +21,8 @@ type recordJSON struct {
 	EventName         string     `json:",omitempty"`
 	Severity          log.Severity
 	SeverityText      string
-	Body              value
-	Attributes        []keyValue
+	Body              attribute.Value
+	Attributes        []attribute.KeyValue
 	TraceID           trace.TraceID
 	SpanID            trace.SpanID
 	TraceFlags        trace.TraceFlags
@@ -98,13 +37,13 @@ func (e *Exporter) newRecordJSON(r sdklog.Record) recordJSON {
 		EventName:    r.EventName(),
 		Severity:     r.Severity(),
 		SeverityText: r.SeverityText(),
-		Body:         newValue(r.Body()),
+		Body:         r.Body(),
 
 		TraceID:    r.TraceID(),
 		SpanID:     r.SpanID(),
 		TraceFlags: r.TraceFlags(),
 
-		Attributes: make([]keyValue, 0, r.AttributesLen()),
+		Attributes: make([]attribute.KeyValue, 0, r.AttributesLen()),
 
 		Resource: res,
 		Scope:    r.InstrumentationScope(),
@@ -112,11 +51,8 @@ func (e *Exporter) newRecordJSON(r sdklog.Record) recordJSON {
 		DroppedAttributes: r.DroppedAttributes(),
 	}
 
-	r.WalkAttributes(func(kv log.KeyValue) bool {
-		newRecord.Attributes = append(newRecord.Attributes, keyValue{
-			Key:   kv.Key,
-			Value: newValue(kv.Value),
-		})
+	r.WalkAttributes(func(kv attribute.KeyValue) bool {
+		newRecord.Attributes = append(newRecord.Attributes, kv)
 		return true
 	})
 

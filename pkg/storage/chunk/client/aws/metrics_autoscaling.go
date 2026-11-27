@@ -356,7 +356,7 @@ func promQuery(ctx context.Context, promAPI promV1.API, query string, duration, 
 		Step:  step,
 	}
 
-	value, wrngs, err := promAPI.QueryRange(ctx, query, queryRange)
+	value, wrngs, _, err := promAPI.QueryRange(ctx, query, queryRange)
 	if err != nil {
 		return nil, err
 	}

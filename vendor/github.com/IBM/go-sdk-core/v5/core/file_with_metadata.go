@@ -45,7 +45,7 @@ func NewFileWithMetadata(data io.ReadCloser) (model *FileWithMetadata, err error
 // UnmarshalFileWithMetadata unmarshals an instance of FileWithMetadata from the specified map of raw messages.
 // The "data" field is assumed to be a string, the value of which is assumed to be a path to the file that
 // contains the data intended for the FileWithMetadata struct.
-func UnmarshalFileWithMetadata(m map[string]json.RawMessage, result interface{}) (err error) {
+func UnmarshalFileWithMetadata(m map[string]json.RawMessage, result any) (err error) {
 	obj := new(FileWithMetadata)
 
 	// unmarshal the data field as a filename and read the contents

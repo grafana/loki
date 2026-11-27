@@ -6,6 +6,7 @@ package libc // import "modernc.org/libc"
 
 import (
 	"math/bits"
+	"runtime"
 	"sync/atomic"
 	"unsafe"
 )
@@ -49,4 +50,24 @@ func _a_or(tls *TLS, p uintptr, v int32) {
 
 func _a_swap(tls *TLS, p uintptr, v int32) int32 {
 	return atomic.SwapInt32((*int32)(unsafe.Pointer(p)), v)
+}
+
+// The i386 atomic_arch.h overlay declares a_inc, a_dec and a_spin itself, so
+// atomic.h does not derive them. sem_timedwait.c uses all three.
+
+// static inline void a_inc(volatile int *p)
+func _a_inc(tls *TLS, p uintptr) {
+	atomic.AddInt32((*int32)(unsafe.Pointer(p)), 1)
+}
+
+// static inline void a_dec(volatile int *p)
+func _a_dec(tls *TLS, p uintptr) {
+	atomic.AddInt32((*int32)(unsafe.Pointer(p)), -1)
+}
+
+// static inline void a_spin()
+//
+// Yield like atomic64.go does, the C thread being waited for is a goroutine.
+func _a_spin(tls *TLS) {
+	runtime.Gosched()
 }

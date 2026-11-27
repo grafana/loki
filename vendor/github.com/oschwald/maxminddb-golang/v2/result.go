@@ -1,8 +1,10 @@
 package maxminddb
 
 import (
+	"errors"
 	"math"
 	"net/netip"
+	"runtime"
 )
 
 const notFound uint = math.MaxUint
@@ -19,14 +21,27 @@ type Result struct {
 // Decode unmarshals the data from the data section into the value pointed to
 // by v. If v is nil or not a pointer, an error is returned. If the data in
 // the database record cannot be stored in v because of type differences, an
-// UnmarshalTypeError is returned. If the database is invalid or otherwise
-// cannot be read, an InvalidDatabaseError is returned.
+// UnmarshalTypeError is returned. An InvalidDatabaseError is returned when the
+// data is malformed or rejected by structural, resource, or schema validation,
+// including maxsize and generated duplicate-field checks.
 //
 // An error will also be returned if there was an error during the
 // Reader.Lookup call.
 //
 // If the Reader.Lookup call did not find a value for the IP address, no error
 // will be returned and v will be unchanged.
+//
+// Reflection decoding limits each operation to 32,768 declared container child
+// slots and a separate exact 2 MiB allowance for all materialized string,
+// byte-slice, and dynamic map-key payload. Maps and slices reserve their
+// children before allocation or traversal; repeated pointer targets share the
+// same limits. Decoding into any activates the limits even for a root scalar.
+// A standalone scalar decoded into a directly typed destination or a named
+// empty-interface type is decoded without them because it cannot amplify.
+// Custom unmarshalers control and must bound their own traversal and allocation.
+// Call [Reader.Verify] before using an untrusted database with custom or
+// low-level decoding, and keep the verified backing data unchanged for the
+// Reader's lifetime.
 func (r Result) Decode(v any) error {
 	if r.err != nil {
 		return r.err
@@ -34,8 +49,13 @@ func (r Result) Decode(v any) error {
 	if r.offset == notFound {
 		return nil
 	}
+	if r.reader == nil || r.reader.buffer == nil {
+		return errors.New("cannot call Decode on a closed database")
+	}
 
-	return r.reader.decoder.Decode(r.offset, v)
+	err := r.reader.decoder.Decode(r.offset, v)
+	runtime.KeepAlive(r.reader)
+	return err
 }
 
 // DecodePath unmarshals a value from data section into v, following the
@@ -55,7 +75,11 @@ func (r Result) Decode(v any) error {
 // return values from the end of the array, e.g., -1 will return the last
 // element.
 //
-// If the path is empty, the entire data structure is decoded into v.
+// If the path is empty, the entire data structure is decoded into v. A non-empty
+// path shares the operation limits described by [Result.Decode] across path
+// navigation and the selected value. Every inspected map key consumes its full
+// size from the shared payload allowance, and skipped inline containers consume
+// child slots without following pointer targets.
 //
 // To check if a path exists (rather than relying on zero values), decode
 // into a pointer and check if it remains nil:
@@ -92,7 +116,12 @@ func (r Result) DecodePath(v any, path ...any) error {
 	if r.offset == notFound {
 		return nil
 	}
-	return r.reader.decoder.DecodePath(r.offset, path, v)
+	if r.reader == nil || r.reader.buffer == nil {
+		return errors.New("cannot call DecodePath on a closed database")
+	}
+	err := r.reader.decoder.DecodePath(r.offset, path, v)
+	runtime.KeepAlive(r.reader)
+	return err
 }
 
 // Err provides a way to check whether there was an error during the lookup
@@ -126,19 +155,28 @@ func (r Result) Prefix() netip.Prefix {
 	prefixLen := int(r.prefixLen)
 
 	if ip.Is4() {
-		// This is necessary as the node that the IPv4 start is at may
-		// be at a bit depth that is less that 96, i.e., ipv4Start points
-		// to a leaf node. For instance, if a record was inserted at ::/8,
-		// the ipv4Start would point directly at the leaf node for the
-		// record and would have a bit depth of 8. This would not happen
-		// with databases currently distributed by MaxMind as all of them
-		// have an IPv4 subtree that is greater than a single node.
-		if prefixLen < 96 {
+		var isIPv4 bool
+		prefixLen, isIPv4 = r.ipv4PrefixLen(prefixLen)
+		if !isIPv4 {
 			return netip.PrefixFrom(zeroIP, prefixLen)
 		}
-		prefixLen -= 96
 	}
 
 	prefix, _ := ip.Prefix(prefixLen)
 	return prefix
+}
+
+func (r Result) ipv4PrefixLen(prefixLen int) (int, bool) {
+	if r.reader != nil && r.reader.hasIPv4Subtree() {
+		if prefixLen < r.reader.ipv4StartBitDepth {
+			return prefixLen, false
+		}
+		return prefixLen - r.reader.ipv4StartBitDepth, true
+	}
+
+	if prefixLen < 96 {
+		return prefixLen, false
+	}
+
+	return prefixLen - 96, true
 }

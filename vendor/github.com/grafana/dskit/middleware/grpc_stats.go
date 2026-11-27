@@ -48,45 +48,63 @@ type grpcStatsHandler struct {
 type contextKey int
 
 const (
-	contextKeyMethodName contextKey = 1
-	contextKeyRouteName  contextKey = 2
-	contextKeyConnID     contextKey = 3
+	contextKeyRouteName    contextKey = 2
+	contextKeyConnID       contextKey = 3
+	contextKeyRPCObservers contextKey = 4
 )
 
+// rpcObservers holds pre-resolved Prometheus metric handles for a single RPC.
+// They are resolved once in TagRPC and reused for every HandleRPC call,
+// eliminating per-message label hashing and mutex contention.
+type rpcObservers struct {
+	receivedPayloadSize prometheus.Observer
+	sentPayloadSize     prometheus.Observer
+	inflightRequests    prometheus.Gauge
+}
+
 func (g *grpcStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
-	return context.WithValue(ctx, contextKeyMethodName, info.FullMethodName)
+	// Pre-resolve all labeled metric handles once per stream so that HandleRPC
+	// (called on every message) can call Observe/Inc/Dec without any label
+	// hashing, map lookups, or mutex acquisitions inside the HistogramVec/GaugeVec.
+	obs := &rpcObservers{
+		receivedPayloadSize: g.receivedPayloadSize.WithLabelValues(gRPC, info.FullMethodName),
+		sentPayloadSize:     g.sentPayloadSize.WithLabelValues(gRPC, info.FullMethodName),
+		inflightRequests:    g.inflightRequests.WithLabelValues(gRPC, info.FullMethodName),
+	}
+	return context.WithValue(ctx, contextKeyRPCObservers, obs)
 }
 
 func (g *grpcStatsHandler) HandleRPC(ctx context.Context, rpcStats stats.RPCStats) {
-	// We use full method name from context, because not all RPCStats structs have it.
-	fullMethodName, ok := ctx.Value(contextKeyMethodName).(string)
+	obs, ok := ctx.Value(contextKeyRPCObservers).(*rpcObservers)
 	if !ok {
 		return
 	}
 
-	connID, hasConnID := ctx.Value(contextKeyConnID).(string)
-
 	switch s := rpcStats.(type) {
 	case *stats.Begin:
-		g.inflightRequests.WithLabelValues(gRPC, fullMethodName).Inc()
-		if hasConnID {
-			g.grpcConcurrentStreamsTracker.OpenStream(connID)
+		obs.inflightRequests.Inc()
+		if g.grpcConcurrentStreamsTracker != nil {
+			if connID, hasConnID := ctx.Value(contextKeyConnID).(string); hasConnID {
+				g.grpcConcurrentStreamsTracker.OpenStream(connID)
+			}
 		}
 	case *stats.End:
-		g.inflightRequests.WithLabelValues(gRPC, fullMethodName).Dec()
-		if hasConnID {
-			g.grpcConcurrentStreamsTracker.CloseStream(connID)
+		obs.inflightRequests.Dec()
+		if g.grpcConcurrentStreamsTracker != nil {
+			if connID, hasConnID := ctx.Value(contextKeyConnID).(string); hasConnID {
+				g.grpcConcurrentStreamsTracker.CloseStream(connID)
+			}
 		}
 	case *stats.InHeader:
 		// Ignore incoming headers.
 	case *stats.InPayload:
-		g.receivedPayloadSize.WithLabelValues(gRPC, fullMethodName).Observe(float64(s.WireLength))
+		obs.receivedPayloadSize.Observe(float64(s.WireLength))
 	case *stats.InTrailer:
 		// Ignore incoming trailers.
 	case *stats.OutHeader:
 		// Ignore outgoing headers.
 	case *stats.OutPayload:
-		g.sentPayloadSize.WithLabelValues(gRPC, fullMethodName).Observe(float64(s.WireLength))
+		obs.sentPayloadSize.Observe(float64(s.WireLength))
 	case *stats.OutTrailer:
 		// Ignore outgoing trailers. OutTrailer doesn't have valid WireLength (there is a deprecated field, always set to 0).
 	}

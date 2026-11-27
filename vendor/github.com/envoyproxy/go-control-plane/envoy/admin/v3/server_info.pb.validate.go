@@ -180,6 +180,8 @@ func (m *ServerInfo) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for HotRestartInitializing
+
 	if len(errors) > 0 {
 		return ServerInfoMultiError(errors)
 	}
@@ -425,6 +427,8 @@ func (m *CommandLineOptions) validate(all bool) error {
 	// no validation rules for CpusetThreads
 
 	// no validation rules for EnableFineGrainLogging
+
+	// no validation rules for LogStacktraceSingleEntry
 
 	// no validation rules for SocketPath
 

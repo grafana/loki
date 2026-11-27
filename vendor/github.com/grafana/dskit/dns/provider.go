@@ -55,25 +55,22 @@ func (t *ResolverType) Set(v string) error {
 	}
 }
 
-func (t ResolverType) toResolver(logger log.Logger) ipLookupResolver {
-	var r ipLookupResolver
-	switch t {
-	case GolangResolverType:
-		r = &godns.Resolver{Resolver: net.DefaultResolver}
-	case MiekgdnsResolverType:
-		r = miekgdns.NewResolver(miekgdns.DefaultResolvConfPath, logger)
-	default:
-		level.Warn(logger).Log("msg", "no such resolver type, defaulting to golang", "type", t)
-		r = &godns.Resolver{Resolver: net.DefaultResolver}
-	}
-	return r
-}
-
 // NewProvider returns a new empty provider with a given resolver type.
 // If empty resolver type is net.DefaultResolver.
-func NewProvider(logger log.Logger, reg prometheus.Registerer, resolverType ResolverType) *Provider {
+func NewProvider(resolverType ResolverType, maxIdleConnections uint, logger log.Logger, reg prometheus.Registerer) *Provider {
+	var backend ipLookupResolver
+	switch resolverType {
+	case GolangResolverType:
+		backend = &godns.Resolver{Resolver: net.DefaultResolver}
+	case MiekgdnsResolverType:
+		backend = miekgdns.NewResolver(miekgdns.DefaultResolvConfPath, maxIdleConnections, logger)
+	default:
+		level.Warn(logger).Log("msg", "no such resolver type, defaulting to golang", "type", resolverType)
+		backend = &godns.Resolver{Resolver: net.DefaultResolver}
+	}
+
 	p := &Provider{
-		resolver: NewResolver(resolverType.toResolver(logger), logger),
+		resolver: NewResolver(backend, logger),
 		resolved: make(map[string][]string),
 		logger:   logger,
 		resolverAddrsDesc: prometheus.NewDesc(

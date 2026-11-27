@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 )
 
 // NodeRole represents the role of a node in the memberlist cluster.
@@ -90,6 +91,9 @@ type zoneAwareNodeSelectionDelegate struct {
 	localZone string
 	logger    log.Logger
 
+	// Set once the local node has finished its initial cluster join attempt.
+	joined atomic.Bool
+
 	// Metrics
 	selectNodesCalls        prometheus.Counter
 	selectNodesCallsSkipped prometheus.Counter
@@ -112,6 +116,21 @@ func newZoneAwareNodeSelectionDelegate(localRole NodeRole, localZone string, log
 	}
 }
 
+// markJoined is called when the local node has finished its initial cluster join attempt.
+func (d *zoneAwareNodeSelectionDelegate) markJoined() {
+	d.joined.Store(true)
+}
+
+// skipZoneAwareRouting selects all nodes. The skip metric is not increased
+// while the local node is still joining, because until then it's caused by an
+// incomplete view of the cluster.
+func (d *zoneAwareNodeSelectionDelegate) skipZoneAwareRouting(nodes []*memberlist.NodeState) ([]*memberlist.NodeState, *memberlist.NodeState) {
+	if d.joined.Load() {
+		d.selectNodesCallsSkipped.Inc()
+	}
+	return nodes, nil
+}
+
 // SelectNodes implements memberlist.NodeSelectionDelegate.
 // It determines which remote nodes should be selected for gossip operations and which one should be preferred.
 func (d *zoneAwareNodeSelectionDelegate) SelectNodes(nodes []*memberlist.NodeState) (selected []*memberlist.NodeState, preferred *memberlist.NodeState) {
@@ -123,8 +142,7 @@ func (d *zoneAwareNodeSelectionDelegate) SelectNodes(nodes []*memberlist.NodeSta
 
 	// Skip zone-aware routing if local zone is not set.
 	if d.localZone == "" {
-		d.selectNodesCallsSkipped.Inc()
-		return nodes, nil
+		return d.skipZoneAwareRouting(nodes)
 	}
 
 	// Pre-allocate backing arrays on the stack for up to 5 zones (common case).
@@ -176,9 +194,8 @@ func (d *zoneAwareNodeSelectionDelegate) SelectNodes(nodes []*memberlist.NodeSta
 	// This prevents network partitioning when bridges are missing or dead.
 	for _, zone := range zonesWithMembers {
 		if !slices.Contains(zonesWithAliveBridges, zone) {
-			d.selectNodesCallsSkipped.Inc()
 			level.Warn(d.logger).Log("msg", "memberlist zone-aware routing is skipped because a zone has no alive bridge", "zone", zone)
-			return nodes, nil
+			return d.skipZoneAwareRouting(nodes)
 		}
 	}
 

@@ -289,7 +289,7 @@ func (orig *HistogramDataPoint) UnmarshalJSON(iter *json.Iterator) {
 			orig.SetMax(iter.ReadFloat64())
 
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

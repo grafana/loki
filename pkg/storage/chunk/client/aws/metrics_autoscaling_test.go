@@ -549,12 +549,12 @@ func (m *mockPrometheus) SetResponseForReads(usageRates [][]int, errorRates [][]
 	}
 }
 
-func (m *mockPrometheus) QueryRange(_ context.Context, _ string, _ promV1.Range, _ ...promV1.Option) (model.Value, promV1.Warnings, error) {
+func (m *mockPrometheus) QueryRange(_ context.Context, _ string, _ promV1.Range, _ ...promV1.Option) (model.Value, promV1.Warnings, promV1.Infos, error) {
 	if len(m.rangeValues) == 0 {
-		return nil, nil, errors.New("mockPrometheus.QueryRange: out of values")
+		return nil, nil, nil, errors.New("mockPrometheus.QueryRange: out of values")
 	}
 	// Take the first value and move the slice up
 	ret := m.rangeValues[0]
 	m.rangeValues = m.rangeValues[1:]
-	return ret, nil, nil
+	return ret, nil, nil, nil
 }

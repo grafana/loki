@@ -52,7 +52,7 @@ func WithMeterProvider(mp *metric.MeterProvider) option.ClientOption {
 	return internal.WithMeterProvider.(func(*metric.MeterProvider) option.ClientOption)(mp)
 }
 
-// WithReadStallTimeout provides a [option.ClientOption] that may be passed to [storage.NewClient].
+// WithReadStallTimeout provides a [option.ClientOption] that may be passed to [storage.NewClient] or [storage.NewGRPCClient].
 // It enables the client to retry stalled requests when starting a download from
 // Cloud Storage. If the timeout elapses with no response from the server, the request
 // is automatically retried.
@@ -60,9 +60,8 @@ func WithMeterProvider(mp *metric.MeterProvider) option.ClientOption {
 // latency across all read requests from the client for each bucket accessed, and can
 // adjust the timeout higher to the target percentile when latency for request to that
 // bucket is high.
-// Currently, this is supported only for downloads ([storage.NewReader] and
-// [storage.NewRangeReader] calls) and only for the XML API. Other read APIs (gRPC & JSON)
-// will be supported soon.
+// Currently, this is supported for downloads ([storage.NewReader] and
+// [storage.NewRangeReader] calls) on the XML API and gRPC API (not implemented for JSON API).
 func WithReadStallTimeout(rstc *ReadStallTimeoutConfig) option.ClientOption {
 	return internal.WithReadStallTimeout.(func(config *ReadStallTimeoutConfig) option.ClientOption)(rstc)
 }
@@ -82,36 +81,112 @@ type ReadStallTimeoutConfig struct {
 	TargetPercentile float64
 }
 
-// WithGRPCBidiReads provides an [option.ClientOption] that may be passed to
-// [cloud.google.com/go/storage.NewGRPCClient].
-// It enables the client to use bi-directional gRPC APIs for downloads rather than the
-// server streaming API. In particular, it allows users to use the
-// [cloud.google.com/go/storage.MultiRangeDownloader]
-// surface, which requires bi-directional streaming.
-//
-// The bi-directional API is in private preview; please contact your account manager if
-// interested.
-func WithGRPCBidiReads() option.ClientOption {
-	return internal.WithGRPCBidiReads.(func() option.ClientOption)()
-}
-
-// WithZonalBucketAPIs provides an [option.ClientOption] that may be passed to
-// [cloud.google.com/go/storage.NewGRPCClient].
-// It enables the client to use bi-directional gRPC APIs for downloads rather than the
-// server streaming API (same as [WithGRPCBidiReads]) as well as appendable
-// object semantics for uploads. By setting this option, both upload and download
-// paths will use zonal bucket compatible APIs by default.
-//
-// Zonal buckets and rapid storage is in private preview; please contact your
-// account manager if interested.
-func WithZonalBucketAPIs() option.ClientOption {
-	return internal.WithZonalBucketAPIs.(func() option.ClientOption)()
-}
-
 // WithDirectConnectivityEnforced provides an [option.ClientOption] that may be passed to
 // [cloud.google.com/go/storage.NewGRPCClient].
 // It sets the gRPC client to use direct path connectivity for all requests and may fail
 // if direct path connectivity cannot be established for a request.
 func WithDirectConnectivityEnforced() option.ClientOption {
 	return internal.WithDirectConnectivityEnforced.(func() option.ClientOption)()
+}
+
+// WithDirectPathXdsOverInterconnect provides an [option.ClientOption] that may be passed to
+// [cloud.google.com/go/storage.NewGRPCClient].
+//
+// It instructs the client to attempt DirectPath over Google Cloud Interconnect in on-premises
+// or hybrid environments without requiring GCE VM residency.
+//
+// Behavior and Constraints:
+//   - The GOOGLE_CLOUD_ENABLE_DIRECT_PATH_XDS_OVER_INTERCONNECT environment variable overrides
+//     this option in both directions (e.g. "true"/"1" to enable, "false"/"0" to disable);
+//     unparseable values are ignored.
+//   - Requirements: default universe domain (googleapis.com), valid credentials, and that
+//     DirectPath is not disabled via GOOGLE_CLOUD_DISABLE_DIRECT_PATH.
+//   - This option is supported exclusively for gRPC clients.
+//   - Has no effect when using a custom grpc.ClientConn, with the storage emulator, or when
+//     the new auth library is disabled (GOOGLE_API_GO_EXPERIMENTAL_DISABLE_NEW_AUTH_LIB).
+func WithDirectPathXdsOverInterconnect() option.ClientOption {
+	return internal.WithDirectPathXdsOverInterconnect.(func() option.ClientOption)()
+}
+
+// WithOtelMetrics provides an [option.ClientOption] that may be passed to
+// [cloud.google.com/go/storage.NewClient] or [cloud.google.com/go/storage.NewGRPCClient].
+// It enables client-side OpenTelemetry metrics.
+func WithOtelMetrics() option.ClientOption {
+	return internal.WithOtelMetrics.(func() option.ClientOption)()
+}
+
+// WithOtelDebugMetrics provides an [option.ClientOption] that may be passed to
+// [cloud.google.com/go/storage.NewClient] or [cloud.google.com/go/storage.NewGRPCClient].
+// It enables debug client-side OpenTelemetry metrics.
+func WithOtelDebugMetrics() option.ClientOption {
+	return internal.WithOtelDebugMetrics.(func() option.ClientOption)()
+}
+
+// WithBufferPool provides an [option.ClientOption] that may be passed to
+// [cloud.google.com/go/storage.NewGRPCClient].
+// It sets the buffer pool used to allocate memory for parallel uploads.
+//
+// This option is not supported at the moment.
+func WithBufferPool(pool BufferPool) option.ClientOption {
+	return internal.WithBufferPool.(func(BufferPool) option.ClientOption)(pool)
+}
+
+// WithGRPCKeepalive provides an [option.ClientOption] that may be passed to
+// [storage.NewGRPCClient] to configure HTTP/2 keepalive pings on the client's
+// gRPC connections.
+//
+// Use this option when long-running or streaming RPCs (such as object reads and
+// writes) may encounter silent network blackholes, dead NAT/firewall mappings,
+// or ungraceful peer failures where no TCP FIN or RST is delivered. Without
+// keepalive, a stalled connection can hang until the OS TCP retransmission
+// timeout expires (typically 15+ minutes on Linux).
+//
+// When enabled, if an active connection with at least one in-flight RPC receives
+// no data or control frames from the peer for [GRPCKeepaliveConfig.Time], the
+// client sends an HTTP/2 PING frame and waits up to
+// [GRPCKeepaliveConfig.Timeout] for a PING acknowledgement. If no acknowledgement
+// arrives in time, the client closes the connection and fails all in-flight RPCs
+// on that connection with [google.golang.org/grpc/codes.Unavailable], allowing
+// retryable operations to reconnect on a healthy connection within roughly
+// Time + Timeout.
+//
+// Keepalive is disabled by default. Pings are only sent while at least one RPC
+// is in flight (PermitWithoutStream is always false) so idle connections do not
+// consume the server's ping budget. Because gRPC enforces a minimum Time of 10
+// seconds and servers may close connections that ping too frequently, a
+// reasonable starting point is Time: 30 * time.Second, Timeout: 20 * time.Second.
+//
+// Example usage:
+//
+//	client, err := storage.NewGRPCClient(ctx, experimental.WithGRPCKeepalive(
+//		experimental.GRPCKeepaliveConfig{
+//			Time:    30 * time.Second,
+//			Timeout: 20 * time.Second,
+//		},
+//	))
+//
+// This option is only supported for gRPC clients ([storage.NewGRPCClient]) and
+// is ignored by HTTP clients ([storage.NewClient]). It takes precedence over
+// keepalive parameters passed via [option.WithGRPCDialOption].
+func WithGRPCKeepalive(cfg GRPCKeepaliveConfig) option.ClientOption {
+	return internal.WithGRPCKeepalive.(func(GRPCKeepaliveConfig) option.ClientOption)(cfg)
+}
+
+// GRPCKeepaliveConfig configures client-side HTTP/2 keepalive pings for gRPC
+// connections, mirroring the Time and Timeout fields of
+// [google.golang.org/grpc/keepalive.ClientParameters]. See [WithGRPCKeepalive].
+type GRPCKeepaliveConfig struct {
+	// Time is the duration of inactivity (with no frames received on a
+	// connection that has an in-flight RPC) after which the client sends an
+	// HTTP/2 keepalive ping to check whether the peer transport is still alive.
+	//
+	// A duration smaller than 10 seconds cannot be set: gRPC enforces a hard
+	// minimum ping interval of 10 seconds, and any value less than 10 seconds
+	// (including 0) is automatically clamped to 10 seconds by gRPC.
+	Time time.Duration
+
+	// Timeout is the duration the client waits for a keepalive ping
+	// acknowledgement after sending a ping before closing the connection and
+	// failing in-flight RPCs. If 0, gRPC's default of 20 seconds is used.
+	Timeout time.Duration
 }

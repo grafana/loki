@@ -449,7 +449,7 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 		series, ok = sm[hash]
 
 		// create a new series if under the limit
-		if !ok && !limitExceeded {
+		if !ok {
 			// Check if adding a new series would exceed the limit
 			if maxSeries > 0 && len(sm) >= maxSeries {
 				// We've reached the series limit, skip adding new series

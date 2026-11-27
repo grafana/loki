@@ -151,10 +151,11 @@ func (e entrypoint) translate() int {
     }
 }
 
-var currentid string
-var currentparamname string
-
 func (sm *SyslogMessage) set(from entrypoint, value string) *SyslogMessage {
+    return sm.setWithCtx(from, value, "", "")
+}
+
+func (sm *SyslogMessage) setWithCtx(from entrypoint, value string, currentid string, currentparamname string) *SyslogMessage {
     data := []byte(value)
     p := 0
     pb := 0
@@ -233,12 +234,10 @@ func (sm *SyslogMessage) SetParameter(id string, name string, value string) Buil
     if sm.StructuredData != nil {
         elements := *sm.StructuredData
         if _, ok := elements[id]; ok {
-            currentid = id
-            sm.set(sdpn, name)
+            sm.setWithCtx(sdpn, name, id, "")
             // We can assign parameter value iff the given parameter key exists
             if _, ok := elements[id][name]; ok {
-                currentparamname = name
-                sm.set(sdpv, value)
+                sm.setWithCtx(sdpv, value, id, name)
             }
         }
     }
@@ -252,7 +251,7 @@ func (sm *SyslogMessage) SetMessage(value string) Builder {
 }
 
 func (sm *SyslogMessage) String() (string, error) {
-    if !sm.Valid() {
+    if sm.Priority == nil || !sm.Valid() {
         return "", fmt.Errorf("invalid syslog")
     }
 

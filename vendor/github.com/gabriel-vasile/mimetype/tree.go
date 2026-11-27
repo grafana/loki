@@ -19,12 +19,16 @@ var root = newMIME("application/octet-stream", "",
 	func([]byte, uint32) bool { return true },
 	xpm, sevenZ, zip, pdf, fdf, ole, ps, psd, p7s, ogg, png, jpg, jxl, jp2, jpx,
 	jpm, jxs, gif, webp, exe, elf, ar, tar, xar, bz2, fits, tiff, bmp, lotus, ico,
-	mp3, flac, midi, ape, musePack, amr, wav, aiff, au, mpeg, quickTime, mp4, webM,
+	flac, midi, ape, musePack, amr, wav, aiff, au, mpeg, quickTime, mp4, webM,
 	avi, flv, mkv, asf, aac, voc, m3u, rmvb, gzip, class, swf, crx, ttf, woff,
 	woff2, otf, ttc, eot, wasm, shx, dbf, dcm, rar, djvu, mobi, lit, bpg, cbor,
 	sqlite3, dwg, nes, lnk, macho, qcp, icns, hdr, mrc, mdb, accdb, zstd, cab,
 	rpm, xz, lzip, torrent, cpio, tzif, xcf, pat, gbr, glb, cabIS, jxr, parquet,
-	oneNote, chm, wpd, dxf, grib, zlib, inf, hlp, fm, bufr,
+	oneNote, chm, wpd, dxf, grib, zlib, inf, hlp, fm, bufr, pyc, pcap,
+	// MP3 is late because it does a linear search in the input. That means
+	// containers that embed an MP3, for example: an mp4 file, or a zip without
+	// compression, would pass as MP3s.
+	mp3,
 	// Keep text last because it is the slowest check.
 	text,
 )
@@ -82,16 +86,17 @@ var (
 		alias("application/x-ogg")
 	oggAudio = newMIME("audio/ogg", ".oga", magic.OggAudio)
 	oggVideo = newMIME("video/ogg", ".ogv", magic.OggVideo)
-	text     = newMIME("text/plain", ".txt", magic.Text, svg, html, xml, php, js, lua, perl, python, ruby, json, ndJSON, rtf, srt, tcl, csv, tsv, vCard, iCalendar, warc, vtt, shell, netpbm, netpgm, netppm, netpam, rfc822)
-	xml      = newMIME("text/xml", ".xml", magic.XML, rss, atom, x3d, kml, xliff, collada, gml, gpx, tcx, amf, threemf, xfdf, owl2, xhtml).
+	text     = newMIME("text/plain", ".txt", magic.Text, svg, html, xml, php, js, lua, perl, python, ruby, json, ndJSON, rtf, srt, tcl, csv, tsv, vCard, iCalendar, warc, vtt, shell, netpbm, netpgm, netppm, netpam, rfc822, gedcom)
+	xml      = newMIME("text/xml", ".xml", magic.XML, rss, atom, x3d, kml, xliff, collada, gml, gpx, tcx, amf, threemf, xfdf, owl2, xhtml, cdxxml).
 			alias("application/xml")
 	xhtml   = newMIME("application/xhtml+xml", ".html", magic.XHTML)
-	json    = newMIME("application/json", ".json", magic.JSON, geoJSON, har, gltf)
+	json    = newMIME("application/json", ".json", magic.JSON, geoJSON, har, gltf, cdxJSON)
 	har     = newMIME("application/json", ".har", magic.HAR)
 	csv     = newMIME("text/csv", ".csv", magic.CSV)
 	tsv     = newMIME("text/tab-separated-values", ".tsv", magic.TSV)
 	geoJSON = newMIME("application/geo+json", ".geojson", magic.GeoJSON)
 	ndJSON  = newMIME("application/x-ndjson", ".ndjson", magic.NdJSON)
+	cdxJSON = newMIME("application/vnd.cyclonedx+json", ".json", magic.CDXJSON)
 	html    = newMIME("text/html", ".html", magic.HTML)
 	php     = newMIME("text/x-php", ".php", magic.Php)
 	rtf     = newMIME("text/rtf", ".rtf", magic.Rtf).alias("application/rtf")
@@ -104,6 +109,7 @@ var (
 	perl   = newMIME("text/x-perl", ".pl", magic.Perl)
 	python = newMIME("text/x-python", ".py", magic.Python).
 		alias("text/x-script.python", "application/x-python")
+	pyc  = newMIME("application/x-bytecode.python", ".pyc", magic.Pyc)
 	ruby = newMIME("text/x-ruby", ".rb", magic.Ruby).
 		alias("application/x-ruby")
 	shell = newMIME("text/x-shellscript", ".sh", magic.Shell).
@@ -127,13 +133,15 @@ var (
 	tcx     = newMIME("application/vnd.garmin.tcx+xml", ".tcx", magic.Tcx)
 	amf     = newMIME("application/x-amf", ".amf", magic.Amf)
 	threemf = newMIME("application/vnd.ms-package.3dmanufacturing-3dmodel+xml", ".3mf", magic.Threemf)
+	cdxxml  = newMIME("application/vnd.cyclonedx+xml", ".xml", magic.CDXXML)
 	png     = newMIME("image/png", ".png", magic.Png, apng)
-	apng    = newMIME("image/vnd.mozilla.apng", ".png", magic.Apng)
-	jpg     = newMIME("image/jpeg", ".jpg", magic.Jpg)
-	jxl     = newMIME("image/jxl", ".jxl", magic.Jxl)
-	jp2     = newMIME("image/jp2", ".jp2", magic.Jp2)
-	jpx     = newMIME("image/jpx", ".jpf", magic.Jpx)
-	jpm     = newMIME("image/jpm", ".jpm", magic.Jpm).
+	apng    = newMIME("image/apng", ".apng", magic.Apng).
+		alias("image/vnd.mozilla.apng")
+	jpg = newMIME("image/jpeg", ".jpg", magic.Jpg)
+	jxl = newMIME("image/jxl", ".jxl", magic.Jxl)
+	jp2 = newMIME("image/jp2", ".jp2", magic.Jp2)
+	jpx = newMIME("image/jpx", ".jpf", magic.Jpx)
+	jpm = newMIME("image/jpm", ".jpm", magic.Jpm).
 		alias("video/jpm")
 	jxs  = newMIME("image/jxs", ".jxs", magic.Jxs)
 	xpm  = newMIME("image/x-xpixmap", ".xpm", magic.Xpm)
@@ -156,7 +164,7 @@ var (
 	heifSeq = newMIME("image/heif-sequence", ".heif", magic.HeifSequence)
 	hdr     = newMIME("image/vnd.radiance", ".hdr", magic.Hdr)
 	avif    = newMIME("image/avif", ".avif", magic.AVIF)
-	mp3     = newMIME("audio/mpeg", ".mp3", magic.Mp3).
+	mp3     = newMIME("audio/mpeg", ".mp3", magic.MP3).
 		alias("audio/x-mpeg", "audio/mp3")
 	flac = newMIME("audio/flac", ".flac", magic.Flac)
 	midi = newMIME("audio/midi", ".midi", magic.Midi).
@@ -192,7 +200,8 @@ var (
 	avi = newMIME("video/x-msvideo", ".avi", magic.Avi).
 		alias("video/avi", "video/msvideo")
 	flv = newMIME("video/x-flv", ".flv", magic.Flv)
-	mkv = newMIME("video/x-matroska", ".mkv", magic.Mkv)
+	mkv = newMIME("video/matroska", ".mkv", magic.Mkv).
+		alias("video/x-matroska")
 	asf = newMIME("video/x-ms-asf", ".asf", magic.Asf).
 		alias("video/asf", "video/x-ms-wmv")
 	rmvb  = newMIME("application/vnd.rn-realmedia-vbr", ".rmvb", magic.Rmvb)
@@ -242,8 +251,8 @@ var (
 	odc = newMIME("application/vnd.oasis.opendocument.chart", ".odc", magic.Odc).
 		alias("application/x-vnd.oasis.opendocument.chart")
 	sxc = newMIME("application/vnd.sun.xml.calc", ".sxc", magic.Sxc)
-	rar = newMIME("application/x-rar-compressed", ".rar", magic.RAR).
-		alias("application/x-rar")
+	rar = newMIME("application/vnd.rar", ".rar", magic.RAR).
+		alias("application/x-rar-compressed", "application/x-rar")
 	djvu    = newMIME("image/vnd.djvu", ".djvu", magic.DjVu)
 	mobi    = newMIME("application/x-mobipocket-ebook", ".mobi", magic.Mobi)
 	lit     = newMIME("application/x-ms-reader", ".lit", magic.Lit)
@@ -294,4 +303,6 @@ var (
 	hlp     = newMIME("application/x-os2-hlp", ".hlp", magic.Hlp)
 	fm      = newMIME("application/vnd.framemaker", ".fm", magic.FrameMaker)
 	bufr    = newMIME("application/bufr", ".bufr", magic.BUFR)
+	gedcom  = newMIME("text/vnd.familysearch.gedcom", ".ged", magic.GEDCOM)
+	pcap    = newMIME("application/vnd.tcpdump.pcap", ".pcap", magic.Pcap)
 )

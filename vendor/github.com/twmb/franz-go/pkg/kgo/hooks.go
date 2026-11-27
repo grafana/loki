@@ -1,6 +1,7 @@
 package kgo
 
 import (
+	"context"
 	"net"
 	"time"
 )
@@ -394,6 +395,20 @@ type HookFetchRecordUnbuffered interface {
 	OnFetchRecordUnbuffered(r *Record, polled bool)
 }
 
+// HookPollStart is called at the beginning of every PollFetches or
+// PollRecords call, before any records are drained from internal buffers and
+// before any HookFetchRecordUnbuffered hooks fire for the same poll.
+//
+// This hook is useful for instrumenting the poll boundary: for example, a
+// tracing integration that opens a span per record via HookFetchRecordUnbuffered
+// can implement this hook to finish the previous poll's spans before new ones
+// are created.
+type HookPollStart interface {
+	// OnPollStart is called at the start of every PollFetches or
+	// PollRecords call with the context passed by the caller.
+	OnPollStart(ctx context.Context)
+}
+
 /////////////
 // HELPERS //
 /////////////
@@ -416,7 +431,8 @@ func implementsAnyHook(h Hook) bool {
 		HookProduceRecordPartitioned,
 		HookProduceRecordUnbuffered,
 		HookFetchRecordBuffered,
-		HookFetchRecordUnbuffered:
+		HookFetchRecordUnbuffered,
+		HookPollStart:
 		return true
 	}
 	return false

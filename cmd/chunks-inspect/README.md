@@ -2,10 +2,10 @@
 
 This tool can parse Loki chunks and print details from them. Useful for Loki developers.
 
-To build the tool, simply run `go build` in this directory. Running resulting program with chunks file name gives you some basic chunks information:
+To build the tool, run `make chunks-inspect` from the repository root. Running resulting program with chunks file name gives you some basic chunks information:
 
 ```shell
-$ ./chunks-inspect db61b4eca2a5ad68\:16f89ff4164\:16f8a0cfb41\:1538ace0 
+$ ./cmd/chunks-inspect/chunks-inspect db61b4eca2a5ad68\:16f89ff4164\:16f8a0cfb41\:1538ace0
 
 Chunks file: db61b4eca2a5ad68:16f89ff4164:16f8a0cfb41:1538ace0
 Metadata length: 485
@@ -39,7 +39,7 @@ Total size of original data: 1257319 file size: 265226 ratio: 4.74
 To print more details about individual blocks inside chunks, use `-b` parameter:
 
 ```shell script
-$ ./chunks-inspect -b db61b4eca2a5ad68\:16f89ff4164\:16f8a0cfb41\:1538ace0
+$ ./cmd/chunks-inspect/chunks-inspect -b db61b4eca2a5ad68\:16f89ff4164\:16f8a0cfb41\:1538ace0
 
 ... chunk file info, see above ...
  
@@ -59,8 +59,8 @@ Total size of original data: 1257319 file size: 265226 ratio: 4.74
 To also print individual log lines, use `-l` parameter. Full help:
 
 ```shell script
-$ ./chunks-inspect -h
-Usage of ./chunks-inspect:
+$ ./cmd/chunks-inspect/chunks-inspect -h
+Usage of ./cmd/chunks-inspect/chunks-inspect:
   -b	print block details
   -l	print log lines
   -s	store blocks, using input filename, and appending block index to it

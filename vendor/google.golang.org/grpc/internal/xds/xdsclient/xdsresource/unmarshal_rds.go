@@ -26,17 +26,18 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/internal/envconfig"
-	"google.golang.org/grpc/internal/xds/clients/xdsclient"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/internal/xds/clusterspecifier"
 	"google.golang.org/grpc/internal/xds/matcher"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	v3routepb "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	v3matcherpb "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	v3typepb "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 )
 
-func unmarshalRouteConfigResource(r *anypb.Any, opts *xdsclient.DecodeOptions) (string, RouteConfigUpdate, error) {
+func unmarshalRouteConfigResource(r *anypb.Any, bc *bootstrap.Config, sc *bootstrap.ServerConfig) (string, RouteConfigUpdate, error) {
 	r, err := UnwrapResource(r)
 	if err != nil {
 		return "", RouteConfigUpdate{}, fmt.Errorf("failed to unwrap resource: %v", err)
@@ -54,7 +55,7 @@ func unmarshalRouteConfigResource(r *anypb.Any, opts *xdsclient.DecodeOptions) (
 		return "", RouteConfigUpdate{}, fmt.Errorf("empty resource name in route config resource")
 	}
 
-	u, err := generateRDSUpdateFromRouteConfiguration(rc, opts)
+	u, err := generateRDSUpdateFromRouteConfiguration(rc, bc, sc)
 	if err != nil {
 		return rc.GetName(), RouteConfigUpdate{}, err
 	}
@@ -79,7 +80,7 @@ func unmarshalRouteConfigResource(r *anypb.Any, opts *xdsclient.DecodeOptions) (
 // field must be empty and whose route field must be set. Inside that route
 // message, the cluster field will contain the clusterName or weighted clusters
 // we are looking for.
-func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration, opts *xdsclient.DecodeOptions) (RouteConfigUpdate, error) {
+func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration, bc *bootstrap.Config, sc *bootstrap.ServerConfig) (RouteConfigUpdate, error) {
 	vhs := make([]*VirtualHost, 0, len(rc.GetVirtualHosts()))
 	csps, err := processClusterSpecifierPlugins(rc.ClusterSpecifierPlugins)
 	if err != nil {
@@ -90,7 +91,7 @@ func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration, o
 	// ignored and not emitted by the xdsclient.
 	var cspNames = make(map[string]bool)
 	for _, vh := range rc.GetVirtualHosts() {
-		routes, cspNs, err := routesProtoToSlice(vh.Routes, csps, opts)
+		routes, cspNs, err := routesProtoToSlice(vh.Routes, csps, bc, sc)
 		if err != nil {
 			return RouteConfigUpdate{}, fmt.Errorf("received route is invalid: %v", err)
 		}
@@ -106,7 +107,7 @@ func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration, o
 			Routes:      routes,
 			RetryConfig: rc,
 		}
-		cfgs, err := processHTTPFilterOverrides(vh.GetTypedPerFilterConfig())
+		cfgs, err := processHTTPFilterOverrides(vh.GetTypedPerFilterConfig(), bc, sc)
 		if err != nil {
 			return RouteConfigUpdate{}, fmt.Errorf("virtual host %+v: %v", vh, err)
 		}
@@ -213,7 +214,7 @@ func generateRetryConfig(rp *v3routepb.RetryPolicy) (*RetryConfig, error) {
 	return cfg, nil
 }
 
-func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecifier.BalancerConfig, opts *xdsclient.DecodeOptions) ([]*Route, map[string]bool, error) {
+func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecifier.BalancerConfig, bc *bootstrap.Config, sc *bootstrap.ServerConfig) ([]*Route, map[string]bool, error) {
 	var routesRet []*Route
 	var cspNames = make(map[string]bool)
 	for _, r := range routes {
@@ -241,7 +242,7 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 			route.Path = &pt.Path
 		case *v3routepb.RouteMatch_SafeRegex:
 			regex := pt.SafeRegex.GetRegex()
-			re, err := regexp.Compile(regex)
+			re, err := matcher.CompileSafeRegex(regex)
 			if err != nil {
 				return nil, nil, fmt.Errorf("route %+v contains an invalid regex %q", r, regex)
 			}
@@ -256,12 +257,16 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 
 		for _, h := range match.GetHeaders() {
 			var header HeaderMatcher
+			// The deprecated exact/prefix/suffix/contains match fields are
+			// converted to the equivalent StringMatcher so that
+			// StringMatcherFromProto owns validation for all of them.
+			var smProto *v3matcherpb.StringMatcher
 			switch ht := h.GetHeaderMatchSpecifier().(type) {
 			case *v3routepb.HeaderMatcher_ExactMatch:
-				header.ExactMatch = &ht.ExactMatch
+				smProto = &v3matcherpb.StringMatcher{MatchPattern: &v3matcherpb.StringMatcher_Exact{Exact: ht.ExactMatch}}
 			case *v3routepb.HeaderMatcher_SafeRegexMatch:
 				regex := ht.SafeRegexMatch.GetRegex()
-				re, err := regexp.Compile(regex)
+				re, err := matcher.CompileSafeRegex(regex)
 				if err != nil {
 					return nil, nil, fmt.Errorf("route %+v contains an invalid regex %q", r, regex)
 				}
@@ -274,19 +279,30 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 			case *v3routepb.HeaderMatcher_PresentMatch:
 				header.PresentMatch = &ht.PresentMatch
 			case *v3routepb.HeaderMatcher_PrefixMatch:
-				header.PrefixMatch = &ht.PrefixMatch
+				smProto = &v3matcherpb.StringMatcher{MatchPattern: &v3matcherpb.StringMatcher_Prefix{Prefix: ht.PrefixMatch}}
 			case *v3routepb.HeaderMatcher_SuffixMatch:
-				header.SuffixMatch = &ht.SuffixMatch
+				smProto = &v3matcherpb.StringMatcher{MatchPattern: &v3matcherpb.StringMatcher_Suffix{Suffix: ht.SuffixMatch}}
+			case *v3routepb.HeaderMatcher_ContainsMatch:
+				smProto = &v3matcherpb.StringMatcher{MatchPattern: &v3matcherpb.StringMatcher_Contains{Contains: ht.ContainsMatch}}
 			case *v3routepb.HeaderMatcher_StringMatch:
-				sm, err := matcher.StringMatcherFromProto(ht.StringMatch)
-				if err != nil {
-					return nil, nil, fmt.Errorf("route %+v has an invalid string matcher: %v", err, ht.StringMatch)
+				if ht.StringMatch == nil {
+					return nil, nil, fmt.Errorf("route %+v has an empty string matcher", r)
 				}
-				header.StringMatch = &sm
+				smProto = ht.StringMatch
 			default:
 				return nil, nil, fmt.Errorf("route %+v has an unrecognized header matcher: %+v", r, ht)
 			}
-			header.Name = h.GetName()
+			if smProto != nil {
+				sm, err := matcher.StringMatcherFromProto(smProto)
+				if err != nil {
+					return nil, nil, fmt.Errorf("route %+v has an invalid header matcher: %v", r, err)
+				}
+				header.StringMatch = &sm
+			}
+			// The metadata the matchers run against always has lowercase keys,
+			// so a name that contains an uppercase character matches no header
+			// and the route holding it never fires.
+			header.Name = strings.ToLower(h.GetName())
 			invert := h.GetInvertMatch()
 			header.InvertMatch = &invert
 			route.Headers = append(route.Headers, &header)
@@ -310,7 +326,7 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 			action := r.GetRoute()
 
 			if envconfig.XDSAuthorityRewrite {
-				if opts != nil && opts.ServerConfig != nil && opts.ServerConfig.SupportsServerFeature(xdsclient.ServerFeatureTrustedXDSServer) {
+				if sc != nil && sc.ServerFeaturesTrustedXDSServer() {
 					route.AutoHostRewrite = action.GetAutoHostRewrite().GetValue()
 				}
 			}
@@ -338,7 +354,7 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 						return nil, nil, fmt.Errorf("xds: total weight of clusters exceeds MaxUint32")
 					}
 					wc := WeightedCluster{Name: c.GetName(), Weight: w}
-					cfgs, err := processHTTPFilterOverrides(c.GetTypedPerFilterConfig())
+					cfgs, err := processHTTPFilterOverrides(c.GetTypedPerFilterConfig(), bc, sc)
 					if err != nil {
 						return nil, nil, fmt.Errorf("route %+v, action %+v: %v", r, a, err)
 					}
@@ -404,7 +420,7 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 			route.ActionType = RouteActionUnsupported
 		}
 
-		cfgs, err := processHTTPFilterOverrides(r.GetTypedPerFilterConfig())
+		cfgs, err := processHTTPFilterOverrides(r.GetTypedPerFilterConfig(), bc, sc)
 		if err != nil {
 			return nil, nil, fmt.Errorf("route %+v: %v", r, err)
 		}

@@ -1,7 +1,5 @@
-//
-// Copyright (c) 2025 The go-yaml Project Contributors
+// Copyright 2025 The go-yaml Project Contributors
 // SPDX-License-Identifier: Apache-2.0
-//
 
 // Options configuration for loading and dumping YAML.
 // Provides centralized control for indentation, line width, strictness, and
@@ -17,27 +15,129 @@ import (
 // Options holds configuration for both loading and dumping YAML.
 type Options struct {
 	// Loading options
-	KnownFields    bool // Enforce known fields in structs
-	SingleDocument bool // Only load first document
-	UniqueKeys     bool // Enforce unique keys in mappings
-	StreamNodes    bool // Enable stream node emission
-	AllDocuments   bool // Load/Dump all documents in multi-document streams
+
+	// KnownFields enforces strict field checking when loading into structs.
+	KnownFields bool
+	// SingleDocument controls whether only the first document is loaded from a stream.
+	SingleDocument bool
+	// UniqueKeys enforces that mapping keys are unique when loading.
+	UniqueKeys bool
+	// StreamNodes enables returning stream boundary nodes when loading YAML.
+	StreamNodes bool
+	// AllDocuments enables multi-document mode for [Load] and [Dump] operations.
+	AllDocuments bool
 
 	// Dumping options
-	Indent                int        // Indentation spaces (2-9)
-	CompactSeqIndent      bool       // Whether '- ' counts as indentation
-	LineWidth             int        // Preferred line width (-1 for unlimited)
-	Unicode               bool       // Allow non-ASCII characters
-	Canonical             bool       // Canonical YAML output
-	LineBreak             LineBreak  // Line ending style
-	ExplicitStart         bool       // Always emit ---
-	ExplicitEnd           bool       // Always emit ...
-	FlowSimpleCollections bool       // Use flow style for simple collections
-	QuotePreference       QuoteStyle // Preferred quote style when quoting is required
+	// Indent sets the number of spaces to use for indentation when dumping YAML content (2-9).
+	Indent int
+	// CompactSeqIndent controls whether the sequence indicator '- ' is considered part of the indentation.
+	CompactSeqIndent bool
+	// LineWidth sets the preferred line width for YAML output (-1 for unlimited).
+	LineWidth int
+	// Unicode controls whether non-ASCII characters are allowed in YAML output.
+	Unicode bool
+	// Canonical forces canonical YAML output format (explicit tags for all values).
+	Canonical bool
+	// LineBreak sets the line ending style for YAML output (LN, CR, CRLF).
+	LineBreak LineBreak
+	// ExplicitStart controls whether document start markers (---) are always emitted.
+	ExplicitStart bool
+	// ExplicitEnd controls whether document end markers (...) are always emitted.
+	ExplicitEnd bool
+	// FlowSimpleCollections controls whether simple collections use flow style.
+	FlowSimpleCollections bool
+	// QuotePreference sets the preferred quote style for strings that require quoting.
+	QuotePreference QuoteStyle
+
+	// Parser supplies complete events in place of native parsing.
+	Parser ParserPlugin
+
+	// MergeKey selects the mapping merge algorithm.
+	MergeKey MergeKeyPlugin
+
+	// AliasData supplies per-stream anchor policy. Nil selects ordinary
+	// document-scoped anchors, rather than disabling aliases.
+	AliasData AliasDataPlugin
+
+	// IndentConfig enables tab-aware structural indentation.
+	IndentConfig *IndentConfig
+
+	// Error formatting (set by WithPlugin with an error-format plugin).
+	FormatLoadError func(*LoadError) string
+	FormatDumpError func(*DumpError) string
+
+	// Loader limit checks (set by ApplyOptions or a loader-limits plugin).
+	// DepthCheck is called to verify the current nesting depth.
+	DepthCheck func(depth int, ctx *DepthContext) error
+	// AliasCheck is called to verify the number of aliases relative to constructs.
+	AliasCheck func(aliasCount, constructCount int) error
+
+	// allowLegacyTrailingContent is an unexported flag used internally
+	// to enable the legacy behavior of allowing trailing content after a document.
+	//
+	// [yaml.NewDecoder] and [yaml.Unmarshal] set this flag to true to enable legacy behavior for backward compatibility.
+	//
+	// [NewDecoder]: https://pkg.go.dev/go.yaml.in/yaml/v4#NewDecoder
+	// [Unmarshal]: https://pkg.go.dev/go.yaml.in/yaml/v4#Unmarshal
+	allowLegacyTrailingContent bool
 }
 
 // Option allows configuring YAML loading and dumping operations.
 type Option func(*Options) error
+
+// DepthKind represents the type of nesting (flow or block).
+type DepthKind string
+
+// [DepthKind] constants for nesting depth checks.
+//
+// They are the possible values for [DepthContext.Kind] when checking the nesting depth of YAML nodes.
+const (
+	// DepthKindFlow represents flow-style nesting (inside [] or {}).
+	DepthKindFlow DepthKind = "flow"
+	// DepthKindBlock represents block-style nesting (inside indentation).
+	DepthKindBlock DepthKind = "block"
+)
+
+// DepthContext holds context about a nesting depth check.
+type DepthContext struct {
+	Kind DepthKind
+}
+
+// DefaultDepthCheck is the default depth check function.
+// It returns an error when depth exceeds 10000.
+func DefaultDepthCheck(depth int, ctx *DepthContext) error {
+	const maxDepth = 10000
+	if depth > maxDepth {
+		return fmt.Errorf("exceeded max depth of %d", maxDepth)
+	}
+	return nil
+}
+
+// DefaultAliasCheck is the default alias check function.
+// It uses a ratio-based heuristic to prevent DoS attacks via excessive aliasing.
+func DefaultAliasCheck(aliasCount, constructCount int) error {
+	const (
+		aliasRatioRangeLow  = 400000
+		aliasRatioRangeHigh = 4000000
+		aliasRatioRange     = float64(aliasRatioRangeHigh - aliasRatioRangeLow)
+	)
+	if aliasCount <= 100 || constructCount <= 1000 {
+		return nil
+	}
+	var allowed float64
+	switch {
+	case constructCount <= aliasRatioRangeLow:
+		allowed = 0.99
+	case constructCount >= aliasRatioRangeHigh:
+		allowed = 0.10
+	default:
+		allowed = 0.99 - 0.89*(float64(constructCount-aliasRatioRangeLow)/aliasRatioRange)
+	}
+	if float64(aliasCount)/float64(constructCount) > allowed {
+		return errors.New("document contains excessive aliasing")
+	}
+	return nil
+}
 
 // WithIndent sets the number of spaces to use for indentation when
 // dumping YAML content.
@@ -92,12 +192,14 @@ func WithKnownFields(knownFields ...bool) Option {
 
 // WithSingleDocument configures the Loader to only process the first document
 // in a YAML stream. After the first document is loaded, subsequent calls to
-// Load will return io.EOF.
+// Load will return [io.EOF].
 //
 // When called without arguments, defaults to true.
 //
 // This is useful when you expect exactly one document and want behavior
-// similar to [Unmarshal].
+// similar to [yaml.Unmarshal].
+//
+// [yaml.Unmarshal]: https://pkg.go.dev/go.yaml.in/yaml/v4#Unmarshal
 func WithSingleDocument(singleDocument ...bool) Option {
 	if len(singleDocument) > 1 {
 		return func(o *Options) error {
@@ -371,6 +473,10 @@ func ApplyOptions(opts ...Option) (*Options, error) {
 		LineWidth:        80,
 		Unicode:          true,
 		UniqueKeys:       true,
+
+		// Default safety limits
+		DepthCheck: DefaultDepthCheck,
+		AliasCheck: DefaultAliasCheck,
 	}
 	for _, opt := range opts {
 		if err := opt(o); err != nil {
@@ -387,4 +493,16 @@ var DefaultOptions = &Options{
 	Unicode:         true,
 	UniqueKeys:      true,
 	QuotePreference: QuoteLegacy,
+}
+
+// SetLegacyAllowTrailingContent sets the internal allowLegacyTrailingContent flag to true.
+//
+// This function is not exported out of the module and is used in [yaml.NewDecoder] and [yaml.Unmarshal]
+// to indicate that the legacy behavior of allowing trailing content
+// after a document should be enabled for backward compatibility.
+//
+// [NewDecoder]: https://pkg.go.dev/go.yaml.in/yaml/v4#NewDecoder
+// [Unmarshal]: https://pkg.go.dev/go.yaml.in/yaml/v4#Unmarshal
+func SetLegacyAllowTrailingContent(o *Options) {
+	o.allowLegacyTrailingContent = true
 }

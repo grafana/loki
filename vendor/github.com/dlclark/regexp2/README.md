@@ -69,7 +69,7 @@ The internals of `regexp2` always operate on `[]rune` so `Index` and `Length` da
 | --- | --- | --- |
 | Catastrophic backtracking possible | no, constant execution time guarantees | yes, if your pattern is at risk you can use the `re.MatchTimeout` field |
 | Python-style capture groups `(?P<name>re)` | yes | no (yes in RE2 compat mode) |
-| .NET-style capture groups `(?<name>re)` or `(?'name're)` | no | yes |
+| .NET-style capture groups `(?<name>re)` or `(?'name're)` | yes | yes |
 | comments `(?#comment)` | no | yes |
 | branch numbering reset `(?\|a\|b)` | no | no |
 | possessive match `(?>re)` | no | yes |

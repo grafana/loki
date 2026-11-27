@@ -394,7 +394,7 @@ func (ds DescribedLogDirs) EachError(fn func(DescribedLogDir)) {
 type DescribedLogDir struct {
 	Broker int32                 // Broker is the broker being described.
 	Dir    string                // Dir is the described directory.
-	Topics DescribedLogDirTopics // Partitions are the partitions in this directory.
+	Topics DescribedLogDirTopics // Topics contains the topics with partitions in this directory.
 	Err    error                 // Err is non-nil if this directory could not be described.
 }
 

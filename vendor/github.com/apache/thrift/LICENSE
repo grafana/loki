@@ -210,13 +210,6 @@ code for the these subcomponents is subject to the terms and
 conditions of the following licenses.
 
 --------------------------------------------------
-Portions of the following files are licensed under the MIT License:
-
-  lib/erl/src/Makefile.am
-
-Please see doc/otp-base-license.txt for the full terms of this license.
-
---------------------------------------------------
 For the aclocal/ax_boost_base.m4 and contrib/fb303/aclocal/ax_boost_base.m4 components:
 
 #   Copyright (c) 2007 Thomas Porschberg <thomas@randspringer.de>

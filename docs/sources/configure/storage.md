@@ -56,7 +56,7 @@ The file system is the simplest backend for chunks, although it's also susceptib
 
 GCS is a hosted object store offered by Google. It is a good candidate for a managed object store, especially when you're already running on GCP, and is production safe.
 
-#### Amazon Simple Storage Storage (S3)
+#### Amazon Simple Storage Service (S3)
 
 S3 is AWS's hosted object store. It is a good candidate for a managed object store, especially when you're already running on AWS, and is production safe.
 
@@ -130,6 +130,9 @@ This storage type for indexes is deprecated and may be removed in future major v
 ## Schema Config
 
 Loki aims to be backwards compatible and over the course of its development has had many internal changes that facilitate better and more efficient storage/querying. Loki allows incrementally upgrading to these new storage _schemas_ and can query across them transparently. This makes upgrading a breeze.
+
+For a more detailed reference on schema configuration, including required values and the recommended settings for new installs, refer to [Storage schema](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/schema/).
+
 For instance, this is what it looks like when migrating from BoltDB with v11 schema to TSDB with v13 schema starting 2023-07-01:
 
 ```yaml
@@ -166,7 +169,7 @@ table_manager:
   retention_period: 2520h
 ```
 
-For more information, see the [table manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) documentation.
+For more information, see the [table manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) documentation.
 
 ### Provisioning
 
@@ -177,7 +180,7 @@ table_manager:
   index_tables_provisioning:
     # Read/write throughput requirements for the current table
     # (the table which would handle writes/reads for data timestamped at the current time)
-    provisioned_write_throughput: <int> | default = 3000
+    provisioned_write_throughput: <int> | default = 1000
     provisioned_read_throughput: <int> | default = 300
 
     # Read/write throughput requirements for non-current tables

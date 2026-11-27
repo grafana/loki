@@ -157,6 +157,10 @@ The API accepts several formats for timestamps:
 - A floating point number is a Unix timestamp with fractions of a second.
 - A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
+Query endpoints accept times from `1970-01-01T00:00:00Z` to `2262-01-01T00:00:00Z`, and return a 400 error for a time outside this range.
+A floating point number is always a number of seconds.
+For example, a time in milliseconds with a fraction, such as `1700000000000.5`, is out of range.
+
 {{< admonition type="note" >}}
 When using `/api/v1/push`, you must send the timestamp as a string and not a number, otherwise the endpoint will return a 400 error.
 {{< /admonition >}}
@@ -1244,7 +1248,7 @@ GET /config
 ```
 
 `/config` exposes the current configuration. The optional `mode` query parameter can be used to
-modify the output. If it has the value `diffs` only the differences between the default configuration
+modify the output. If it has the value `diff` only the differences between the default configuration
 and the current are returned. A value of `defaults` returns the default configuration.
 
 In microservices mode, the `/config` endpoint is exposed by all components.
@@ -1322,7 +1326,7 @@ It accepts three URL query parameters `flush`, `delete_ring_tokens`, and `termin
 - `flush=<bool>`:
   Flag to control whether to flush any in-memory chunks the ingester holds. Defaults to `true`.
 - `delete_ring_tokens=<bool>`:
-  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.token-file-path` is specified. Defaults to `false`.
+  Flag to control whether to delete the file that contains the ingester ring tokens of the instance if the `-ingester.tokens-file-path` is specified. Defaults to `false`.
 - `terminate=<bool>`:
   Flag to control whether to terminate the Loki process after service shutdown. Defaults to `true`.
 
@@ -1528,9 +1532,9 @@ PUT /loki/api/v1/delete
 ```
 
 Create a new delete request for the authenticated tenant.
-The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
+The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
-Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
+Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
 
 Query parameters:
 
@@ -1568,9 +1572,9 @@ GET /loki/api/v1/delete
 ```
 
 List the existing delete requests for the authenticated tenant.
-The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
+The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
-Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
+Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
 
 List the existing delete requests using the following API:
 
@@ -1610,11 +1614,11 @@ DELETE /loki/api/v1/delete
 ```
 
 Remove a delete request for the authenticated tenant.
-The [log entry deletion](../../operations/storage/logs-deletion/) documentation has configuration details.
+The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
 Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 
-Log entry deletion is supported _only_ when TSDB or BoltDB Shipper is configured for the index store.
+Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
 
 Cancel a delete request using this compactor endpoint:
 

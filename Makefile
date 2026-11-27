@@ -26,7 +26,7 @@ DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.26.5
+GO_VERSION         := 1.26.10
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -71,7 +71,6 @@ CANARY_IMAGE           := $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 LOGCLI_IMAGE           := $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG)
 LOGQL_ANALYZER_IMAGE   := $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG)
-OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
 
 # OCI (Docker) setup
 OCI_PLATFORMS  := --platform=linux/amd64,linux/arm64
@@ -146,7 +145,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/src/loki' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Protobuf files
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
@@ -268,6 +267,15 @@ lokitool: cmd/lokitool/lokitool ## build lokitool executable
 cmd/lokitool/lokitool:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/lokitool
 
+##################
+# chunks-inspect #
+##################
+.PHONY: cmd/chunks-inspect/chunks-inspect
+chunks-inspect: cmd/chunks-inspect/chunks-inspect ## build chunks-inspect executable
+
+cmd/chunks-inspect/chunks-inspect:
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/chunks-inspect
+
 #########
 # Mixin #
 #########
@@ -342,6 +350,9 @@ LINT_FLAGS=--timeout=15m
 GOFLAGS=""
 endif
 lint: ## run linters
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(run_in_container)
+else
 	go version
 	golangci-lint version
 	golangci-lint run -v $(LINT_FLAGS)
@@ -358,6 +369,7 @@ lint: ## run linters
 	faillint -paths \
 		"github.com/opentracing/opentracing-go,github.com/opentracing/opentracing-go/log,github.com/uber/jaeger-client-go,github.com/opentracing-contrib/go-stdlib/nethttp" \
 		./...
+endif
 
 ########
 # Test #
@@ -385,6 +397,7 @@ clean: ## clean the generated files
 	rm -rf clients/cmd/docker-driver/rootfs
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
+	rm -rf cmd/chunks-inspect/chunks-inspect
 	rm -rf cmd/logcli/logcli
 	rm -rf cmd/logql-analyzer/logql-analyzer
 	rm -rf cmd/loki-canary/loki-canary
@@ -616,10 +629,6 @@ ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	false;
 endif
 	DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS) $(OCI_PUSH_ARGS) -t $(BUILD_IMAGE) ./loki-build-image
-
-# Loki Operator
-loki-operator-image: ## build the operator docker image
-	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile ./operator
 
 #################
 # Documentation #

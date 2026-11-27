@@ -7,6 +7,7 @@ import (
 
 	"github.com/spiffe/go-spiffe/v2/bundle/jwtbundle"
 	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
+	"github.com/spiffe/go-spiffe/v2/exp/bundle/witbundle"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 )
 
@@ -133,4 +134,18 @@ func (s *Set) GetJWTBundleForTrustDomain(trustDomain spiffeid.TrustDomain) (*jwt
 	}
 
 	return bundle.JWTBundle(), nil
+}
+
+// GetWITBundleForTrustDomain returns the WIT bundle for the given trust
+// domain. It implements the witbundle.Source interface.
+func (s *Set) GetWITBundleForTrustDomain(trustDomain spiffeid.TrustDomain) (*witbundle.Bundle, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	bundle, ok := s.bundles[trustDomain]
+	if !ok {
+		return nil, wrapSpiffebundleErr(fmt.Errorf("no WIT bundle for trust domain %q", trustDomain))
+	}
+
+	return bundle.WITBundle(), nil
 }

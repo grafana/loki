@@ -113,6 +113,14 @@ func NewTSimpleJSONProtocol(t TTransport) *TSimpleJSONProtocol {
 	})
 }
 
+// RemainingBytes implements ReadSizeProvider.
+//
+// The protocol reads through a bufio.Reader, so the bytes already pulled out of
+// the transport have to be added back to what the transport still reports.
+func (p *TSimpleJSONProtocol) RemainingBytes() uint64 {
+	return addRemainingBytes(p.trans.RemainingBytes(), uint64(p.reader.Buffered()))
+}
+
 func NewTSimpleJSONProtocolConf(t TTransport, conf *TConfiguration) *TSimpleJSONProtocol {
 	PropagateTConfiguration(t, conf)
 	v := &TSimpleJSONProtocol{
@@ -438,7 +446,8 @@ func (p *TSimpleJSONProtocol) ReadMapBegin(ctx context.Context) (keyType TType, 
 			fmt.Errorf("size exceeded max allowed: %d", iSize),
 		)
 	}
-	err = checkSizeForProtocol(int32(iSize), p.cfg)
+	minElemSize := p.getMinSerializedSize(keyType) + p.getMinSerializedSize(valueType)
+	err = checkContainerSizeForProtocol(iSize, minElemSize, p.RemainingBytes(), p.cfg)
 	if err != nil {
 		return keyType, valueType, 0, err
 	}
@@ -924,11 +933,37 @@ func (p *TSimpleJSONProtocol) readNonSignificantWhitespace() error {
 	return nil
 }
 
+// readBinaryBounded reads from p.reader up to and including delim, like
+// bufio.Reader.ReadBytes(delim), but returns an error once the accumulated data
+// exceeds the configured max message size. A JSON string or base64 value is
+// delimiter-terminated and carries no declared length, so unlike a
+// length-prefixed field it could otherwise be accumulated without bound. The
+// size is re-checked after each buffered chunk, so an oversized value is
+// rejected as it grows rather than buffered in full.
+func (p *TSimpleJSONProtocol) readBinaryBounded(delim byte) ([]byte, error) {
+	var buf []byte
+	for {
+		chunk, err := p.reader.ReadSlice(delim)
+		buf = append(buf, chunk...)
+		if e := checkSizeForProtocol(int32(len(buf)), p.cfg); e != nil {
+			return nil, e
+		}
+		if err == nil {
+			return buf, nil
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		return buf, err
+	}
+}
+
 func (p *TSimpleJSONProtocol) ParseStringBody() (string, error) {
-	line, err := p.reader.ReadString(JSON_QUOTE)
+	buf, err := p.readBinaryBounded(JSON_QUOTE)
 	if err != nil {
 		return "", NewTProtocolException(err)
 	}
+	line := string(buf)
 	if endsWithoutEscapedQuote(line) {
 		v, ok := jsonUnquote(string(JSON_QUOTE) + line)
 		if !ok {
@@ -953,11 +988,18 @@ func (p *TSimpleJSONProtocol) ParseQuotedStringBody() (string, error) {
 	var sb strings.Builder
 
 	for {
-		line, err := p.reader.ReadString(JSON_QUOTE)
+		buf, err := p.readBinaryBounded(JSON_QUOTE)
 		if err != nil {
 			return "", NewTProtocolException(err)
 		}
+		line := string(buf)
 		sb.WriteString(line)
+		// readBinaryBounded caps each chunk; also cap the accumulated result so
+		// a string made of many short escaped-quote segments cannot sum past the
+		// limit.
+		if e := checkSizeForProtocol(int32(sb.Len()), p.cfg); e != nil {
+			return "", e
+		}
 		if endsWithoutEscapedQuote(line) {
 			return sb.String(), nil
 		}
@@ -976,7 +1018,7 @@ func endsWithoutEscapedQuote(s string) bool {
 }
 
 func (p *TSimpleJSONProtocol) ParseBase64EncodedBody() ([]byte, error) {
-	line, err := p.reader.ReadBytes(JSON_QUOTE)
+	line, err := p.readBinaryBounded(JSON_QUOTE)
 	if err != nil {
 		return line, NewTProtocolException(err)
 	}
@@ -1066,10 +1108,11 @@ func (p *TSimpleJSONProtocol) ParseObjectEnd() error {
 		e := fmt.Errorf("Expected to be in the Object Context, but not in Object Context (%d)", cxt)
 		return NewTProtocolExceptionWithType(INVALID_DATA, e)
 	}
-	line, err := p.reader.ReadString(JSON_RBRACE[0])
+	buf, err := p.readBinaryBounded(JSON_RBRACE[0])
 	if err != nil {
 		return NewTProtocolException(err)
 	}
+	line := string(buf)
 	for _, char := range line {
 		switch char {
 		default:
@@ -1104,6 +1147,41 @@ func (p *TSimpleJSONProtocol) ParseListBegin() (isNull bool, err error) {
 	return isNull, NewTProtocolExceptionWithType(INVALID_DATA, err)
 }
 
+func (p *TSimpleJSONProtocol) getMinSerializedSize(ttype TType) int32 {
+	switch ttype {
+	case STOP:
+		return 1 // T_STOP needs to count itself
+	case VOID:
+		return 1 // T_VOID needs to count itself
+	case BOOL:
+		return 1 // written as int
+	case BYTE:
+		return 1
+	case DOUBLE:
+		return 1
+	case I16:
+		return 1
+	case I32:
+		return 1
+	case I64:
+		return 1
+	case STRING:
+		return 2 // empty string
+	case STRUCT:
+		return 2 // empty struct
+	case MAP:
+		return 2 // empty map
+	case SET:
+		return 2 // empty set
+	case LIST:
+		return 2 // empty list
+	case UUID:
+		return 16 // empty UUID
+	default:
+		return 1 // unknown type
+	}
+}
+
 func (p *TSimpleJSONProtocol) ParseElemListBegin() (elemType TType, size int, e error) {
 	if isNull, e := p.ParseListBegin(); isNull || e != nil {
 		return VOID, 0, e
@@ -1123,7 +1201,8 @@ func (p *TSimpleJSONProtocol) ParseElemListBegin() (elemType TType, size int, e 
 			fmt.Errorf("size exceeded max allowed: %d", nSize),
 		)
 	}
-	err = checkSizeForProtocol(int32(nSize), p.cfg)
+	minElemSize := p.getMinSerializedSize(elemType)
+	err = checkContainerSizeForProtocol(nSize, minElemSize, p.RemainingBytes(), p.cfg)
 	if err != nil {
 		return elemType, 0, err
 	}
@@ -1140,10 +1219,11 @@ func (p *TSimpleJSONProtocol) ParseListEnd() error {
 		e := fmt.Errorf("Expected to be in the List Context, but not in List Context (%d)", cxt)
 		return NewTProtocolExceptionWithType(INVALID_DATA, e)
 	}
-	line, err := p.reader.ReadString(JSON_RBRACKET[0])
+	buf, err := p.readBinaryBounded(JSON_RBRACKET[0])
 	if err != nil {
 		return NewTProtocolException(err)
 	}
+	line := string(buf)
 	for _, char := range line {
 		switch char {
 		default:
@@ -1205,6 +1285,11 @@ func (p *TSimpleJSONProtocol) readNumeric() (Numeric, error) {
 	continueFor := true
 	inQuotes := false
 	for continueFor {
+		// Numeric literals carry no declared length; bound the running byte
+		// count against the configured max message size as digits accumulate.
+		if e := checkSizeForProtocol(int32(buf.Len()), p.cfg); e != nil {
+			return NUMERIC_NULL, e
+		}
 		c, err := p.reader.ReadByte()
 		if err != nil {
 			if errors.Is(err, io.EOF) {

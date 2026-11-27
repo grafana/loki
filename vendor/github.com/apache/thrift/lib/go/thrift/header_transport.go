@@ -28,6 +28,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 )
 
@@ -143,8 +144,8 @@ func NewTransformReaderWithCapacity(baseReader io.Reader, capacity int) *Transfo
 // stops at and returns the first error encountered.
 func (tr *TransformReader) Close() error {
 	// Call closers in reversed order
-	for i := len(tr.closers) - 1; i >= 0; i-- {
-		if err := tr.closers[i].Close(); err != nil {
+	for _, v := range slices.Backward(tr.closers) {
+		if err := v.Close(); err != nil {
 			return err
 		}
 	}
@@ -177,6 +178,38 @@ func (tr *TransformReader) AddTransform(id THeaderTransformID) error {
 	return nil
 }
 
+// limitedTransformReader reads the output of a read transform, and fails the
+// read that would take that output past limit bytes.
+type limitedTransformReader struct {
+	r     io.Reader
+	limit int64
+	read  int64
+	err   error
+}
+
+func (l *limitedTransformReader) Read(p []byte) (int, error) {
+	if l.err != nil {
+		return 0, l.err
+	}
+	// Read at most one byte past the limit: output that ends right at the
+	// limit is read to its end, and the extra byte shows output that goes on.
+	if left := l.limit - l.read; int64(len(p)) > left+1 {
+		p = p[:left+1]
+	}
+	n, err := l.r.Read(p)
+	if l.read+int64(n) > l.limit {
+		l.err = NewTProtocolExceptionWithType(
+			SIZE_LIMIT,
+			fmt.Errorf("frame too large after transform: more than %d bytes", l.limit),
+		)
+		n = int(l.limit - l.read)
+		l.read = l.limit
+		return n, l.err
+	}
+	l.read += int64(n)
+	return n, err
+}
+
 // TransformWriter is an io.WriteCloser that handles transforms writing.
 type TransformWriter struct {
 	io.Writer
@@ -204,8 +237,8 @@ func NewTransformWriter(baseWriter io.Writer, transforms []THeaderTransformID) (
 // stops at and returns the first error encountered.
 func (tw *TransformWriter) Close() error {
 	// Call closers in reversed order
-	for i := len(tw.closers) - 1; i >= 0; i-- {
-		if err := tw.closers[i].Close(); err != nil {
+	for _, v := range slices.Backward(tw.closers) {
+		if err := v.Close(); err != nil {
 			return err
 		}
 	}
@@ -376,6 +409,17 @@ func (t *THeaderTransport) ReadFrame(ctx context.Context) error {
 			errors.New("frame too large"),
 		)
 	}
+	// A frame has to carry at least the 32-bit word peeked at further down,
+	// which is what says whether it holds headers or a bare message. Slicing
+	// to size32 on a shorter frame reads past what was copied into the frame
+	// buffer, and that buffer comes from a pool, so what it reads is whatever
+	// the previous user of the buffer left behind.
+	if frameSize < size32 {
+		return NewTProtocolExceptionWithType(
+			INVALID_DATA,
+			fmt.Errorf("frame too small: %d bytes", frameSize),
+		)
+	}
 	t.reader.Discard(size32)
 
 	// Read the frame fully into frameBuffer.
@@ -469,6 +513,15 @@ func (t *THeaderTransport) parseHeaders(ctx context.Context, frameSize uint32) e
 	if err != nil {
 		return err
 	}
+	// transformCount is an element count read straight off the wire, not a
+	// buffer length, so the frame-size and header-length checks above do not
+	// bound it. Validate it the same way every other wire-supplied container
+	// count (list/set/map sizes) is validated, before it sizes any allocation.
+	if err = checkContainerSizeForProtocol(
+		int64(transformCount), 1, headerBuf.RemainingBytes(), t.cfg,
+	); err != nil {
+		return err
+	}
 	if transformCount > 0 {
 		reader := NewTransformReaderWithCapacity(
 			t.frameBuffer,
@@ -498,6 +551,15 @@ func (t *THeaderTransport) parseHeaders(ctx context.Context, frameSize uint32) e
 			id := transformIDs[i]
 			if err := reader.AddTransform(id); err != nil {
 				return err
+			}
+			if id == TransformZlib {
+				// ReadFrame held the frame to the maximum frame
+				// size as it came off the wire. Hold what each
+				// inflate makes of it to the same size.
+				reader.Reader = &limitedTransformReader{
+					r:     reader.Reader,
+					limit: int64(t.cfg.GetMaxFrameSize()),
+				}
 			}
 		}
 	}
@@ -558,11 +620,18 @@ func (t *THeaderTransport) Read(p []byte) (read int, err error) {
 	// Then, 99% of the case when calling this Read frame is already read
 	// into frameReader. ReadFrame here is more of preventing bugs that
 	// didn't call ReadFrame before calling Read.
-	err = t.ReadFrame(context.Background())
-	if err != nil {
-		return
-	}
-	if t.frameReader != nil {
+	// Loop rather than recurse: a frame whose header block fills it yields no
+	// payload bytes, so a peer can drive one iteration per 18 bytes it sends,
+	// and a stack frame per iteration would not be bounded by anything.
+	for {
+		err = t.ReadFrame(context.Background())
+		if err != nil {
+			return
+		}
+		if t.frameReader == nil {
+			return t.reader.Read(p)
+		}
+
 		read, err = t.frameReader.Read(p)
 		if err == nil && t.frameBuffer.Len() <= 0 {
 			// the last Read finished the frame, do endOfFrame
@@ -583,12 +652,11 @@ func (t *THeaderTransport) Read(p []byte) (read int, err error) {
 				// as otherwise we would return 0 and nil,
 				// which is a case not handled well by most
 				// protocol implementations.
-				return t.Read(p)
+				continue
 			}
 		}
 		return
 	}
-	return t.reader.Read(p)
 }
 
 // Write writes data to the write buffer.
@@ -599,6 +667,21 @@ func (t *THeaderTransport) Write(p []byte) (int, error) {
 		t.writeBuffer = bufPool.get()
 	}
 	return t.writeBuffer.Write(p)
+}
+
+// checkWriteFrameSize refuses a frame of size bytes that a reader holding cfg
+// would refuse. THeaderMaxFrameSize is below the largest length the frame's
+// 32-bit length word can carry, so a frame that passes is written with its
+// true length. TFramedTransport.Flush writes the same length word and applies
+// the same check.
+func checkWriteFrameSize(cfg *TConfiguration, size int) error {
+	if uint64(size) > uint64(THeaderMaxFrameSize) || int64(size) > int64(cfg.GetMaxFrameSize()) {
+		return NewTProtocolExceptionWithType(
+			SIZE_LIMIT,
+			fmt.Errorf("frame too large: %d bytes", size),
+		)
+	}
+	return nil
 }
 
 // Flush writes the appropriate header and the write buffer to the underlying transport.
@@ -657,12 +740,21 @@ func (t *THeaderTransport) Flush(ctx context.Context) error {
 			}
 		}
 
+		// The header length is a count of 4-byte words, carried in 16 bits.
+		headerWords := headers.Len() / 4
+		if headerWords > math.MaxUint16 {
+			return NewTProtocolExceptionWithType(
+				SIZE_LIMIT,
+				fmt.Errorf("headers too large: %d bytes", headers.Len()),
+			)
+		}
+
 		payload := bufPool.get()
 		defer bufPool.put(&payload)
 		meta := headerMeta{
 			MagicFlags:   THeaderHeaderMagic + t.Flags&THeaderFlagsMask,
 			SequenceID:   t.SequenceID,
-			HeaderLength: uint16(headers.Len() / 4),
+			HeaderLength: uint16(headerWords),
 		}
 		if err := binary.Write(payload, binary.BigEndian, meta); err != nil {
 			return NewTTransportExceptionFromError(err)
@@ -683,6 +775,9 @@ func (t *THeaderTransport) Flush(ctx context.Context) error {
 		}
 
 		// First write frame length
+		if err := checkWriteFrameSize(t.cfg, payload.Len()); err != nil {
+			return err
+		}
 		buf := t.buffer[:size32]
 		binary.BigEndian.PutUint32(buf, uint32(payload.Len()))
 		if _, err := t.transport.Write(buf); err != nil {
@@ -694,6 +789,9 @@ func (t *THeaderTransport) Flush(ctx context.Context) error {
 		}
 
 	case clientFramedBinary, clientFramedCompact:
+		if err := checkWriteFrameSize(t.cfg, t.writeBuffer.Len()); err != nil {
+			return err
+		}
 		buf := t.buffer[:size32]
 		binary.BigEndian.PutUint32(buf, uint32(t.writeBuffer.Len()))
 		if _, err := t.transport.Write(buf); err != nil {
@@ -723,15 +821,24 @@ func (t *THeaderTransport) Close() error {
 	return t.transport.Close()
 }
 
-// RemainingBytes calls underlying transport's RemainingBytes.
+// RemainingBytes returns the number of bytes left in the current frame.
 //
-// Even in framed cases, because of all the possible compression transforms
-// involved, the remaining frame size is likely to be different from the actual
-// remaining readable bytes, so we don't bother to keep tracking the remaining
-// frame size by ourselves and just use the underlying transport's
-// RemainingBytes directly.
+// The underlying transport's value cannot be used here: the frame has already
+// been copied out of it into frameBuffer, so it no longer accounts for the
+// bytes this transport can still deliver.
+//
+// When a compression transform is in play the frame buffer holds transformed
+// bytes, which say nothing about how many bytes the transform will produce, so
+// the answer is UnknownRemainingBytes. The same applies outside a frame, where
+// reads come from a bufio.Reader over the underlying transport.
 func (t *THeaderTransport) RemainingBytes() uint64 {
-	return t.transport.RemainingBytes()
+	if t.frameReader == nil || t.frameBuffer == nil {
+		return UnknownRemainingBytes
+	}
+	if _, transformed := t.frameReader.(*TransformReader); transformed {
+		return UnknownRemainingBytes
+	}
+	return uint64(t.frameBuffer.Len())
 }
 
 // GetReadHeaders returns the THeaderMap read from transport.
@@ -821,6 +928,7 @@ func NewTHeaderTransportFactory(factory TTransportFactory) TTransportFactory {
 // NewTHeaderTransportFactoryConf creates a new *THeaderTransportFactory with
 // the given *TConfiguration.
 func NewTHeaderTransportFactoryConf(factory TTransportFactory, conf *TConfiguration) TTransportFactory {
+	PropagateTConfiguration(factory, conf)
 	return &THeaderTransportFactory{
 		Factory: factory,
 
@@ -831,6 +939,7 @@ func NewTHeaderTransportFactoryConf(factory TTransportFactory, conf *TConfigurat
 // GetTransport implements TTransportFactory.
 func (f *THeaderTransportFactory) GetTransport(trans TTransport) (TTransport, error) {
 	if f.Factory != nil {
+		PropagateTConfiguration(trans, f.cfg)
 		t, err := f.Factory.GetTransport(trans)
 		if err != nil {
 			return nil, err
@@ -842,7 +951,7 @@ func (f *THeaderTransportFactory) GetTransport(trans TTransport) (TTransport, er
 
 // SetTConfiguration implements TConfigurationSetter.
 func (f *THeaderTransportFactory) SetTConfiguration(cfg *TConfiguration) {
-	PropagateTConfiguration(f.Factory, f.cfg)
+	PropagateTConfiguration(f.Factory, cfg)
 	f.cfg = cfg
 }
 

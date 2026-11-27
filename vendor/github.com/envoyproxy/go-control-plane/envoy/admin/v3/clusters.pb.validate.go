@@ -722,6 +722,8 @@ func (m *HostHealthStatus) validate(all bool) error {
 
 	// no validation rules for ActiveHcTimeout
 
+	// no validation rules for FailedDegradedOutlierDetection
+
 	// no validation rules for EdsHealthStatus
 
 	if len(errors) > 0 {

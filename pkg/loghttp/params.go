@@ -69,7 +69,11 @@ func query(r *http.Request) string {
 }
 
 func ts(r *http.Request) (time.Time, error) {
-	return parseTimestamp(r.Form.Get("time"), time.Now())
+	t, err := parseTimestamp(r.Form.Get("time"), time.Now())
+	if err != nil {
+		return time.Time{}, errors.Wrap(err, "could not parse 'time' parameter")
+	}
+	return t, nil
 }
 
 func direction(r *http.Request) (logproto.Direction, error) {
@@ -115,6 +119,9 @@ func determineBounds(now time.Time, startString, endString, sinceString string) 
 	if err != nil {
 		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'start' parameter")
 	}
+	if start.Before(minTimestamp) {
+		return time.Time{}, time.Time{}, errors.Errorf("the start time that 'end' and 'since' give is before %s, set 'start' or a smaller 'since'", minTimestamp.Format(time.RFC3339))
+	}
 
 	return start, end, nil
 }
@@ -158,15 +165,47 @@ func parseInt(value string, def int) (int, error) {
 	return strconv.Atoi(value)
 }
 
+// Loki computes with times as int64 nanoseconds since the Unix epoch, which
+// holds times up to 2262-04-11. After that limit, UnixNano overflows without
+// an error and gives a different time, so a query reads the wrong time range.
+//
+// maxTimestamp leaves a margin of about 100 days below the limit, because
+// query splitting and step alignment move the end time a little later.
+//
+// The range starts at the Unix epoch, because a log query has no use for an
+// earlier time.
+var (
+	minTimestamp = time.Unix(0, 0).UTC()
+	maxTimestamp = time.Date(2262, time.January, 1, 0, 0, 0, 0, time.UTC)
+)
+
 // parseTimestamp parses a ns unix timestamp from a string
 // if the value is empty it returns a default value passed as second parameter
+//
+// It returns an error if the time is outside [minTimestamp, maxTimestamp].
 func parseTimestamp(value string, def time.Time) (time.Time, error) {
 	if value == "" {
 		return def, nil
 	}
 
+	t, err := parseTimestampValue(value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if t.Before(minTimestamp) || t.After(maxTimestamp) {
+		return time.Time{}, timestampOutOfRangeError(value)
+	}
+	return t, nil
+}
+
+func parseTimestampValue(value string) (time.Time, error) {
 	if strings.Contains(value, ".") {
 		if t, err := strconv.ParseFloat(value, 64); err == nil {
+			// Go does not define the result of a float to int64 conversion
+			// that overflows, so reject such values before the conversion.
+			if t < float64(minTimestamp.Unix()) || t >= float64(maxTimestamp.Unix()+1) {
+				return time.Time{}, timestampOutOfRangeError(value)
+			}
 			s, ns := math.Modf(t)
 			ns = math.Round(ns*1000) / 1000
 			return time.Unix(int64(s), int64(ns*float64(time.Second))), nil
@@ -183,6 +222,10 @@ func parseTimestamp(value string, def time.Time) (time.Time, error) {
 		return time.Unix(nanos, 0), nil
 	}
 	return time.Unix(0, nanos), nil
+}
+
+func timestampOutOfRangeError(value string) error {
+	return fmt.Errorf("timestamp %q is out of range [%s, %s]", value, minTimestamp.Format(time.RFC3339), maxTimestamp.Format(time.RFC3339))
 }
 
 // parseDirection parses a logproto.Direction from a string

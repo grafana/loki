@@ -6,6 +6,10 @@ weight:
 ---
 # Table manager
 
+{{< admonition type="warning" >}}
+The Table Manager is deprecated. For new installations, use the TSDB index with the [Compactor](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/) for retention instead.
+{{< /admonition >}}
+
 {{< admonition type="note" >}}
 Table manager is only needed if you are using a multi-store [backend](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/). If you are using either TSDB (recommended), or BoltDB (deprecated) you do not need the Table Manager.
 {{< /admonition >}}
@@ -30,19 +34,16 @@ time range exceeds the retention period.
 The Table Manager supports the following backends:
 
 - **Index store**
-  - [Single Store (boltdb-shipper)](../boltdb-shipper/)
-  - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-  - [Google Bigtable](https://cloud.google.com/bigtable)
-  - [Apache Cassandra](https://cassandra.apache.org)
-  - [BoltDB](https://github.com/boltdb/bolt) (primarily used for local environments)
+  - [Single Store (boltdb-shipper)](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) (deprecated, will be removed in Loki 4.0)
+  - [Amazon DynamoDB](https://aws.amazon.com/dynamodb) (deprecated, will be removed in Loki 4.0)
+  - [Google Bigtable](https://cloud.google.com/bigtable) (deprecated, will be removed in Loki 4.0)
+  - [Apache Cassandra](https://cassandra.apache.org) (deprecated, will be removed in Loki 4.0)
+  - [BoltDB](https://github.com/boltdb/bolt) (deprecated, will be removed in Loki 4.0)
 - **Chunk store**
   - Filesystem (primarily used for local environments)
-
-Loki does support the following backends for both index and chunk storage, but they are deprecated and will be removed in a future release:
-
-- [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-- [Google Bigtable](https://cloud.google.com/bigtable)
-- [Apache Cassandra](https://cassandra.apache.org)
+  - [Amazon DynamoDB](https://aws.amazon.com/dynamodb) (deprecated, will be removed in Loki 4.0)
+  - [Google Bigtable](https://cloud.google.com/bigtable) (deprecated, will be removed in Loki 4.0)
+  - [Apache Cassandra](https://cassandra.apache.org) (deprecated, will be removed in Loki 4.0)
 
 The object storages - like Amazon S3 and Google Cloud Storage - supported by Loki
 to store chunks, are not managed by the Table Manager, and a custom bucket policy
@@ -148,7 +149,7 @@ the expected behavior.
 {{< /admonition >}}
 
 For detailed information on configuring the retention, refer to the
-[Loki Storage Retention](../retention/)
+[Loki Storage Retention](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/)
 documentation.
 
 ## Active / inactive tables
@@ -168,17 +169,22 @@ read/write capacity units and autoscaling.
 
 | DynamoDB            | Active table                            | Inactive table                       |
 | ------------------- | --------------------------------------- | ------------------------------------ |
-| Capacity mode       | `enable_ondemand_throughput_mode` | `enable_inactive_throughput_on_demand_mode` |
+| Capacity mode       | `enable_ondemand_throughput_mode`       | `enable_inactive_throughput_on_demand_mode` |
 | Read capacity unit  | `provisioned_read_throughput`           | `inactive_read_throughput`           |
 | Write capacity unit | `provisioned_write_throughput`          | `inactive_write_throughput`          |
-| Autoscaling         | Enabled (if configured)                 | Always disabled                      |
+| Autoscaling         | Enabled (if configured)                 | Enabled (if configured) for the most recent `inactive_write_scale_lastn` tables (default `4`); always disabled for older tables |
+
+{{< admonition type="note" >}}
+Autoscaling for inactive tables is configured with `inactive_write_scale` and `inactive_read_scale`. Only the most recent `inactive_write_scale_lastn` inactive tables (relative to the current time) are eligible to use these settings; older inactive tables always have autoscaling disabled.
+{{< /admonition >}}
 
 ## DynamoDB Provisioning
 
-When configuring DynamoDB with the Table Manager, the default [on-demand
-provisioning](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html)
-capacity units for reads are set to 300 and writes are set to 3000. The
-defaults can be overwritten:
+When configuring DynamoDB with the Table Manager, on-demand throughput mode
+is disabled by default, and Loki uses [provisioned
+capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html)
+instead: the default capacity units for reads are 300 and for writes are
+1000. The defaults can be overwritten:
 
 ```yaml
 table_manager:
@@ -205,13 +211,10 @@ The Table Manager can be executed in two ways:
 
 ### Monolithic mode
 
-When Loki runs in [monolithic mode](../../../get-started/deployment-modes/),
+When Loki runs in [monolithic mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#monolithic-mode),
 the Table Manager is also started as component of the entire stack.
 
 ### Microservices mode
 
-When Loki runs in [microservices mode](../../../get-started/deployment-modes/),
+When Loki runs in [microservices mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode),
 the Table Manager should be started as separate service named `table-manager`.
-
-You can check out a production grade deployment example at
-[`table-manager.libsonnet`](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/table-manager.libsonnet).

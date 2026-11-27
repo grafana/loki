@@ -34,6 +34,7 @@ import (
 	"modernc.org/libc/stdlib"
 	"modernc.org/libc/sys/types"
 	ctime "modernc.org/libc/time"
+	"modernc.org/libc/unistd"
 )
 
 var staticGetpwnam pwd.Passwd
@@ -42,49 +43,51 @@ func init() {
 	atExit = append(atExit, func() { closePasswd(&staticGetpwnam) })
 }
 
+var (
+	signalCh   chan os.Signal
+	signalTls  *TLS
+	signalInit sync.Once
+)
+
+func startSignalHandler() {
+	signalCh = make(chan os.Signal, 10)
+	signalTls = NewTLS()
+	go func() {
+		for sig := range signalCh {
+			if s, ok := sig.(unix.Signal); ok {
+				signum := int32(s)
+				signalsMu.Lock()
+				handler := signals[signum]
+				signalsMu.Unlock()
+				if handler != 0 && handler != signal.SIG_DFL && handler != signal.SIG_IGN {
+					var f func(*TLS, int32)
+					*(*uintptr)(unsafe.Pointer(&f)) = handler
+					f(signalTls, signum)
+				}
+			}
+		}
+	}()
+}
+
 // sighandler_t signal(int signum, sighandler_t handler);
 func Xsignal(t *TLS, signum int32, handler uintptr) uintptr { //TODO use sigaction?
 	if __ccgo_strace {
 		trc("t=%v signum=%v handler=%v, (%v:)", t, signum, handler, origin(2))
 	}
-	signalsMu.Lock()
+	signalInit.Do(startSignalHandler)
 
+	signalsMu.Lock()
 	defer signalsMu.Unlock()
 
 	r := signals[signum]
 	signals[signum] = handler
 	switch handler {
 	case signal.SIG_DFL:
-		panic(todo("%v %#x", unix.Signal(signum), handler))
+		gosignal.Reset(unix.Signal(signum))
 	case signal.SIG_IGN:
-		switch r {
-		case signal.SIG_DFL:
-			gosignal.Ignore(unix.Signal(signum)) //TODO
-		case signal.SIG_IGN:
-			gosignal.Ignore(unix.Signal(signum))
-		default:
-			panic(todo("%v %#x", unix.Signal(signum), handler))
-		}
+		gosignal.Ignore(unix.Signal(signum))
 	default:
-		switch r {
-		case signal.SIG_DFL:
-			c := make(chan os.Signal, 1)
-			gosignal.Notify(c, unix.Signal(signum))
-			go func() { //TODO mechanism to stop/cancel
-				for {
-					<-c
-					var f func(*TLS, int32)
-					*(*uintptr)(unsafe.Pointer(&f)) = handler
-					tls := NewTLS()
-					f(tls, signum)
-					tls.Close()
-				}
-			}()
-		case signal.SIG_IGN:
-			panic(todo("%v %#x", unix.Signal(signum), handler))
-		default:
-			panic(todo("%v %#x", unix.Signal(signum), handler))
-		}
+		gosignal.Notify(signalCh, unix.Signal(signum))
 	}
 	return r
 }
@@ -151,7 +154,39 @@ func Xpathconf(t *TLS, path uintptr, name int32) long {
 	if __ccgo_strace {
 		trc("t=%v path=%v name=%v, (%v:)", t, path, name, origin(2))
 	}
-	panic(todo(""))
+	return pathconf(t, name)
+}
+
+// long fpathconf(int fd, int name);
+func Xfpathconf(t *TLS, fd int32, name int32) long {
+	if __ccgo_strace {
+		trc("t=%v fd=%v name=%v, (%v:)", t, fd, name, origin(2))
+	}
+	return pathconf(t, name)
+}
+
+// pathconf reports the usual values of the POSIX pathconf variables. They
+// are the same for every file here.
+func pathconf(t *TLS, name int32) long {
+	switch name {
+	case unistd.X_PC_LINK_MAX:
+		return 32767
+	case unistd.X_PC_MAX_CANON, unistd.X_PC_MAX_INPUT:
+		return 1024
+	case unistd.X_PC_NAME_MAX:
+		return 255
+	case unistd.X_PC_PATH_MAX:
+		return 1024
+	case unistd.X_PC_PIPE_BUF:
+		return 512
+	case unistd.X_PC_CHOWN_RESTRICTED, unistd.X_PC_NO_TRUNC:
+		return 1
+	case unistd.X_PC_VDISABLE:
+		return 255
+	}
+
+	t.setErrno(errno.EINVAL)
+	return -1
 }
 
 // ssize_t recvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen);
@@ -200,16 +235,16 @@ func Xpoll(t *TLS, fds uintptr, nfds poll.Nfds_t, timeout int32) int32 {
 		trc("t=%v fds=%v nfds=%v timeout=%v, (%v:)", t, fds, nfds, timeout, origin(2))
 	}
 	if nfds == 0 {
-		panic(todo(""))
+		// Nothing to watch: poll is a sleep.
+		if timeout < 0 {
+			select {}
+		}
+
+		time.Sleep(time.Duration(timeout) * time.Millisecond)
+		return 0
 	}
 
-	// if dmesgs {
-	// 	dmesg("%v: %#x %v %v, %+v", origin(1), fds, nfds, timeout, (*[1000]unix.PollFd)(unsafe.Pointer(fds))[:nfds:nfds])
-	// }
 	n, err := unix.Poll((*[1000]unix.PollFd)(unsafe.Pointer(fds))[:nfds:nfds], int(timeout))
-	// if dmesgs {
-	// 	dmesg("%v: %v %v", origin(1), n, err)
-	// }
 	if err != nil {
 		t.setErrno(err)
 		return -1
@@ -227,11 +262,22 @@ func X__cmsg_nxthdr(t *TLS, msgh, cmsg uintptr) uintptr {
 }
 
 // wchar_t *wcschr(const wchar_t *wcs, wchar_t wc);
-func Xwcschr(t *TLS, wcs uintptr, wc wchar_t) wchar_t {
+func Xwcschr(t *TLS, wcs uintptr, wc wchar_t) uintptr {
 	if __ccgo_strace {
 		trc("t=%v wcs=%v wc=%v, (%v:)", t, wcs, wc, origin(2))
 	}
-	panic(todo(""))
+	for {
+		c := *(*wchar_t)(unsafe.Pointer(wcs))
+		if c == wc {
+			return wcs
+		}
+
+		if c == 0 {
+			return 0
+		}
+
+		wcs += unsafe.Sizeof(wchar_t(0))
+	}
 }
 
 // gid_t getegid(void);
@@ -239,7 +285,7 @@ func Xgetegid(t *TLS) types.Gid_t {
 	if __ccgo_strace {
 		trc("t=%v, (%v:)", t, origin(2))
 	}
-	panic(todo(""))
+	return types.Gid_t(unix.Getegid())
 }
 
 // gid_t getgid(void);
@@ -247,7 +293,7 @@ func Xgetgid(t *TLS) types.Gid_t {
 	if __ccgo_strace {
 		trc("t=%v, (%v:)", t, origin(2))
 	}
-	panic(todo(""))
+	return types.Gid_t(unix.Getgid())
 }
 
 // void *shmat(int shmid, const void *shmaddr, int shmflg);
@@ -301,12 +347,21 @@ func Xtmpfile(t *TLS) uintptr {
 		return 0
 	}
 
-	cf := newFile(t, int32(f.Fd()))
-	AtExit(func() {
-		nm := f.Name()
-		file(cf).close(t)
-		os.Remove(nm)
-	})
+	// Unlink the file right away like musl, so it goes away on fclose or exit. The fd
+	// is duplicated as the os.File would otherwise close it.
+	defer os.Remove(f.Name())
+	defer f.Close()
+
+	fd, err := unix.Dup(int(f.Fd()))
+	if err != nil {
+		t.setErrno(err)
+		return 0
+	}
+
+	cf := newFile(t, int32(fd))
+	if cf == 0 {
+		unix.Close(fd)
+	}
 
 	return cf
 }
@@ -964,16 +1019,19 @@ func Xuuid_unparse(t *TLS, uu, out uintptr) {
 	*(*byte)(unsafe.Pointer(out + uintptr(len(s)))) = 0
 }
 
-// no longer used?
-// var staticRandomData = &rand.Rand{}
-
 // char *initstate(unsigned seed, char *state, size_t size);
 func Xinitstate(t *TLS, seed uint32, statebuf uintptr, statelen types.Size_t) uintptr {
 	if __ccgo_strace {
 		trc("t=%v seed=%v statebuf=%v statelen=%v, (%v:)", t, seed, statebuf, statelen, origin(2))
 	}
-	// staticRandomData = rand.New(rand.NewSource(int64(seed)))
-	_ = rand.New(rand.NewSource(int64(seed)))
+	// random(3) is modeled here by a single global math/rand generator (see
+	// randomGen / Xrandom), so the caller-supplied state buffer cannot be
+	// honored. Mirror musl's primary effect by (re)seeding that generator,
+	// matching Xsrandomdev. NULL is returned as there is no previous state
+	// buffer to hand back.
+	randomMu.Lock()
+	randomGen.Seed(int64(seed))
+	randomMu.Unlock()
 	return 0
 }
 
@@ -982,8 +1040,11 @@ func Xsetstate(t *TLS, state uintptr) uintptr {
 	if __ccgo_strace {
 		trc("t=%v state=%v, (%v:)", t, state, origin(2))
 	}
-	t.setErrno(errno.EINVAL) //TODO
-	return 0
+	// random(3) is modeled by a single global generator (see randomGen /
+	// Xrandom), so there is no independent saved stream to switch to. Treat
+	// setstate as a no-op rather than failing the caller; return the passed
+	// pointer (non-NULL) to signal success.
+	return state
 }
 
 // The initstate_r() function is like initstate(3) except that it initializes
@@ -1370,4 +1431,95 @@ func x___secs_to_tm(tls *TLS, t int64, tm uintptr) (r int32) {
 	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_min = remsecs / int32(60) % int32(60)
 	(*ctime.Tm)(unsafe.Pointer(tm)).Ftm_sec = remsecs % int32(60)
 	return 0
+}
+
+// int kill(pid_t pid, int sig);
+func Xkill(t *TLS, pid types.Pid_t, sig int32) int32 {
+	if __ccgo_strace {
+		trc("t=%v pid=%v sig=%v, (%v:)", t, pid, sig, origin(2))
+	}
+	if err := unix.Kill(int(pid), unix.Signal(sig)); err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+// ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
+//
+// The buffers are read one after another, which is what readv guarantees
+// about the order but not about atomicity.
+func Xreadv(t *TLS, fd int32, iov uintptr, iovcnt int32) types.Ssize_t {
+	if __ccgo_strace {
+		trc("t=%v fd=%v iov=%v iovcnt=%v, (%v:)", t, fd, iov, iovcnt, origin(2))
+	}
+	type iovec struct {
+		base uintptr
+		len  types.Size_t
+	}
+	var total types.Ssize_t
+	for i := int32(0); i < iovcnt; i++ {
+		v := (*iovec)(unsafe.Pointer(iov + uintptr(i)*unsafe.Sizeof(iovec{})))
+		if v.len == 0 {
+			continue
+		}
+
+		n, err := unix.Read(int(fd), unsafe.Slice((*byte)(unsafe.Pointer(v.base)), v.len))
+		if err != nil {
+			if total != 0 {
+				break
+			}
+
+			t.setErrno(err)
+			return -1
+		}
+
+		total += types.Ssize_t(n)
+		if types.Size_t(n) < v.len {
+			break
+		}
+	}
+	return total
+}
+
+// pid_t setsid(void);
+func Xsetsid(t *TLS) types.Pid_t {
+	if __ccgo_strace {
+		trc("t=%v, (%v:)", t, origin(2))
+	}
+	pid, err := unix.Setsid()
+	if err != nil {
+		t.setErrno(err)
+		return -1
+	}
+
+	return types.Pid_t(pid)
+}
+
+// size_t confstr(int name, char *buf, size_t len);
+func Xconfstr(t *TLS, name int32, buf uintptr, size types.Size_t) types.Size_t {
+	if __ccgo_strace {
+		trc("t=%v name=%v buf=%v size=%v, (%v:)", t, name, buf, size, origin(2))
+	}
+	var s string
+	switch name {
+	case unistd.X_CS_PATH:
+		s = "/usr/bin:/bin"
+		if runtime.GOOS == "darwin" {
+			s = "/usr/bin:/bin:/usr/sbin:/sbin"
+		}
+	default:
+		t.setErrno(errno.EINVAL)
+		return 0
+	}
+
+	if buf != 0 && size != 0 {
+		n := types.Size_t(copy(unsafe.Slice((*byte)(unsafe.Pointer(buf)), size), s))
+		if n == size {
+			n--
+		}
+		*(*byte)(unsafe.Pointer(buf + uintptr(n))) = 0
+	}
+	return types.Size_t(len(s) + 1)
 }

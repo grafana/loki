@@ -3,7 +3,7 @@ package orderedmap
 import (
     "fmt"
 
-    "go.yaml.in/yaml/v4"
+    "github.com/pb33f/go-yaml"
 )
 
 var (

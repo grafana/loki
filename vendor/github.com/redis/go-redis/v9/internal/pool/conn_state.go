@@ -263,11 +263,25 @@ func (sm *ConnStateMachine) AwaitAndTransition(
 	sm.waiterCount.Add(1)
 	sm.mu.Unlock()
 
+	// Re-check now that the waiter is visible. A transition that happened
+	// between the fast path above and the enqueue found no waiter to notify,
+	// so without this the waiter would sleep until its context expires.
+	sm.notifyWaiters()
+
 	// Wait for state change or timeout
 	select {
 	case <-ctx.Done():
 		// Timeout or cancellation - remove from queue
 		sm.mu.Lock()
+		// notifyWaiters removes the waiter and sends on w.done under sm.mu, so
+		// a value here means it was served before we got the lock: report the
+		// transition and don't decrement waiterCount again.
+		select {
+		case err := <-w.done:
+			sm.mu.Unlock()
+			return sm.GetState(), err
+		default:
+		}
 		sm.waiters.Remove(elem)
 		sm.waiterCount.Add(-1)
 		sm.mu.Unlock()
@@ -297,45 +311,35 @@ func (sm *ConnStateMachine) notifyWaiters() {
 		return
 	}
 
-	// Process waiters in FIFO order until no more can be processed
-	// We loop instead of recursing to avoid stack overflow and mutex issues
+	// Track state locally so we only consider transitions made within this
+	// call, not concurrent transitions from woken goroutines. Re-reading the
+	// atomic would let a fast goroutine's Transition(StateIdle) leak into our
+	// view, causing us to wake multiple waiters at once and breaking FIFO
+	// execution ordering.
+	currentState := sm.GetState()
+
 	for {
 		processed := false
 
-		// Find the first waiter that can proceed
 		for elem := sm.waiters.Front(); elem != nil; elem = elem.Next() {
 			w := elem.Value.(*waiter)
 
-			// Read current state inside the loop to get the latest value
-			currentState := sm.GetState()
-
-			// Check if current state is valid for this waiter
 			if _, valid := w.validStates[currentState]; valid {
-				// Remove from queue first
-				sm.waiters.Remove(elem)
-				sm.waiterCount.Add(-1)
-
-				// Use CAS to ensure state hasn't changed since we checked
-				// This prevents race condition where another thread changes state
-				// between our check and our transition
 				if sm.state.CompareAndSwap(uint32(currentState), uint32(w.targetState)) {
-					// Successfully transitioned - notify waiter
+					sm.waiters.Remove(elem)
+					sm.waiterCount.Add(-1)
 					w.done <- nil
-					processed = true
-					break
+					currentState = w.targetState
 				} else {
-					// State changed - re-add waiter to front of queue to maintain FIFO ordering
-					// This waiter was first in line and should retain priority
-					sm.waiters.PushFront(w)
-					sm.waiterCount.Add(1)
-					// Continue to next iteration to re-read state
-					processed = true
-					break
+					// State changed concurrently. Keep the waiter where it is:
+					// AwaitAndTransition holds elem and removes it on timeout.
+					currentState = sm.GetState()
 				}
+				processed = true
+				break
 			}
 		}
 
-		// If we didn't process any waiter, we're done
 		if !processed {
 			break
 		}

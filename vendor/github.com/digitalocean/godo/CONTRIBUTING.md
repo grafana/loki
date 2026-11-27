@@ -59,6 +59,17 @@ number for the tag.
 5. Once the release process completes, review the draft release for correctness and publish the release.  
    Ensure the release has been marked `Latest`.
 
+6. Verify the module checksum against the Go checksum database (to catch retagging issues):
+
+   1. Run `go mod tidy` inside doctl (or any other repo that uses godo) so that the corresponding godo hash in the `go.sum` file gets updated.
+   2. Hit the curl command in the terminal for the recent release version, for example:
+
+      ```bash
+      curl https://sum.golang.org/lookup/github.com/digitalocean/godo@v1.165.1
+      ```
+
+   3. Both hashes should match for that specific godo version.
+
 ## Go Version Support
 
 This project follows the support [policy of Go](https://go.dev/doc/devel/release#policy)

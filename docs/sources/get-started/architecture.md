@@ -52,7 +52,7 @@ There are two index formats that are currently supported as single store with in
   It is extensible and has many advantages over the deprecated BoltDB index.
   New storage features in Loki are solely available when using TSDB.
 
-- [BoltDB](../../operations/storage/boltdb-shipper/) (deprecated)
+- [BoltDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) (deprecated)
 
   [Bolt](https://github.com/boltdb/bolt) is a low-level, transactional key-value store written in Go.
 
@@ -62,7 +62,7 @@ A chunk is a container for log lines of a stream (unique set of labels) of a spe
 
 The following ASCII diagram describes the chunk format in detail.
 
-```
+```ascii
 ----------------------------------------------------------------------------
 |                        |                       |                         |
 |     MagicNumber(4b)    |     version(1b)       |      encoding (1b)      |
@@ -114,7 +114,7 @@ Note that the labels strings and lengths within the `structuredMetadata` section
 A block is comprised of a series of entries, each of which is an individual log line.
 Note that the bytes of a block are stored compressed. The following is their form when uncompressed:
 
-```
+```ascii
 -----------------------------------------------------------------------------------------------------------------------------------------------
 |  ts (varint)  |  len (uvarint)  |  log-1 bytes  |  len(from #symbols)  |  #symbols (uvarint)  |  symbol-1 (uvarint)  | symbol-n*2 (uvarint) |
 -----------------------------------------------------------------------------------------------------------------------------------------------
@@ -132,7 +132,6 @@ bytes of the log entry.
 Symbols store references to the actual strings containing label names and values in the
 `structuredMetadata` section of the chunk.
 
-
 ## Write path
 
 On a high level, the write path in Loki works as follows:
@@ -149,7 +148,6 @@ On a high level, the write path in Loki works as follows:
 
 Refer to [Components](../components/) for a more detailed description of the components involved in the write path.
 
-
 ## Read path
 
 On a high level, the read path in Loki works as follows:
@@ -165,7 +163,6 @@ On a high level, the read path in Loki works as follows:
 1. The query frontend merges the individual results into a final result and return it to the client.
 
 Refer to [Components](../components/) for a more detailed description of the components involved in the read path.
-
 
 ## Multi-tenancy
 

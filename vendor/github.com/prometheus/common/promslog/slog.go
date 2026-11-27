@@ -61,7 +61,7 @@ func NewLevel() *Level {
 	}
 }
 
-func (l *Level) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *Level) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	type plain string
 	if err := unmarshal((*plain)(&s)); err != nil {
@@ -282,8 +282,8 @@ func New(config *Config) *slog.Logger {
 	return slog.New(slog.NewTextHandler(config.Writer, logHandlerOpts))
 }
 
-// NewNopLogger is a convenience function to return an slog.Logger that writes
-// to io.Discard.
+// NewNopLogger is a convenience function to return an slog.Logger that
+// discards all log records.
 func NewNopLogger() *slog.Logger {
-	return New(&Config{Writer: io.Discard})
+	return slog.New(slog.DiscardHandler)
 }

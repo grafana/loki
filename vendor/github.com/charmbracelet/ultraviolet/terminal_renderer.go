@@ -6,6 +6,7 @@ import (
 	"hash/maphash"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -88,6 +89,9 @@ const (
 	tFullscreen
 	tMapNewline
 	tScrollOptim
+	// tGraphemeWidth indicates the terminal measures cell width using Unicode
+	// grapheme clustering (DEC mode 2027 / Unicode core).
+	tGraphemeWidth
 )
 
 // Set sets the given flags.
@@ -136,10 +140,16 @@ type TerminalRenderer struct {
 	oldnum           []int        // old indices from previous hash
 	cur, saved       cursor       // the current and saved cursors
 	flags            tFlag        // terminal writer flags.
+	method           ansi.Method  // the width method used to measure cell width
 	term             string       // the terminal type
 	clear            bool         // whether to force clear the screen
 	caps             capabilities // terminal control sequence capabilities
 	atPhantom        bool         // whether the cursor is out of bounds and at a phantom cell
+	noWrapLine       bool         // whether autowrap is off for the line currently being repainted
+	driftRows        []bool       // rows holding a cell the terminal may measure differently
+	termW, termH     int          // the size [TerminalRenderer.Resize] was last told
+	termResized      bool         // whether the terminal changed size since the last render
+	damaged          []bool       // rows this render disturbed itself, see [TerminalRenderer.damage]
 	logger           Logger       // The logger used for debugging.
 
 	// profile is the color profile to use when downsampling colors. This is
@@ -199,6 +209,28 @@ func (s *TerminalRenderer) SetMapNewline(v bool) {
 		s.flags.Set(tMapNewline)
 	} else {
 		s.flags.Reset(tMapNewline)
+	}
+}
+
+// SetWidthMethod sets the width method the renderer uses to measure the
+// display width of strings. This should match the width method configured on
+// the screen so that the renderer doesn't disagree with the cell widths it is
+// asked to draw.
+func (s *TerminalRenderer) SetWidthMethod(method ansi.Method) {
+	s.method = method
+}
+
+// SetGraphemeWidth sets whether the terminal measures cell width using Unicode
+// grapheme clustering (DEC mode 2027 / Unicode core). When enabled, the
+// renderer measures string width using [ansi.GraphemeWidth]; otherwise it
+// falls back to [ansi.WcWidth].
+func (s *TerminalRenderer) SetGraphemeWidth(v bool) {
+	if v {
+		s.flags.Set(tGraphemeWidth)
+		s.method = ansi.GraphemeWidth
+	} else {
+		s.flags.Reset(tGraphemeWidth)
+		s.method = ansi.WcWidth
 	}
 }
 
@@ -331,7 +363,7 @@ func (s *TerminalRenderer) PrependString(newbuf *RenderBuffer, str string) {
 	lines := strings.Split(str, "\n")
 	offset := 0
 	for _, line := range lines {
-		lineWidth := ansi.StringWidth(line)
+		lineWidth := s.method.StringWidth(line)
 		if w > 0 && lineWidth > w {
 			offset += (lineWidth / w)
 		}
@@ -428,7 +460,13 @@ func (s *TerminalRenderer) move(newbuf *RenderBuffer, x, y int) {
 	// }
 
 	if height > 0 {
-		if s.cur.Y > height-1 {
+		// Only clamp the remembered cursor row in fullscreen mode, where the
+		// buffer covers the whole screen. In relative mode the terminal
+		// screen extends beyond the frame buffer: after a shrink the
+		// real cursor can legitimately sit below the new frame's last row,
+		// and clamping the model here would skip the cursor-up move and leave
+		// the old frame's top lines on screen.
+		if !s.flags.Contains(tRelativeCursor) && s.cur.Y > height-1 {
 			s.cur.Y = height - 1
 		}
 		if y > height-1 {
@@ -465,9 +503,33 @@ func cellEqual(a, b *Cell) bool {
 }
 
 // putCell draws a cell at the current cursor position.
+//
+// The lower right corner is written with autowrap off, since a pending wrap
+// there scrolls the screen as soon as anything else prints. A multi-codepoint
+// cluster is the exception: with autowrap off the terminal never advances past
+// the margin and reads the combining codepoints as belonging to the cell to the
+// left, so the cluster keeps autowrap on and the wrap is cancelled after.
 func (s *TerminalRenderer) putCell(newbuf *RenderBuffer, cell *Cell) {
 	width, height := newbuf.Width(), newbuf.Height()
-	if s.flags.Contains(tFullscreen) && s.cur.X == width-1 && s.cur.Y == height-1 {
+	atMargin := s.cur.X == width-1 && !s.noWrapLine
+	lowerRight := atMargin && s.flags.Contains(tFullscreen) && s.cur.Y == height-1
+
+	// Only the corner cell can care, so the cluster is measured only there.
+	if lowerRight && cell != nil && utf8.RuneCountInString(cell.Content) > 1 {
+		s.putAttrCell(newbuf, cell)
+		// The cluster kept autowrap on so it landed whole, which leaves the
+		// cursor pending wrap. On the last row there is no next row to wrap
+		// onto, so the next print scrolls the screen instead. Cancel it here
+		// rather than leave the frame ending in a state the model denies.
+		if s.atPhantom {
+			_ = s.buf.WriteByte('\r')
+			s.cur.X = 0
+			s.atPhantom = false
+		}
+		return
+	}
+
+	if lowerRight {
 		s.putCellLR(newbuf, cell)
 	} else {
 		s.putAttrCell(newbuf, cell)
@@ -487,7 +549,7 @@ func (s *TerminalRenderer) wrapCursor() {
 }
 
 func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
-	if cell != nil && cell.IsZero() {
+	if cell != nil && cell.Width == 0 {
 		// XXX: Zero width cells are special and should not be written to the
 		// screen no matter what other attributes they have.
 		// Zero width cells are used for wide characters that are split into
@@ -521,7 +583,7 @@ func (s *TerminalRenderer) putAttrCell(newbuf *RenderBuffer, cell *Cell) {
 func (s *TerminalRenderer) putCellLR(newbuf *RenderBuffer, cell *Cell) {
 	// Optimize for the lower right corner cell.
 	curX := s.cur.X
-	if cell == nil || !cell.IsZero() {
+	if !cell.isWidePlaceholder() {
 		_, _ = s.buf.WriteString(ansi.ResetModeAutoWrap)
 		s.putAttrCell(newbuf, cell)
 		// Writing to lower-right corner cell should not wrap.
@@ -534,14 +596,7 @@ func (s *TerminalRenderer) putCellLR(newbuf *RenderBuffer, cell *Cell) {
 // updatePen updates the cursor pen styles.
 func (s *TerminalRenderer) updatePen(cell *Cell) {
 	if cell == nil {
-		if !s.cur.Style.IsZero() {
-			_, _ = s.buf.WriteString(ansi.ResetStyle)
-			s.cur.Style = Style{} // Reset style
-		}
-		if !s.cur.Link.IsZero() {
-			_, _ = s.buf.WriteString(ansi.ResetHyperlink())
-		}
-		return
+		cell = &EmptyCell
 	}
 
 	// Downsample pen when we don't have a [colorprofile.TrueColor],
@@ -678,7 +733,7 @@ func (s *TerminalRenderer) putRange(newbuf *RenderBuffer, oldLine, newLine Line,
 		var j, same int
 		for j, same = start, 0; j <= end; j++ {
 			oldCell, newCell := oldLine.At(j), newLine.At(j)
-			if same == 0 && oldCell != nil && oldCell.IsZero() && newCell.IsZero() {
+			if same == 0 && oldCell.isWidePlaceholder() && newCell.isWidePlaceholder() {
 				continue
 			}
 			if cellEqual(oldCell, newCell) {
@@ -777,9 +832,124 @@ func (s *TerminalRenderer) el0Cost() int {
 	return len(ansi.EraseLineRight)
 }
 
-// transformLine transforms the given line in the current window to the
-// corresponding line in the new window. It uses [ansi.ICH] and [ansi.DCH] to
-// insert or delete characters.
+// lineHasDrift reports whether the line contains a cell that a cell-level
+// diff cannot safely reposition across: a wide cell (width > 1), or a cell
+// whose width the terminal may measure differently than the model. Wide cells
+// occupy several columns, so a diff that lands on a continuation column splits
+// the character; and a width disagreement means the model cannot know which
+// column each glyph landed on.
+func lineHasDrift(m ansi.Method, line Line) bool {
+	for i := 0; i < len(line); i++ {
+		c := line.At(i)
+		if c == nil || c.Width == 0 || len(c.Content) == 0 {
+			continue
+		}
+		if c.Width > 1 {
+			return true
+		}
+		// One printable ASCII byte is one column under every width model, so
+		// it can never be a cell the models disagree about. Worth saying out
+		// loud because working the width out means segmenting the content,
+		// and this runs for every cell of every line the renderer diffs.
+		if len(c.Content) == 1 && c.Content[0] >= 0x20 && c.Content[0] < 0x7f {
+			continue
+		}
+		if m.StringWidth(c.Content) != ansi.StringWidth(c.Content) {
+			return true
+		}
+	}
+	return false
+}
+
+// paintLine brings row y of the screen in line with newbuf. A drift-prone row,
+// or any row when force is set, is repainted; every other row is diffed.
+func (s *TerminalRenderer) paintLine(newbuf *RenderBuffer, y int, force bool) {
+	drift := lineHasDrift(s.method, s.curbuf.Line(y)) || lineHasDrift(s.method, newbuf.Line(y))
+	s.markDrift(y, newbuf.Height(), drift)
+	switch {
+	case drift && !s.flags.Contains(tGraphemeWidth):
+		// Clip a cluster the terminal measures wider than the model instead of
+		// letting it spill onto the next row, then put the cursor back.
+		s.noWrapLine = true
+		_, _ = s.buf.WriteString(ansi.ResetModeAutoWrap)
+		s.repaintLine(newbuf, y)
+		s.noWrapLine = false
+		_, _ = s.buf.WriteString(ansi.SetModeAutoWrap)
+		s.reanchorWideLine(newbuf)
+	case drift || force:
+		s.repaintLine(newbuf, y)
+	default:
+		s.transformLine(newbuf, y)
+	}
+}
+
+// repaintLine erases row y from column 0 and writes newbuf's cells, so the
+// result does not depend on what the model believes is on screen.
+func (s *TerminalRenderer) repaintLine(newbuf *RenderBuffer, y int) {
+	oldLine := s.curbuf.Line(y)
+	newLine := newbuf.Line(y)
+
+	s.move(newbuf, 0, y)
+	blank := s.clearBlank()
+	s.updatePen(blank)
+	_, _ = s.buf.WriteString(ansi.EraseLineRight)
+	s.cur.X = 0
+
+	// A cell whose width runs past the right margin cannot be shown, so stop
+	// there. The buffer can hold one after a resize narrowed the line around
+	// it, and painting it would put a clipped half-glyph on the screen.
+	width := newbuf.Width()
+	clipped := width
+	for x := 0; x < width; x++ {
+		if c := newLine.At(x); c != nil && !c.isWidePlaceholder() && x+c.Width > width {
+			clipped = x
+			break
+		}
+	}
+
+	// Write the content cells. The line was just erased, so trailing blanks
+	// need no write, and writing them would risk wrapping past the right
+	// margin if the terminal painted a wide cell wider than the model
+	// measured.
+	last := -1
+	for x := 0; x < clipped; x++ {
+		if c := newLine.At(x); c != nil && !c.isWidePlaceholder() && !cellEqual(c, blank) {
+			last = x
+		}
+	}
+	for x := 0; x <= last; x++ {
+		s.putCell(newbuf, newLine.At(x))
+	}
+
+	// Adopt the new line as the model of what is on screen. The clipped tail
+	// was never painted, so the model records it as blank: claiming otherwise
+	// would let a later frame skip the cell, and a resize that widens the line
+	// would leave the half-glyph on screen forever.
+	if len(oldLine) == len(newLine) {
+		copy(oldLine, newLine)
+		for x := clipped; x < width && x < len(oldLine); x++ {
+			oldLine[x] = Cell{}
+		}
+	}
+}
+
+// markDrift records whether a row holds a cell the terminal may measure
+// differently than the model, so a later width change knows which rows to
+// repaint. Recorded here rather than rescanned later, because the diff already
+// had to work it out.
+func (s *TerminalRenderer) markDrift(y, height int, drift bool) {
+	if y < 0 {
+		return
+	}
+	if n := max(height, y+1); len(s.driftRows) < n {
+		s.driftRows = append(s.driftRows, make([]bool, n-len(s.driftRows))...)
+	}
+	s.driftRows[y] = drift
+}
+
+// transformLine diffs row y against the model and writes only what changed,
+// using [ansi.ICH] and [ansi.DCH] to shift cells. It must not see a drift-prone
+// row; [TerminalRenderer.paintLine] routes those to a repaint.
 func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	var firstCell, oLastCell, nLastCell int // first, old last, new last index
 	oldLine := s.curbuf.Line(y)
@@ -926,7 +1096,7 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 			if n != 0 {
 				for n > 0 {
 					wide := newLine.At(n + 1)
-					if wide == nil || !wide.IsZero() {
+					if !wide.isWidePlaceholder() {
 						break
 					}
 					n--
@@ -934,7 +1104,7 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 				}
 			} else if n >= firstCell && newLine.At(n) != nil && newLine.At(n).Width > 1 {
 				next := newLine.At(n + 1)
-				for next != nil && next.IsZero() {
+				for next.isWidePlaceholder() {
 					n++
 					oLastCell++
 					next = newLine.At(n + 1)
@@ -973,6 +1143,41 @@ func (s *TerminalRenderer) transformLine(newbuf *RenderBuffer, y int) {
 	} else {
 		copy(oldLine, newLine)
 	}
+}
+
+// reanchorWideLine re-anchors the cursor after a line that may have left it
+// adrift. This is a best-effort fallback that bounds cursor desync to one line
+// on terminals whose width model disagrees with ours. When the terminal
+// negotiated Unicode grapheme width (mode 2027) the models agree, so no
+// re-anchor is needed.
+//
+// The row is re-anchored along with the column. A terminal that measures a
+// cluster wider than the model does runs past the right margin and wraps, so a
+// line the model believes fits can leave the real cursor a row further down.
+// Recovering the column alone would then leave every following line painted one
+// row off, which is the drift this re-anchor exists to contain.
+func (s *TerminalRenderer) reanchorWideLine(newbuf *RenderBuffer) {
+	// In relative cursor mode there is no absolute row to move to, so the
+	// column is all that can be recovered.
+	if s.flags.Contains(tRelativeCursor) {
+		if s.atPhantom || s.cur.X < 0 || s.cur.X >= newbuf.Width() {
+			return
+		}
+		_, _ = s.buf.WriteString(ansi.CursorHorizontalAbsolute(s.cur.X + 1))
+		return
+	}
+
+	if s.cur.X < 0 || s.cur.Y < 0 {
+		return
+	}
+
+	// A pending wrap is as untrustworthy as the column: the terminal may have
+	// already taken it. An absolute move cancels it and lands on a column the
+	// model can name, so clamp into the line and record that.
+	x := min(s.cur.X, newbuf.Width()-1)
+	_, _ = s.buf.WriteString(ansi.CursorPosition(x+1, s.cur.Y+1))
+	s.cur.X = x
+	s.atPhantom = false
 }
 
 // deleteCells deletes the count cells at the current cursor position and moves
@@ -1037,7 +1242,11 @@ func (s *TerminalRenderer) clearBottom(newbuf *RenderBuffer, total int) (top int
 		}
 
 		if top < total {
-			s.move(newbuf, 0, max(0, top-1)) // top is 1-based
+			// top is the first row of the trailing blank region, so the
+			// erase starts there. Starting a row earlier would wipe a row
+			// this frame did not touch, and the loop that repaints only
+			// touched rows would never put it back.
+			s.move(newbuf, 0, top)
 			s.clearToBottom(blank)
 			if s.oldhash != nil && s.newhash != nil &&
 				row < len(s.oldhash) && row < len(s.newhash) {
@@ -1085,7 +1294,7 @@ func (s *TerminalRenderer) clearUpdate(newbuf *RenderBuffer) {
 	}
 	nonEmpty = s.clearBottom(newbuf, nonEmpty)
 	for i := 0; i < nonEmpty && i < newbuf.Height(); i++ {
-		s.transformLine(newbuf, i)
+		s.paintLine(newbuf, i, false)
 	}
 }
 
@@ -1115,6 +1324,97 @@ func (s *TerminalRenderer) Flush() (err error) {
 	return
 }
 
+// sizeChange is what a render owes to the screen or the frame having changed
+// shape since the last one.
+type sizeChange struct {
+	// frameResized reports that the frame is a different shape than the model,
+	// so the model has to be resized before anything is diffed against it.
+	frameResized bool
+
+	// repaintAll requires every row to be painted whatever the model says.
+	repaintAll bool
+}
+
+// reconcileSize decides what a change of size costs, and is the only place that
+// decides it.
+//
+// A terminal that changed size rewrapped what was on it, and a frame that
+// changed shape leaves no row holding its old meaning. Either way the model
+// cannot be trusted. What differs is how much of the screen is the renderer's to
+// put right: fullscreen owns every cell and clears it, while an inline frame
+// shares the screen with whatever came before and so repaints its own rows and
+// leaves the rest alone.
+func (s *TerminalRenderer) reconcileSize(newbuf *RenderBuffer) sizeChange {
+	newWidth, newHeight := newbuf.Width(), newbuf.Height()
+	curWidth, curHeight := s.curbuf.Width(), s.curbuf.Height()
+	fullscreen := s.flags.Contains(tFullscreen)
+
+	change := sizeChange{
+		frameResized: curWidth != newWidth || curHeight != newHeight,
+	}
+
+	if s.termResized {
+		if fullscreen {
+			s.clear = true
+		} else {
+			change.repaintAll = true
+		}
+		s.termResized = false
+	}
+
+	if change.frameResized {
+		// No row keeps its meaning, so the hashes that describe them are worth
+		// nothing. Inline uses the narrower partial clear in Render instead.
+		s.oldhash, s.newhash = nil, nil
+		if fullscreen {
+			s.clear = true
+		}
+		// Nor does the application's touch list, which never saw rows that
+		// vanished and came back between two frames.
+		s.damage(0, newHeight)
+	}
+
+	// The terminal clips a row it measures wider than the model does, and the
+	// model believes it painted the whole row. Changing the width changes what
+	// fits, so a row holding a cell the two might measure differently has to be
+	// painted again. Rows of plain cells are measured the same by everyone, so an
+	// ASCII screen pays nothing.
+	if !fullscreen && curWidth != newWidth {
+		for y, drifts := range s.driftRows {
+			if drifts {
+				s.damage(y, 1)
+			}
+		}
+	}
+
+	return change
+}
+
+// damage marks n rows from y as rows this render disturbed on its own: rows it
+// scrolled, rows it erased, rows the terminal is about to measure differently
+// than the model does. The diff loop paints a damaged row whether or not the
+// application drew into it, because the application has no reason to redraw a
+// row it did not change and no way to know the renderer moved it.
+func (s *TerminalRenderer) damage(y, n int) {
+	for i := max(y, 0); i < min(y+n, len(s.damaged)); i++ {
+		s.damaged[i] = true
+	}
+}
+
+// beginDamage starts a fresh account, sized to the screen this render is about
+// to paint. A row outside it cannot be painted, so it cannot be damaged, and
+// clamping here is what lets every reader index the record without checking.
+// Reset on the way in rather than the way out, so no future exit path has to
+// remember to do it. The slice is kept when the size holds, so a steady stream
+// of frames allocates nothing.
+func (s *TerminalRenderer) beginDamage(height int) {
+	if len(s.damaged) != height {
+		s.damaged = make([]bool, height)
+		return
+	}
+	clear(s.damaged)
+}
+
 // Redraw forces a full redraw of the screen. It's equivalent to calling
 // [TerminalRenderer.Erase] and [TerminalRenderer.Render].
 func (s *TerminalRenderer) Redraw(newbuf *RenderBuffer) {
@@ -1125,11 +1425,18 @@ func (s *TerminalRenderer) Redraw(newbuf *RenderBuffer) {
 // Render renders changes of the screen to the internal buffer. Call
 // [terminalWriter.Flush] to flush pending changes to the screen.
 func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
-	// Do we need to render anything?
+	// Do we need to render anything? A latched resize counts: the terminal moved
+	// content the application cannot know about, so a frame it considers
+	// unchanged still has to be put back on screen.
 	touchedLines := newbuf.TouchedLines()
-	if !s.clear && touchedLines == 0 {
+	if !s.clear && !s.termResized && touchedLines == 0 {
 		return
 	}
+
+	// Every reader below indexes the touch list by screen row, so the list has to
+	// cover the screen before any of them run. Growing here is what lets them do
+	// it without a length check each.
+	newbuf.growTouched()
 
 	if s.curbuf == nil || s.curbuf.Bounds().Empty() {
 		// Initialize the current buffer
@@ -1137,11 +1444,11 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 	}
 
 	newWidth, newHeight := newbuf.Width(), newbuf.Height()
-	curWidth, curHeight := s.curbuf.Width(), s.curbuf.Height()
+	curHeight := s.curbuf.Height()
 
-	if curWidth != newWidth || curHeight != newHeight {
-		s.oldhash, s.newhash = nil, nil
-	}
+	s.beginDamage(newHeight)
+
+	size := s.reconcileSize(newbuf)
 
 	// TODO: Investigate whether this is necessary. Theoretically, terminals
 	// can add/remove tab stops and we should be able to handle that. We could
@@ -1156,23 +1463,37 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 
 	var nonEmpty int
 
-	// XXX: In inline mode, after a screen resize, we need to clear the extra
-	// lines at the bottom of the screen. This is because in inline mode, we
-	// don't use the full screen height and the current buffer size might be
-	// larger than the new buffer size.
+	// An inline frame that gives up rows has to erase what it no longer covers,
+	// or the tail of the taller frame stays on screen below the shorter one.
+	// Fullscreen has no such rows: it repaints the whole screen instead.
+	//
+	// The erase runs from the new last row to the bottom of the screen, so it
+	// reaches that residue wherever the terminal moved it. A width change at
+	// the same time is therefore a reason to erase rather than a reason to skip
+	// it, since a terminal that rewrapped those rows has spread them further
+	// than the model can account for.
 	partialClear := !s.flags.Contains(tFullscreen) && s.cur.X != -1 && s.cur.Y != -1 &&
-		curWidth == newWidth &&
 		curHeight > 0 &&
 		curHeight > newHeight
 
 	if !s.clear && partialClear {
-		s.clearBelow(newbuf, nil, newHeight-1)
+		// From the first row the frame gave up, so the frame's own rows are left
+		// alone: nothing it still owns needs putting back, and a frame that
+		// collapsed to nothing starts at its own first row rather than the one
+		// above, which belongs to whatever shared the screen first.
+		s.clearBelow(newbuf, nil, newHeight)
+	}
+
+	// Resize the model before diffing so the loop below walks every row
+	// of the new screen, including rows added by a grow.
+	if size.frameResized {
+		s.curbuf.Resize(newWidth, newHeight)
 	}
 
 	if s.clear { //nolint:nestif
 		s.clearUpdate(newbuf)
 		s.clear = false
-	} else if touchedLines > 0 {
+	} else if touchedLines > 0 || size.repaintAll {
 		// On Windows, there's a bug with Windows Terminal where [ansi.DECSTBM]
 		// misbehaves and moves the cursor outside of the scrolling region. For
 		// now, we disable the optimizations completely on Windows.
@@ -1187,61 +1508,28 @@ func (s *TerminalRenderer) Render(newbuf *RenderBuffer) {
 		var changedLines int
 		var i int
 
-		if s.flags.Contains(tFullscreen) {
-			nonEmpty = min(curHeight, newHeight)
-		} else {
-			nonEmpty = newHeight
-		}
+		nonEmpty = newHeight
 
 		nonEmpty = s.clearBottom(newbuf, nonEmpty)
-		for i = 0; i < nonEmpty && i < newHeight; i++ {
-			if newbuf.Touched == nil || i >= len(newbuf.Touched) || (newbuf.Touched[i] != nil &&
+		for i = 0; i < nonEmpty; i++ {
+			// A repaintAll row has to be put back whatever the model says.
+			if size.repaintAll || s.damaged[i] || (newbuf.Touched[i] != nil &&
 				(newbuf.Touched[i].FirstCell != -1 || newbuf.Touched[i].LastCell != -1)) {
-				s.transformLine(newbuf, i)
+				s.paintLine(newbuf, i, size.repaintAll)
 				changedLines++
-			}
-
-			// Mark line changed successfully.
-			if i < len(newbuf.Touched) && i <= newbuf.Height()-1 {
-				newbuf.Touched[i] = &LineData{
-					FirstCell: -1, LastCell: -1,
-				}
-			}
-			if i < len(s.curbuf.Touched) && i < s.curbuf.Height()-1 {
-				s.curbuf.Touched[i] = &LineData{
-					FirstCell: -1, LastCell: -1,
-				}
 			}
 		}
 	}
 
-	if !s.flags.Contains(tFullscreen) && (curWidth != newWidth || curHeight != newHeight) {
-		s.move(newbuf, 0, newHeight-1)
+	if !s.flags.Contains(tFullscreen) && size.frameResized {
+		s.move(newbuf, 0, max(newHeight-1, 0))
 	}
 
 	// Sync windows and screen
-	newbuf.Touched = make([]*LineData, newHeight)
-	for i := range newbuf.Touched {
-		newbuf.Touched[i] = &LineData{
-			FirstCell: -1, LastCell: -1,
-		}
-	}
-	for i := range s.curbuf.Touched {
-		s.curbuf.Touched[i] = &LineData{
-			FirstCell: -1, LastCell: -1,
-		}
-	}
+	newbuf.growTouched()
+	resetTouched(newbuf.Touched)
 
-	if curWidth != newWidth || curHeight != newHeight {
-		// Resize the old buffer to match the new buffer.
-		s.curbuf.Resize(newWidth, newHeight)
-		// Sync new lines to old lines
-		for i := curHeight - 1; i < newHeight; i++ {
-			copy(s.curbuf.Line(i), newbuf.Line(i))
-		}
-	}
-
-	s.updatePen(nil) // nil indicates a blank cell with no styles
+	s.updatePen(nil)
 }
 
 // Erase marks the screen to be fully erased on the next render.
@@ -1251,9 +1539,36 @@ func (s *TerminalRenderer) Erase() {
 
 // Resize updates the terminal screen tab stops. This is used to calculate
 // terminal tab stops for hard tab optimizations.
-func (s *TerminalRenderer) Resize(width, _ int) {
+//
+// Resize also invalidates the cursor model when the renderer can recover
+// from it: a terminal may move the cursor on any resize, so the remembered
+// position no longer matches reality, and the next move will be absolute.
+//
+// In relative cursor mode there is no absolute move to fall back on, and
+// -1 there means "first move, assume the origin" rather than "unknown", so
+// invalidating would assert a position instead of forgetting one. Keep the
+// old model in that mode and let the next render diff against it.
+//
+// A resize also forces the next render to repaint, since the screen moves
+// content around to fit and the model cannot see where it went. Whether that
+// means the whole screen or only the frame's own rows is decided in
+// [TerminalRenderer.Render].
+func (s *TerminalRenderer) Resize(width, height int) {
 	if s.tabs != nil {
 		s.tabs.Resize(width)
+	}
+
+	// Latched against the size last reported, not against the model, because
+	// Render sees only the size the application draws at: a screen that shrinks
+	// and grows back between two frames looks unchanged by the time it gets
+	// there. What the resize costs is decided in Render, which knows the mode.
+	if width > 0 && height > 0 {
+		s.termResized = s.termResized || (s.termW > 0 && (width != s.termW || height != s.termH))
+		s.termW, s.termH = width, height
+	}
+
+	if !s.flags.Contains(tRelativeCursor) {
+		s.cur.X, s.cur.Y = -1, -1
 	}
 }
 
@@ -1586,4 +1901,16 @@ func xtermCaps(termtype string) (v capabilities) {
 	}
 
 	return v
+}
+
+// resetTouched marks every line as untouched, reusing the records already there
+// rather than allocating a new one per line on every render.
+func resetTouched(touched []*LineData) {
+	for i, ld := range touched {
+		if ld == nil {
+			touched[i] = &LineData{FirstCell: -1, LastCell: -1}
+			continue
+		}
+		ld.FirstCell, ld.LastCell = -1, -1
+	}
 }

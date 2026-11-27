@@ -101,25 +101,13 @@ func markup(b scan.Bytes, sigs ...[]byte) bool {
 	return false
 }
 func markupCheck(sig, raw []byte) bool {
-	if len(raw) < len(sig)+1 {
+	if !ciCheck(sig, raw) {
 		return false
-	}
-
-	// perform case insensitive check
-	for i, b := range sig {
-		db := raw[i]
-		if 'A' <= b && b <= 'Z' {
-			db &= 0xDF
-		}
-		if b != db {
-			return false
-		}
 	}
 	// Next byte must be space or right angle bracket.
 	if db := raw[len(sig)]; !scan.ByteIsWS(db) && db != '>' {
 		return false
 	}
-
 	return true
 }
 
@@ -136,6 +124,11 @@ func ftyp(raw []byte, sigs ...[]byte) bool {
 	return false
 }
 
+type shebangSig struct {
+	sig  []byte
+	flag scan.Flags
+}
+
 // A valid shebang starts with the "#!" characters,
 // followed by any number of spaces,
 // followed by the path to the interpreter,
@@ -146,7 +139,7 @@ func ftyp(raw []byte, sigs ...[]byte) bool {
 //	#! /usr/bin/env php
 //
 // /usr/bin/env is the interpreter, php is the first and only argument.
-func shebang(b scan.Bytes, matchFlags scan.Flags, sigs ...[]byte) bool {
+func shebang(b scan.Bytes, sigs ...shebangSig) bool {
 	line := b.Line()
 	if len(line) < 2 || line[0] != '#' || line[1] != '!' {
 		return false
@@ -154,7 +147,7 @@ func shebang(b scan.Bytes, matchFlags scan.Flags, sigs ...[]byte) bool {
 	line = line[2:]
 	line.TrimLWS()
 	for _, s := range sigs {
-		if line.Match(s, matchFlags) != -1 {
+		if line.Match(s.sig, s.flag) != -1 {
 			return true
 		}
 	}

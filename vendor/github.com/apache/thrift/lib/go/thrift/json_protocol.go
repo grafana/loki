@@ -317,7 +317,7 @@ func (p *TJSONProtocol) ReadMapBegin(ctx context.Context) (keyType TType, valueT
 	size = int(iSize)
 
 	minElemSize := p.getMinSerializedSize(keyType) + p.getMinSerializedSize(valueType)
-	err = checkContainerSizeForProtocol(iSize, minElemSize, p.cfg)
+	err = checkContainerSizeForProtocol(iSize, minElemSize, p.RemainingBytes(), p.cfg)
 	if err != nil {
 		return keyType, valueType, 0, err
 	}
@@ -497,7 +497,7 @@ func (p *TJSONProtocol) ParseElemListBegin() (elemType TType, size int, e error)
 	size = int(nSize)
 
 	minElemSize := p.getMinSerializedSize(elemType)
-	err = checkContainerSizeForProtocol(nSize, minElemSize, p.cfg)
+	err = checkContainerSizeForProtocol(nSize, minElemSize, p.RemainingBytes(), p.cfg)
 	if err != nil {
 		return elemType, 0, err
 	}
@@ -569,39 +569,5 @@ func (p *TJSONProtocol) StringToTypeId(fieldType string) (TType, error) {
 }
 
 // Return the minimum number of bytes a type will consume on the wire
-func (p *TJSONProtocol) getMinSerializedSize(ttype TType) int32 {
-	switch ttype {
-	case STOP:
-		return 1 // T_STOP needs to count itself
-	case VOID:
-		return 1 // T_VOID needs to count itself
-	case BOOL:
-		return 1 // written as int
-	case BYTE:
-		return 1
-	case DOUBLE:
-		return 1
-	case I16:
-		return 1
-	case I32:
-		return 1
-	case I64:
-		return 1
-	case STRING:
-		return 2 // empty string
-	case STRUCT:
-		return 2 // empty struct
-	case MAP:
-		return 2 // empty map
-	case SET:
-		return 2 // empty set
-	case LIST:
-		return 2 // empty list
-	case UUID:
-		return 16 // empty UUID
-	default:
-		return 1 // unknown type
-	}
-}
 
 var _ TConfigurationSetter = (*TJSONProtocol)(nil)

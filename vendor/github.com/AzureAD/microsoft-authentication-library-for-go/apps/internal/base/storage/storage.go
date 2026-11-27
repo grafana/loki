@@ -276,7 +276,16 @@ func (m *Manager) aadMetadata(ctx context.Context, authorityInfo authority.Info)
 	defer m.aadCacheMu.Unlock()
 	discoveryResponse, err := m.requests.AADInstanceDiscovery(ctx, authorityInfo)
 	if err != nil {
-		return authority.InstanceDiscoveryMetadata{}, err
+		// If it's an invalid_instance error, always propagate
+		if strings.Contains(err.Error(), "invalid_instance") {
+			return authority.InstanceDiscoveryMetadata{}, err
+		}
+		// If the caller canceled the context, propagate
+		if ctx.Err() != nil {
+			return authority.InstanceDiscoveryMetadata{}, err
+		}
+		// For transient errors (network failures, HTTP 500, etc.), cache a fallback entry
+		return m.fallbackMetadata(authorityInfo.Host), nil
 	}
 
 	for _, metadataEntry := range discoveryResponse.Metadata {
@@ -291,6 +300,25 @@ func (m *Manager) aadMetadata(ctx context.Context, authorityInfo authority.Info)
 		}
 	}
 	return m.aadCache[authorityInfo.Host], nil
+}
+
+// fallbackMetadata returns a cached fallback metadata entry for the given host.
+// It first checks the known metadata provider for pre-baked alias data, then
+// falls back to a self-entry. The caller must hold m.aadCacheMu.
+func (m *Manager) fallbackMetadata(host string) authority.InstanceDiscoveryMetadata {
+	if known, ok := authority.GetKnownMetadata(host); ok {
+		for _, alias := range known.Aliases {
+			m.aadCache[alias] = known
+		}
+		return known
+	}
+	fallback := authority.InstanceDiscoveryMetadata{
+		PreferredNetwork: host,
+		PreferredCache:   host,
+		Aliases:          []string{host},
+	}
+	m.aadCache[host] = fallback
+	return fallback
 }
 
 func (m *Manager) readAccessToken(homeID string, envAliases []string, realm, clientID string, scopes []string, tokenType, authnSchemeKeyID, extCacheKey string) AccessToken {

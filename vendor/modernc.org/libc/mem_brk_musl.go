@@ -185,6 +185,9 @@ func Xrealloc(tls *TLS, p uintptr, n Tsize_t) (r uintptr) {
 
 	// malloc
 	r = malloc0(tls, pc, n, false)
+	if r == 0 {
+		return 0
+	}
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(r)), usable), unsafe.Slice((*byte)(unsafe.Pointer(p)), usable))
 	Xfree(tls, p)
 	return r

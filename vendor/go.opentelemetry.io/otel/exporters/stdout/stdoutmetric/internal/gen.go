@@ -3,9 +3,9 @@
 
 // Package internal provides internal functionality for the stdoutmetric
 // package.
-package internal // import "go.opentelemetry.io/otel/exporters/stdout/stdoutmetric/internal"
+package internal
 
-//go:generate gotmpl --body=../../../../internal/shared/counter/counter.go.tmpl "--data={ \"pkg\": \"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric/internal/counter\" }" --out=counter/counter.go
+//go:generate gotmpl --body=../../../../internal/shared/counter/counter.go.tmpl "--data={}" --out=counter/counter.go
 //go:generate gotmpl --body=../../../../internal/shared/counter/counter_test.go.tmpl "--data={}" --out=counter/counter_test.go
 
 //go:generate gotmpl --body=../../../../internal/shared/x/x.go.tmpl "--data={ \"pkg\": \"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric/internal\" }"  --out=x/x.go

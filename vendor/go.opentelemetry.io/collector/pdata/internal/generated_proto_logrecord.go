@@ -244,7 +244,7 @@ func (orig *LogRecord) UnmarshalJSON(iter *json.Iterator) {
 		case "eventName", "event_name":
 			orig.EventName = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

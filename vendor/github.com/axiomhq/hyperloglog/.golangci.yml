@@ -1,0 +1,25 @@
+version: "2"
+
+run:
+  timeout: 5m
+  relative-path-mode: gomod
+  modules-download-mode: readonly
+
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - misspell
+    - testifylint
+    - unconvert
+  settings:
+    staticcheck:
+      checks:
+        - all
+        # Generated polynomial coefficients intentionally use explicit powers.
+        - -QF1005
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

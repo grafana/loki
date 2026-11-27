@@ -87,7 +87,6 @@ linters:
       - .*.rl.go
       - .*.deepcopy.go
       - win_eventlog$
-      - operator
 issues:
   fix: true
 formatters:
@@ -107,4 +106,3 @@ formatters:
       - .*.rl.go
       - .*.deepcopy.go
       - win_eventlog$
-      - operator

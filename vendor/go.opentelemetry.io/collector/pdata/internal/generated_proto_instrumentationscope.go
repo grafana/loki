@@ -177,7 +177,7 @@ func (orig *InstrumentationScope) UnmarshalJSON(iter *json.Iterator) {
 		case "droppedAttributesCount", "dropped_attributes_count":
 			orig.DroppedAttributesCount = iter.ReadUint32()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

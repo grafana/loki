@@ -112,6 +112,7 @@ foo: &a1 bar
   - `make fmt`
   - `make tidy`
   - `make lint`
+  - `make lint-yaml`
   - `make test`
   - You can use `make check` to run all of the above
 - Submit a [Pull Request](https://github.com/yaml/go-yaml/pulls)
@@ -175,6 +176,7 @@ The repository's makefile (`GNUmakefile`) provides a number of useful targets:
 - `make shell GO-VERSION=1.23.4` opens a shell with a specific Go version
 - `make fmt` runs `golangci-lint fmt ./...`
 - `make lint` runs `golangci-lint run`
+- `make lint-yaml` runs a pinned yamllint using uv from Makes
 - `make tidy` runs `go mod tidy`
 - `make distclean` cleans the project completely
 

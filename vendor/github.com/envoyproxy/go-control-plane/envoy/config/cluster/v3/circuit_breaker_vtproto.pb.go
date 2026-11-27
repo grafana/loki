@@ -8,6 +8,7 @@ package clusterv3
 
 import (
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
+	durationpb "github.com/planetscale/vtprotobuf/types/known/durationpb"
 	wrapperspb "github.com/planetscale/vtprotobuf/types/known/wrapperspb"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -49,6 +50,16 @@ func (m *CircuitBreakers_Thresholds_RetryBudget) MarshalToSizedBufferVTStrict(dA
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.BudgetInterval != nil {
+		size, err := (*durationpb.Duration)(m.BudgetInterval).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x1a
 	}
 	if m.MinRetryConcurrency != nil {
 		size, err := (*wrapperspb.UInt32Value)(m.MinRetryConcurrency).MarshalToSizedBufferVTStrict(dAtA[:i])
@@ -268,6 +279,10 @@ func (m *CircuitBreakers_Thresholds_RetryBudget) SizeVT() (n int) {
 	}
 	if m.MinRetryConcurrency != nil {
 		l = (*wrapperspb.UInt32Value)(m.MinRetryConcurrency).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.BudgetInterval != nil {
+		l = (*durationpb.Duration)(m.BudgetInterval).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)

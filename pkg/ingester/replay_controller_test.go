@@ -177,6 +177,87 @@ func TestReplayControllerNoSpuriousErrorOnConcurrentAdd(t *testing.T) {
 	require.NoError(t, err, "concurrent Add during flush should not cause a spurious no-progress error")
 }
 
+// Regression test: a caller that snapshots progress and then coalesces into an
+// already in-flight flush — whose Sub happened before the caller's snapshot —
+// must still observe that flush's progress and not return a spurious
+// no-progress error.
+//
+// Sequence:
+//  1. Goroutine A triggers flush F1, which Subs 50 (200 -> 150, still above the
+//     90-byte ceiling) and then parks in-flight.
+//  2. B enters WithBackPressure and takes its snapshot *after* F1's Sub, then
+//     coalesces into F1 via singleflight. The old code compared totalSubtracted
+//     against that post-Sub snapshot, saw no change, and errored out even though
+//     F1 freed memory.
+//  3. F2 (triggered by B's next loop iteration) drains below the ceiling.
+func TestReplayControllerJoinInFlightFlushObservesProgress(t *testing.T) {
+	var rc *replayController
+	release := make(chan struct{})
+	subDone := make(chan struct{})
+	var flushes atomic.Int32
+	flusher := newDumbFlusher(func() {
+		if flushes.Add(1) == 1 {
+			// First flush: make progress, then stay in-flight so a second
+			// caller coalesces into this same flush.
+			rc.Sub(50) // 200 -> 150, still above the 90-byte ceiling
+			close(subDone)
+			<-release
+		} else {
+			rc.Sub(100) // subsequent flushes drain the rest
+		}
+	})
+	rc = newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+	rc.Add(200)
+
+	// Goroutine A keeps F1 in-flight (blocked in the flusher) after its Sub.
+	var wgA sync.WaitGroup
+	wgA.Add(1)
+	go func() {
+		defer wgA.Done()
+		rc.Flush()
+	}()
+
+	// Only after F1 has already subtracted does B take its snapshot.
+	<-subDone
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- rc.WithBackPressure(func() error { return nil })
+	}()
+
+	// Give B time to enter Flush and coalesce into F1, then release it.
+	time.Sleep(20 * time.Millisecond)
+	close(release)
+
+	wgA.Wait()
+	require.NoError(t, <-errCh, "caller joining an in-flight flush must observe its progress")
+}
+
+// Regression test: a caller must not report a spurious no-progress error when a
+// concurrent worker's flush already drained memory below the ceiling between the
+// caller's loop guard and its own (now no-op) flush.
+//
+// The caller passes the Cur() > ceiling guard, then another worker's flush
+// completes and drains memory below the ceiling. The caller's own flush now has
+// nothing to do and returns zero, but memory is already fine, so it must exit
+// the loop cleanly instead of erroring.
+func TestReplayControllerNoErrorWhenDrainedBelowCeiling(t *testing.T) {
+	var rc *replayController
+	flusher := newDumbFlusher(func() {
+		// This flush frees nothing itself (so Flush() reports zero progress), but
+		// simulate that a concurrent worker's already-completed flush drained
+		// memory below the ceiling. currentBytes is reduced directly — as if by
+		// another flush's accounting — without advancing totalSubtracted for this
+		// flush, exactly mirroring a fresh flush that finds nothing left to do.
+		rc.currentBytes.Store(45) // below the 90-byte ceiling
+	})
+	rc = newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+	rc.Add(95) // above the 90-byte ceiling → enter the loop
+
+	err := rc.WithBackPressure(func() error { return nil })
+	require.NoError(t, err, "a no-progress flush must not error once memory is already under the ceiling")
+}
+
 // Test to ensure only one flush happens at a time when multiple goroutines call WithBackPressure
 func TestReplayControllerConcurrentFlushes(t *testing.T) {
 	t.Run("multiple goroutines wait for single flush", func(t *testing.T) {

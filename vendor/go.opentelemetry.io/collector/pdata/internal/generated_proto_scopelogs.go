@@ -169,7 +169,7 @@ func (orig *ScopeLogs) UnmarshalJSON(iter *json.Iterator) {
 		case "schemaUrl", "schema_url":
 			orig.SchemaUrl = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

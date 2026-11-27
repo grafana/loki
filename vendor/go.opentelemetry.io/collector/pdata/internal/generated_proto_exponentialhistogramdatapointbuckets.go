@@ -156,7 +156,7 @@ func (orig *ExponentialHistogramDataPointBuckets) UnmarshalJSON(iter *json.Itera
 			}
 
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

@@ -20,6 +20,13 @@ type SSEEvent struct {
 // SSEReader parses a "text/event-stream" byte stream into SSEEvents.
 // Bare-CR line terminators are not supported. Not safe for concurrent use.
 type SSEReader struct {
+	// OnComment, when set, is called with the text of each comment line
+	// (after the leading ':' and one optional space). Comments are still
+	// never dispatched as events; this only makes them observable, for
+	// servers that carry out-of-band metadata on comment lines. The slice
+	// is only valid for the duration of the call.
+	OnComment func(comment []byte)
+
 	r       *bufio.Reader
 	lastID  string
 	scratch []byte
@@ -75,6 +82,13 @@ func (s *SSEReader) Next() (*SSEEvent, error) {
 		}
 
 		if line[0] == ':' {
+			if s.OnComment != nil {
+				comment := line[1:]
+				if len(comment) > 0 && comment[0] == ' ' {
+					comment = comment[1:]
+				}
+				s.OnComment(comment)
+			}
 			if eof {
 				s.err = io.EOF
 				return nil, io.EOF

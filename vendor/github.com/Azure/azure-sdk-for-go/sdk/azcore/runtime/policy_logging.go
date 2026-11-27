@@ -34,6 +34,7 @@ func NewLogPolicy(o *policy.LogOptions) policy.Policy {
 	// construct default hash set of allowed headers
 	allowedHeaders := map[string]struct{}{
 		"accept":                        {},
+		"azure-deprecating":             {},
 		"cache-control":                 {},
 		"connection":                    {},
 		"content-length":                {},

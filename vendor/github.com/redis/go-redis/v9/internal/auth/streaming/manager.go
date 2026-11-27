@@ -43,9 +43,22 @@ type Manager struct {
 // The manager creates a ReAuthPoolHook sized to match the pool size, ensuring that
 // re-auth operations don't exhaust the connection pool.
 func NewManager(pl pool.Pooler, reAuthTimeout time.Duration) *Manager {
+	return NewManagerWithWorkers(pl, reAuthTimeout, pl.Size())
+}
+
+// NewManagerWithWorkers is like NewManager but sizes the re-auth worker
+// semaphore explicitly. Use it when the returned PoolHook is shared across more
+// than one pool (e.g. the main pool plus the dedicated pipeline pool): the
+// semaphore must cover the COMBINED connection ceiling, or after a credential
+// rotation the extra pool's connections queue behind pl.Size() workers and wait
+// outside reAuthTimeout.
+func NewManagerWithWorkers(pl pool.Pooler, reAuthTimeout time.Duration, workers int) *Manager {
+	if workers < 1 {
+		workers = 1
+	}
 	m := &Manager{
 		pool:                 pl,
-		poolHookRef:          NewReAuthPoolHook(pl.Size(), reAuthTimeout),
+		poolHookRef:          NewReAuthPoolHook(workers, reAuthTimeout),
 		credentialsListeners: NewCredentialsListeners(),
 	}
 	m.poolHookRef.manager = m

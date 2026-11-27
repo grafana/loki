@@ -146,7 +146,7 @@ func (orig *IPAddr) UnmarshalJSON(iter *json.Iterator) {
 		case "zone":
 			orig.Zone = iter.ReadString()
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

@@ -499,7 +499,7 @@ func (p *TCompactProtocol) ReadMapBegin(ctx context.Context) (keyType TType, val
 	valueType, _ = p.getTType(tCompactType(keyAndValueType & 0xf))
 
 	minElemSize := p.getMinSerializedSize(keyType) + p.getMinSerializedSize(valueType)
-	err = checkContainerSizeForProtocol(int64(size32), minElemSize, p.cfg)
+	err = checkContainerSizeForProtocol(int64(size32), minElemSize, p.trans.RemainingBytes(), p.cfg)
 	if err != nil {
 		return
 	}
@@ -533,7 +533,7 @@ func (p *TCompactProtocol) ReadListBegin(ctx context.Context) (elemType TType, s
 	}
 
 	minElemSize := p.getMinSerializedSize(elemType)
-	err = checkContainerSizeForProtocol(int64(size), minElemSize, p.cfg)
+	err = checkContainerSizeForProtocol(int64(size), minElemSize, p.trans.RemainingBytes(), p.cfg)
 	if err != nil {
 		return
 	}

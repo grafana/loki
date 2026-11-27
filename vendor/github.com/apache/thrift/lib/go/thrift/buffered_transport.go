@@ -87,8 +87,11 @@ func (p *TBufferedTransport) Flush(ctx context.Context) error {
 	return p.tp.Flush(ctx)
 }
 
+// RemainingBytes returns the bytes still buffered here plus whatever the
+// underlying transport still has. The bytes already pulled into the read buffer
+// have to be added back, because the underlying transport no longer counts them.
 func (p *TBufferedTransport) RemainingBytes() (num_bytes uint64) {
-	return p.tp.RemainingBytes()
+	return addRemainingBytes(p.tp.RemainingBytes(), uint64(p.Reader.Buffered()))
 }
 
 // SetTConfiguration implements TConfigurationSetter for propagation.

@@ -1,7 +1,7 @@
 // Copyright The OpenTelemetry Authors
 // SPDX-License-Identifier: Apache-2.0
 
-package autoexport // import "go.opentelemetry.io/contrib/exporters/autoexport"
+package autoexport
 
 import (
 	"context"
@@ -199,7 +199,7 @@ func init() {
 		host := getenv("OTEL_EXPORTER_PROMETHEUS_HOST", "localhost")
 		port := getenv("OTEL_EXPORTER_PROMETHEUS_PORT", "9464")
 		addr := host + ":" + port
-		lis, err := net.Listen("tcp", addr)
+		lis, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr)
 		if err != nil {
 			return nil, errors.Join(
 				fmt.Errorf("binding address %s for Prometheus exporter: %w", addr, err),
@@ -242,8 +242,8 @@ func (rws readerWithServer) Shutdown(ctx context.Context) error {
 }
 
 func getenv(key, fallback string) string {
-	result, ok := os.LookupEnv(key)
-	if !ok {
+	result := os.Getenv(key)
+	if result == "" {
 		return fallback
 	}
 	return result
@@ -295,7 +295,7 @@ func (pr producerRegistry) create(ctx context.Context) ([]metric.Producer, error
 
 func dedupedMetricProducers(envValue string) []string {
 	producers := make(map[string]struct{})
-	for _, producer := range strings.Split(envValue, ",") {
+	for producer := range strings.SplitSeq(envValue, ",") {
 		producers[producer] = struct{}{}
 	}
 

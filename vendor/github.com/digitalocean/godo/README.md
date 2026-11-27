@@ -12,7 +12,7 @@ You can view DigitalOcean API docs here: [https://docs.digitalocean.com/referenc
 > **🚀 New in v1.191.0 — AI & Inference support**
 >
 > `godo` now ships first-class support for DigitalOcean's
-> [Gradient AI Platform](https://www.digitalocean.com/products/gradient): chat
+> [DigitalOcean Inference](https://docs.digitalocean.com/products/inference/): chat
 > completions (with streaming), image generation, embeddings, batch inference,
 > model listing, and more — all from the same `Client`. Jump to
 > [**AI & Inference**](#ai--inference) to get started.
@@ -64,7 +64,7 @@ func main() {
 > | What you're calling | What you need |
 > | --- | --- |
 > | Infrastructure APIs (`Droplets`, `Kubernetes`, `Volumes`, …) | A DigitalOcean API token (PAT). |
-> | Inference APIs (`Chat`, `Models`, `Embeddings`, `ImageGenerations`, `Messages`, `Responses`, `BatchInference`, …) | A PAT created with **full access** scope, **or** a Gradient **Model Access Key**. |
+> | Inference APIs (`Chat`, `Models`, `Embeddings`, `ImageGenerations`, `Messages`, `Responses`, `BatchInference`, …) | A PAT created with **full access** scope, **or** a **model access key**. |
 >
 > If you only have a limited-scope PAT, infrastructure calls will work but
 > inference calls will fail with `401`. Create a new PAT with full access, or use
@@ -73,16 +73,51 @@ func main() {
 > ```go
 > // Either credential works with godo.NewFromToken:
 > client := godo.NewFromToken(os.Getenv("DIGITALOCEAN_TOKEN"))  // full-access PAT
-> client := godo.NewFromToken(os.Getenv("MODEL_ACCESS_KEY"))    // Gradient model access key
+> client := godo.NewFromToken(os.Getenv("MODEL_ACCESS_KEY"))    // model access key
 > ```
 
 If you need to provide a `context.Context` to your new client, you should use [`godo.NewClient`](https://godoc.org/github.com/digitalocean/godo#NewClient) to manually construct a client instead.
 
+## Action Gateway
+
+`client.ActionGateway` exposes the Action Gateway control-plane resources: tools,
+toolbelts, output views, MCP servers, connections, sessions, users, and end-user
+limits. Use a PAT with the corresponding `action_gateway` scopes. For example:
+
+```go
+toolbelts, _, err := client.ActionGateway.Toolbelts.List(ctx, &godo.ActionGatewayToolbeltsListOptions{Status: "active"})
+if err != nil { return err }
+fmt.Println(toolbelts.Toolbelts)
+
+session, _, err := client.ActionGateway.Sessions.CreateRuntime(ctx, &godo.ActionGatewaySessionCreateRequest{
+    ActorID: "alice",
+})
+if err != nil { return err }
+tools, _, err := session.ChatTools(ctx, nil) // action_search, action_invoke, action_code
+if err != nil { return err }
+completion, _, err := client.Chat.Completions.New(ctx, &godo.ChatCompletionNewParams{
+    Model: "llama3.3-70b-instruct", Messages: []godo.ChatCompletionMessage{godo.UserMessage("Find recent news")}, Tools: tools,
+})
+if err != nil { return err }
+toolMessages, _, err := session.HandleChatToolCalls(ctx, completion)
+if err != nil { return err }
+fmt.Println(toolMessages)
+```
+
+`session.Tools` supports direct discovery and invocation, while `session.Code`
+runs sandboxed code. `MessageTools`/`HandleMessageToolCalls` and
+`ResponseTools`/`HandleResponseToolCalls` integrate with the other inference
+formats. `CreateRuntime` defaults to an ask-before-executing policy; provide an
+explicit policy to change it. Omitted `Tools` enables all tools, while an empty
+non-nil slice enables none. MCP calls accept only HTTPS session URLs on
+`actions.do-ai.run`; `WithActionGatewayMCPBaseURL` overrides the origin for
+development or tests.
+
 ## AI & Inference
 
-> Talk to models on DigitalOcean's [Gradient AI Platform](https://www.digitalocean.com/products/gradient) with the same `godo.Client`.
+> Talk to models on [DigitalOcean Inference](https://docs.digitalocean.com/products/inference/) with the same `godo.Client`.
 
-The [Serverless Inference API](https://docs.digitalocean.com/reference/api/reference/serverless-inference/) is available at `https://inference.do-ai.run/`. Use a **DigitalOcean PAT with full access scope** or a Gradient **Model Access Key** — see the [credentials note](#authentication) above.
+The [Serverless Inference API](https://docs.digitalocean.com/reference/api/reference/serverless-inference/) is available at `https://inference.do-ai.run/`. Use a **DigitalOcean PAT with full access scope** or a **model access key** — see the [credentials note](#authentication) above.
 
 #### Chat completion
 

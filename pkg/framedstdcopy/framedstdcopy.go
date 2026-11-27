@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
 )
 
 const (

@@ -4,9 +4,9 @@
 // both. It's been battle-tested in several large projects and is
 // production-ready.
 //
-// A tutorial is available at https://github.com/charmbracelet/bubbletea/tree/master/tutorials
+// A tutorial is available at https://github.com/charmbracelet/bubbletea/tree/main/tutorials
 //
-// Example programs can be found at https://github.com/charmbracelet/bubbletea/tree/master/examples
+// Example programs can be found at https://github.com/charmbracelet/bubbletea/tree/main/examples
 package tea
 
 import (
@@ -145,6 +145,20 @@ type View struct {
 	// ProgressBar when not nil, shows a progress bar in the terminal's
 	// progress bar section. Support depends on the terminal.
 	ProgressBar *ProgressBar
+
+	// ProgramStatus when not nil, reports the program status to the terminal
+	// using the Program Status Protocol (OSC 7501): whether the program is
+	// idle, working, waiting on the user, done, or failed. Support depends on
+	// the terminal.
+	//
+	// The status usually addresses the root record (empty ID). Changing it
+	// sends a new report, and setting it back to nil clears the record.
+	//
+	// The status is not cleared when the program exits, so done and error
+	// reports stay visible to the user. Report [ProgramStateDone],
+	// [ProgramStateError], or [ProgramStateIdle] before quitting rather than
+	// leaving a working or blocked status behind.
+	ProgramStatus *ProgramStatus
 
 	// AltScreen puts the program in the alternate screen buffer
 	// (i.e. the program goes into full window mode). Note that the altscreen will
@@ -317,15 +331,23 @@ const (
 	ProgressBarWarning
 )
 
-// String return a human-readable value for the given [ProgressBarState].
+// String returns a human-readable name for the given [ProgressBarState].
+// Values outside the known range return "Unknown".
 func (s ProgressBarState) String() string {
-	return [...]string{
-		"None",
-		"Default",
-		"Error",
-		"Indeterminate",
-		"Warning",
-	}[s]
+	switch s {
+	case ProgressBarNone:
+		return "None"
+	case ProgressBarDefault:
+		return "Default"
+	case ProgressBarError:
+		return "Error"
+	case ProgressBarIndeterminate:
+		return "Indeterminate"
+	case ProgressBarWarning:
+		return "Warning"
+	default:
+		return "Unknown"
+	}
 }
 
 // ProgressBar represents the terminal progress bar.
@@ -336,7 +358,7 @@ func (s ProgressBarState) String() string {
 type ProgressBar struct {
 	// State is the current state of the progress bar. It can be one of
 	// [ProgressBarNone], [ProgressBarDefault], [ProgressBarError],
-	// [ProgressBarIndeterminate], and [ProgressBarWarn].
+	// [ProgressBarIndeterminate], and [ProgressBarWarning].
 	State ProgressBarState
 	// Value is the current value of the progress bar. It should be between
 	// 0 and 100.
@@ -666,11 +688,13 @@ func (p *Program) handleSignals() chan struct{} {
 
 			case s := <-sig:
 				if atomic.LoadUint32(&p.ignoreSignals) == 0 {
-					switch s {
-					case syscall.SIGINT:
-						p.msgs <- InterruptMsg{}
-					default:
-						p.msgs <- QuitMsg{}
+					var msg Msg = QuitMsg{}
+					if s == syscall.SIGINT {
+						msg = InterruptMsg{}
+					}
+					select {
+					case p.msgs <- msg:
+					case <-p.ctx.Done():
 					}
 					return
 				}
@@ -752,6 +776,10 @@ func (p *Program) eventLoop(model Model, cmds chan Cmd) (Model, error) {
 		case msg := <-p.msgs:
 			msg = p.translateInputEvent(msg)
 
+			if size, ok := msg.(WindowSizeMsg); ok && !isPlausibleWindowSize(size.Width, size.Height) {
+				continue
+			}
+
 			// Filter messages.
 			if p.filter != nil {
 				msg = p.filter(model, msg)
@@ -808,35 +836,38 @@ func (p *Program) eventLoop(model Model, cmds chan Cmd) (Model, error) {
 				}
 
 			case readClipboardMsg:
-				p.execute(ansi.RequestSystemClipboard)
+				p.executeQuery(ansi.RequestSystemClipboard)
 
 			case setClipboardMsg:
 				p.execute(ansi.SetSystemClipboard(string(msg)))
 
 			case readPrimaryClipboardMsg:
-				p.execute(ansi.RequestPrimaryClipboard)
+				p.executeQuery(ansi.RequestPrimaryClipboard)
 
 			case setPrimaryClipboardMsg:
 				p.execute(ansi.SetPrimaryClipboard(string(msg)))
 
 			case backgroundColorMsg:
-				p.execute(ansi.RequestBackgroundColor)
+				p.executeQuery(ansi.RequestBackgroundColor)
 
 			case foregroundColorMsg:
-				p.execute(ansi.RequestForegroundColor)
+				p.executeQuery(ansi.RequestForegroundColor)
 
 			case cursorColorMsg:
-				p.execute(ansi.RequestCursorColor)
+				p.executeQuery(ansi.RequestCursorColor)
+
+			case programStatusSupportMsg:
+				p.executeQuery(ansi.RequestProgramStatusSupport)
 
 			case execMsg:
 				// NB: this blocks.
 				p.exec(msg.cmd, msg.fn)
 
 			case terminalVersion:
-				p.execute(ansi.RequestNameVersion)
+				p.executeQuery(ansi.RequestNameVersion)
 
 			case requestCapabilityMsg:
-				p.execute(ansi.RequestTermcap(string(msg)))
+				p.executeQuery(ansi.RequestTermcap(string(msg)))
 
 			case BatchMsg:
 				go p.execBatchMsg(msg)
@@ -853,7 +884,7 @@ func (p *Program) eventLoop(model Model, cmds chan Cmd) (Model, error) {
 				go p.checkResize()
 
 			case requestCursorPosMsg:
-				p.execute(ansi.RequestCursorPositionReport)
+				p.executeQuery(ansi.RequestCursorPositionReport)
 
 			case RawMsg:
 				p.execute(fmt.Sprint(msg.Msg))
@@ -1047,7 +1078,7 @@ func (p *Program) Run() (returnModel Model, returnErr error) {
 			return p.initialModel, fmt.Errorf("bubbletea: error getting terminal size: %w", err)
 		}
 
-		width, height = w, h
+		width, height = p.fallbackDimensions(w, h)
 	}
 
 	p.width, p.height = width, height
@@ -1065,6 +1096,7 @@ func (p *Program) Run() (returnModel Model, returnErr error) {
 				p.height,
 			)
 			r.setLogger(p.logger)
+			r.setNoInput(p.disableInput)
 			// XXX: This breaks many things especially when we want the output
 			// to be compatible with terminals that are not necessary a TTY.
 			// This was originally done to work around a Wish emulated-pty
@@ -1110,7 +1142,7 @@ func (p *Program) Run() (returnModel Model, returnErr error) {
 		// Query for synchronized updates support (mode 2026) and unicode core
 		// (mode 2027). If the terminal supports it, the renderer will enable
 		// it once we get the response.
-		p.execute(ansi.RequestModeSynchronizedOutput +
+		p.executeQuery(ansi.RequestModeSynchronizedOutput +
 			ansi.RequestModeUnicodeCore)
 	}
 
@@ -1215,6 +1247,22 @@ func (p *Program) execute(seq string) {
 	p.mu.Lock()
 	_, _ = p.outputBuf.WriteString(seq)
 	p.mu.Unlock()
+}
+
+// executeQuery writes a terminal query to the program output. Queries expect a
+// reply on p.input, so when input is disabled the query is skipped: the
+// program cannot read the response, and the terminal's reply would leak into
+// the shell once the program exits (#1590).
+//
+// This covers every query that expects a reply, not just the startup
+// capability probe: background, foreground, and cursor color requests, cursor
+// position reports, clipboard reads, and terminal version and termcap
+// queries.
+func (p *Program) executeQuery(seq string) {
+	if p.disableInput {
+		return
+	}
+	p.execute(seq)
 }
 
 // flush flushes the output buffer to the program output.

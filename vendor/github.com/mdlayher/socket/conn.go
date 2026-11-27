@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -120,7 +121,7 @@ func (c *Conn) ReadContext(ctx context.Context, b []byte) (int, error) {
 		b = b[:maxRW]
 	}
 
-	n, err := readT(c, ctx, "read", func(fd int) (int, error) {
+	n, err := readT(ctx, c, "read", func(fd int) (int, error) {
 		return unix.Read(fd, b)
 	})
 	if n == 0 && err == nil && c.facts.zeroReadIsEOF {
@@ -141,13 +142,13 @@ func (c *Conn) WriteContext(ctx context.Context, b []byte) (int, error) {
 		err   error
 	)
 
-	doErr := c.write(ctx, "write", func(fd int) error {
-		max := len(b)
-		if c.facts.isStream && max-nn > maxRW {
-			max = nn + maxRW
+	doErr := c.WriteFunc(ctx, "write", func(fd int) error {
+		lenb := len(b)
+		if c.facts.isStream && lenb-nn > maxRW {
+			lenb = nn + maxRW
 		}
 
-		n, err = unix.Write(fd, b[nn:max])
+		n, err = unix.Write(fd, b[nn:lenb])
 		if n > 0 {
 			nn += n
 		}
@@ -418,7 +419,7 @@ func (c *Conn) Accept(ctx context.Context, flags int) (*Conn, unix.Sockaddr, err
 		sa  unix.Sockaddr
 	}
 
-	r, err := readT(c, ctx, sysAccept, func(fd int) (ret, error) {
+	r, err := readT(ctx, c, sysAccept, func(fd int) (ret, error) {
 		// Either accept(2) or accept4(2) depending on the OS.
 		nfd, sa, err := accept(fd, flags|socketFlags)
 		return ret{nfd, sa}, err
@@ -464,15 +465,15 @@ func (c *Conn) Connect(ctx context.Context, sa unix.Sockaddr) (unix.Sockaddr, er
 		// have an explicit WaitWrite call like internal/poll does, so we have
 		// to wait until the runtime calls the closure again to indicate we can
 		// write.
-		progress uint32
+		progress atomic.Uint32
 
 		// Capture closure sockaddr and error.
 		rsa unix.Sockaddr
 		err error
 	)
 
-	doErr := c.write(ctx, op, func(fd int) error {
-		if atomic.AddUint32(&progress, 1) == 1 {
+	doErr := c.WriteFunc(ctx, op, func(fd int) error {
+		if progress.Add(1) == 1 {
 			// First call: initiate connect.
 			return unix.Connect(fd, sa)
 		}
@@ -557,6 +558,29 @@ func (c *Conn) GetsockoptString(level, opt int) (string, error) {
 	})
 }
 
+// Ioctl wraps ioctl(2) for an arbitrary request req with a pointer argument
+// arg, which is passed to the kernel verbatim. It is intended for requests
+// which have no typed wrapper in this package or in package
+// golang.org/x/sys/unix. arg may be nil for requests which take no argument.
+//
+// The caller is responsible for ensuring that arg points to memory of the
+// size and layout expected by the kernel for req.
+func (c *Conn) Ioctl(req uint, arg unsafe.Pointer) error {
+	return c.control("ioctl", func(fd int) error {
+		_, _, errno := unix.Syscall(
+			unix.SYS_IOCTL,
+			uintptr(fd),
+			uintptr(req),
+			uintptr(arg),
+		)
+		if errno != 0 {
+			return errno
+		}
+
+		return nil
+	})
+}
+
 // Listen wraps listen(2).
 func (c *Conn) Listen(n int) error {
 	return c.control("listen", func(fd int) error { return unix.Listen(fd, n) })
@@ -569,7 +593,7 @@ func (c *Conn) Recvmsg(ctx context.Context, p, oob []byte, flags int) (int, int,
 		from               unix.Sockaddr
 	}
 
-	r, err := readT(c, ctx, "recvmsg", func(fd int) (ret, error) {
+	r, err := readT(ctx, c, "recvmsg", func(fd int) (ret, error) {
 		n, oobn, recvflags, from, err := unix.Recvmsg(fd, p, oob, flags)
 		return ret{n, oobn, recvflags, from}, err
 	})
@@ -587,7 +611,7 @@ func (c *Conn) Recvfrom(ctx context.Context, p []byte, flags int) (int, unix.Soc
 		addr unix.Sockaddr
 	}
 
-	out, err := readT(c, ctx, "recvfrom", func(fd int) (ret, error) {
+	out, err := readT(ctx, c, "recvfrom", func(fd int) (ret, error) {
 		n, addr, err := unix.Recvfrom(fd, p, flags)
 		return ret{n, addr}, err
 	})
@@ -600,14 +624,21 @@ func (c *Conn) Recvfrom(ctx context.Context, p []byte, flags int) (int, unix.Soc
 
 // Sendmsg wraps sendmsg(2).
 func (c *Conn) Sendmsg(ctx context.Context, p, oob []byte, to unix.Sockaddr, flags int) (int, error) {
-	return writeT(c, ctx, "sendmsg", func(fd int) (int, error) {
+	return writeT(ctx, c, "sendmsg", func(fd int) (int, error) {
 		return unix.SendmsgN(fd, p, oob, to, flags)
+	})
+}
+
+// SendmsgBuffers wraps sendmsg(2) with scatter-gather I/O support.
+func (c *Conn) SendmsgBuffers(ctx context.Context, buffers [][]byte, oob []byte, to unix.Sockaddr, flags int) (int, error) {
+	return writeT(ctx, c, "sendmsg", func(fd int) (int, error) {
+		return unix.SendmsgBuffers(fd, buffers, oob, to, flags)
 	})
 }
 
 // Sendto wraps sendto(2).
 func (c *Conn) Sendto(ctx context.Context, p []byte, flags int, to unix.Sockaddr) error {
-	return c.write(ctx, "sendto", func(fd int) error {
+	return c.WriteFunc(ctx, "sendto", func(fd int) error {
 		return unix.Sendto(fd, p, flags, to)
 	})
 }
@@ -642,19 +673,53 @@ func (c *Conn) Shutdown(how int) error {
 // syscall.RawConn APIs but the input closures return errors rather than
 // booleans.
 
-// read wraps readT to execute a function and capture its error result. This is
-// a convenience wrapper for functions which don't return any extra values.
-func (c *Conn) read(ctx context.Context, op string, f func(fd int) error) error {
-	_, err := readT(c, ctx, op, func(fd int) (struct{}, error) {
+// ReadFunc executes f, a read function, against the underlying file descriptor
+// with integration into Go's runtime network poller. It is the raw building
+// block used by the Conn read methods such as ReadContext and Recvmsg and is
+// intended for system calls which have no wrapper in this package or in
+// package golang.org/x/sys/unix.
+//
+// f is invoked with the file descriptor while the runtime network poller holds
+// it, and must return the raw error from the system call it performs: nil on
+// success or a unix.Errno on failure. If f returns unix.EAGAIN, unix.EINTR, or
+// unix.EINPROGRESS, ReadFunc waits for the file descriptor to become readable
+// and invokes f again. Any other error or nil completes the operation, so f
+// may be called more than once and must be safe to retry.
+//
+// op is the name of the operation used in errors. The error returned by f is
+// wrapped as os.NewSyscallError(op, err). If ctx is canceled or its deadline
+// is reached before f completes, the context error is wrapped in the same way.
+// A context deadline is applied to the Conn's read deadline for the duration
+// of the call and is cleared before ReadFunc returns. If the Conn is closed,
+// ReadFunc returns os.NewSyscallError(op, unix.EBADF).
+func (c *Conn) ReadFunc(ctx context.Context, op string, f func(fd int) error) error {
+	_, err := readT(ctx, c, op, func(fd int) (struct{}, error) {
 		return struct{}{}, f(fd)
 	})
 	return err
 }
 
-// write executes f, a write function, against the associated file descriptor.
-// op is used to create an *os.SyscallError if the file descriptor is closed.
-func (c *Conn) write(ctx context.Context, op string, f func(fd int) error) error {
-	_, err := writeT(c, ctx, op, func(fd int) (struct{}, error) {
+// WriteFunc executes f, a write function, against the underlying file
+// descriptor with integration into Go's runtime network poller. It is the raw
+// building block used by the Conn write methods such as WriteContext and
+// Sendmsg and is intended for system calls which have no wrapper in this
+// package or in package golang.org/x/sys/unix.
+//
+// f is invoked with the file descriptor while the runtime network poller holds
+// it, and must return the raw error from the system call it performs: nil on
+// success or a unix.Errno on failure. If f returns unix.EAGAIN, unix.EINTR, or
+// unix.EINPROGRESS, WriteFunc waits for the file descriptor to become writable
+// and invokes f again. Any other error or nil completes the operation, so f
+// may be called more than once and must be safe to retry.
+//
+// op is the name of the operation used in errors. The error returned by f is
+// wrapped as os.NewSyscallError(op, err). If ctx is canceled or its deadline
+// is reached before f completes, the context error is wrapped in the same way.
+// A context deadline is applied to the Conn's write deadline for the duration
+// of the call and is cleared before WriteFunc returns. If the Conn is closed,
+// WriteFunc returns os.NewSyscallError(op, unix.EBADF).
+func (c *Conn) WriteFunc(ctx context.Context, op string, f func(fd int) error) error {
+	_, err := writeT(ctx, c, op, func(fd int) (struct{}, error) {
 		return struct{}{}, f(fd)
 	})
 	return err
@@ -662,7 +727,7 @@ func (c *Conn) write(ctx context.Context, op string, f func(fd int) error) error
 
 // readT executes c.rc.Read for op using the input function, returning a newly
 // allocated result T.
-func readT[T any](c *Conn, ctx context.Context, op string, f func(fd int) (T, error)) (T, error) {
+func readT[T any](ctx context.Context, c *Conn, op string, f func(fd int) (T, error)) (T, error) {
 	return rwT(c, rwContext[T]{
 		Context: ctx,
 		Type:    read,
@@ -673,7 +738,7 @@ func readT[T any](c *Conn, ctx context.Context, op string, f func(fd int) (T, er
 
 // writeT executes c.rc.Write for op using the input function, returning a newly
 // allocated result T.
-func writeT[T any](c *Conn, ctx context.Context, op string, f func(fd int) (T, error)) (T, error) {
+func writeT[T any](ctx context.Context, c *Conn, op string, f func(fd int) (T, error)) (T, error) {
 	return rwT(c, rwContext[T]{
 		Context: ctx,
 		Type:    write,
@@ -750,12 +815,6 @@ func rwT[T any](c *Conn, rw rwContext[T]) (T, error) {
 		needDisarm atomic.Bool
 	)
 
-	// On cancel, clean up the watcher.
-	defer func() {
-		close(doneC)
-		wg.Wait()
-	}()
-
 	if d, ok := rw.Context.Deadline(); ok {
 		// The context has an explicit deadline. We will use it for cancelation
 		// but disarm it after poll for the next call.
@@ -764,17 +823,17 @@ func rwT[T any](c *Conn, rw rwContext[T]) (T, error) {
 		}
 		setDeadline = true
 		needDisarm.Store(true)
-	} else {
-		// The context does not have an explicit deadline. We have to watch for
-		// cancelation so we can propagate that signal to immediately unblock
-		// the runtime network poller.
-		//
-		// TODO(mdlayher): is it possible to detect a background context vs a
-		// context with possible future cancel?
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	}
 
+	if rw.Context.Done() != nil {
+		// The context can be canceled, regardless of whether or not it also
+		// carries a deadline. We have to watch for cancelation so we can
+		// propagate that signal to immediately unblock the runtime network
+		// poller rather than waiting for a possibly distant deadline to expire.
+		//
+		// A nil Done channel means the context can never be canceled (such as
+		// context.Background), so no watcher is necessary.
+		wg.Go(func() {
 			select {
 			case <-rw.Context.Done():
 				// Cancel the operation. Make the caller disarm after poll
@@ -784,7 +843,7 @@ func rwT[T any](c *Conn, rw rwContext[T]) (T, error) {
 			case <-doneC:
 				// Nothing to do.
 			}
-		}()
+		})
 	}
 
 	var (
@@ -796,6 +855,13 @@ func rwT[T any](c *Conn, rw rwContext[T]) (T, error) {
 		t, err = rw.Do(int(fd))
 		return ready(err)
 	})
+
+	// Stop the watcher and wait for it to exit before checking whether we
+	// must disarm the deadline. Otherwise the watcher could observe
+	// cancelation and arm a deadline in the past after we have already
+	// disarmed, leaving the next call to fail immediately.
+	close(doneC)
+	wg.Wait()
 
 	if needDisarm.Load() {
 		_ = deadline(time.Time{})

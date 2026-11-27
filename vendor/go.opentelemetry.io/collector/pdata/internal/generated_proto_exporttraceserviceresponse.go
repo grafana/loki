@@ -137,7 +137,7 @@ func (orig *ExportTraceServiceResponse) UnmarshalJSON(iter *json.Iterator) {
 
 			orig.PartialSuccess.UnmarshalJSON(iter)
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

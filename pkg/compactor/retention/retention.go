@@ -130,15 +130,20 @@ type Marker struct {
 	markerMetrics       *markerMetrics
 	chunkClient         client.Client
 	markTimeout         time.Duration
+
+	// ignoreMissingChunks controls what happens when a chunk we need to rebuild for a delete request
+	// with a line filter is not found in the object storage. See chunkRewriter.ignoreMissingChunks.
+	ignoreMissingChunks bool
 }
 
-func NewMarker(markerStorageClient client.ObjectClient, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(markerStorageClient client.ObjectClient, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, ignoreMissingChunks bool, r prometheus.Registerer) (*Marker, error) {
 	return &Marker{
 		markerStorageClient: markerStorageClient,
 		expiration:          expiration,
 		markerMetrics:       newMarkerMetrics(r),
 		chunkClient:         chunkClient,
 		markTimeout:         markTimeout,
+		ignoreMissingChunks: ignoreMissingChunks,
 	}, nil
 }
 
@@ -170,7 +175,7 @@ func (t *Marker) markTable(ctx context.Context, tableName, userID string, indexP
 		return false, false, ctx.Err()
 	}
 
-	chunkRewriter := newChunkRewriter(t.chunkClient, tableName, indexProcessor)
+	chunkRewriter := newChunkRewriter(t.chunkClient, tableName, indexProcessor, t.ignoreMissingChunks, t.markerMetrics.missingChunksTotal.WithLabelValues(tableName, userID))
 
 	empty, modified, err := markForDelete(ctx, t.markTimeout, tableName, markerWriter, indexProcessor, t.expiration, chunkRewriter, logger)
 	if err != nil {
@@ -464,13 +469,22 @@ type chunkRewriter struct {
 	chunkClient  client.Client
 	tableName    string
 	chunkIndexer chunkIndexer
+
+	// ignoreMissingChunks makes rewriteChunk treat a chunk which is indexed but not found in the
+	// object storage as a chunk with all of its lines deleted, instead of failing the operation.
+	// This lets delete requests make progress when the index has entries pointing at chunks which
+	// no longer exist in the storage while leaving the chunk entries as is in the index for diagnosing the issue.
+	ignoreMissingChunks bool
+	missingChunksTotal  prometheus.Counter
 }
 
-func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer chunkIndexer) *chunkRewriter {
+func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer chunkIndexer, ignoreMissingChunks bool, missingChunksTotal prometheus.Counter) *chunkRewriter {
 	return &chunkRewriter{
-		chunkClient:  chunkClient,
-		tableName:    tableName,
-		chunkIndexer: chunkIndexer,
+		chunkClient:         chunkClient,
+		tableName:           tableName,
+		chunkIndexer:        chunkIndexer,
+		ignoreMissingChunks: ignoreMissingChunks,
+		missingChunksTotal:  missingChunksTotal,
 	}
 }
 
@@ -480,6 +494,7 @@ func newChunkRewriter(chunkClient client.Client, tableName string, chunkIndexer 
 // If the newChunk is different, linesDeleted would be true.
 // The newChunk is indexed and uploaded only if it belongs to the current index table being processed,
 // the status of which is set to wroteChunks.
+// If the chunk is not found in the storage and ignoreMissingChunks is set, it is ignored and reported as a no-op.
 func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chunk, tableInterval model.Interval, filterFunc filter.Func) (wroteChunks bool, linesDeleted bool, err error) {
 	userIDStr := unsafeGetString(userID)
 
@@ -490,11 +505,23 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 
 	chks, err := c.chunkClient.GetChunks(ctx, []chunk.Chunk{chk})
 	if err != nil {
-		return false, false, err
+		// Depending on the client, a chunk missing from the storage either surfaces as a
+		// not-found error here or as an empty response handled below.
+		if !c.ignoreMissingChunks || !c.chunkClient.IsChunkNotFoundErr(err) {
+			return false, false, err
+		}
+		chks = nil
 	}
 
 	if len(chks) != 1 {
-		return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", ce.ChunkID, len(chks))
+		if !c.ignoreMissingChunks || len(chks) != 0 {
+			return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", ce.ChunkID, len(chks))
+		}
+
+		// The chunk is indexed but gone from the storage. Report it as a no-op so the caller leaves index entries as-is.
+		level.Warn(util_log.Logger).Log("msg", "ignoring chunk missing from storage while processing a delete request", "table", c.tableName, "user_id", userIDStr, "chunk_id", ce.ChunkID)
+		c.missingChunksTotal.Inc()
+		return false, false, nil
 	}
 
 	newChunkData, err := chks[0].Data.Rewrite(func(ts time.Time, s string, structuredMetadata labels.Labels) bool {

@@ -160,7 +160,7 @@ func (orig *ExportProfilesServiceRequest) UnmarshalJSON(iter *json.Iterator) {
 
 			orig.Dictionary.UnmarshalJSON(iter)
 		default:
-			iter.Skip()
+			iter.HandleUnknownField(f)
 		}
 	}
 }

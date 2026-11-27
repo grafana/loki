@@ -1,0 +1,12 @@
+version: "2"
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      extra:
+        group-params: true
+    goimports:
+      local-prefixes:
+        - github.com/dimchansky/utfbom

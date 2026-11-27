@@ -10,12 +10,15 @@ keywords:
 
 # Migrate to TSDB
 
-[TSDB](../../../operations/storage/tsdb/) is the recommended index type for Loki and is where the current development lies.
-If you are running Loki with [boltdb-shipper](../../../operations/storage/boltdb-shipper/) or any of the [legacy index types](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage) that have been deprecated,
+[TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) is the recommended index type for Loki and is where the current development lies.
+If you are running Loki with [boltdb-shipper](https://grafana.com/docs/loki/v3.0.x/operations/storage/boltdb-shipper/) or any of the [legacy index types](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage) that have been deprecated,
 we strongly recommend migrating to TSDB.
 
+[TSDB](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/) is the recommended index type for Loki and is where the current development lies.
+If you are running Loki with [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) or any of the [legacy index types](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#index-storage) that have been deprecated,
+we strongly recommend migrating to TSDB.
 
-### Configure TSDB index for an upcoming period
+## Configure TSDB index for an upcoming period
 
 To begin the migration, add a new [period_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) entry in your [schema_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#schema_config).
 You can read more about schema config [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#schema-config).
@@ -26,7 +29,7 @@ You must roll out the new `period_config` change to all Loki components in order
 
 This example adds a new `period_config` which configures Loki to start using the TSDB index for the data ingested starting from `2023-10-20`.
 
-```
+```yaml
 schema_config:
   configs:
     - from: 2023-01-01
@@ -51,24 +54,25 @@ schema_config:
 
 1. This sample configuration uses filesystem as the storage in both the periods. If you want to use a different storage for the TSDB index and chunks, you can specify a different `object_store` in the new period.
 
-1.  Update the schema to v13 which is the recommended version at the time of writing. Please refer to the [configure page](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) for the current recommended version.
+1. Update the schema to v13 which is the recommended version at the time of writing. Please refer to the [configure page](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) for the current recommended version.
 
 ### Configure TSDB shipper
 
 It's also important that you configure the `tsdb_shipper` block in [storage_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config). Specifically the following options:
+
 - `active_index_directory`: directory where ingesters would write index files which will then be uploaded by shipper to configured storage.
 - `cache_location`: cache location for downloading index files from the storage for use in query path.
 
-```
+```yaml
 storage_config:
   tsdb_shipper:
     active_index_directory: /data/tsdb-index
     cache_location: /data/tsdb-cache
 ```
 
-### Run compactor
+## Run compactor
 
-We strongly recommended running the [compactor](../../../operations/storage/retention/#compactor) when using TSDB index. It is responsible for running compaction and retention on TSDB index.
+We strongly recommended running the [compactor](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/#compactor) when using TSDB index. It is responsible for running compaction and retention on TSDB index.
 Not running index compaction will result in sub-optimal query performance.
 
-Please refer to the [compactor section](../../../operations/storage/retention/#compactor) for more information and configuration examples.
+Please refer to the [compactor section](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/#compactor) for more information and configuration examples.

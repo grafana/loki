@@ -43,7 +43,7 @@ func newPickerGroup(idToPickerState map[string]*subBalancerState) *pickerGroup {
 }
 
 func (pg *pickerGroup) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
-	cluster := getPickedCluster(info.Ctx)
+	cluster := PickedCluster(info.Ctx)
 	if p := pg.pickers[cluster]; p != nil {
 		return p.Pick(info)
 	}
@@ -52,15 +52,10 @@ func (pg *pickerGroup) Pick(info balancer.PickInfo) (balancer.PickResult, error)
 
 type clusterKey struct{}
 
-func getPickedCluster(ctx context.Context) string {
+// PickedCluster returns the cluster name stored in the context.
+func PickedCluster(ctx context.Context) string {
 	cluster, _ := ctx.Value(clusterKey{}).(string)
 	return cluster
-}
-
-// GetPickedClusterForTesting returns the cluster in the context; to be used
-// for testing only.
-func GetPickedClusterForTesting(ctx context.Context) string {
-	return getPickedCluster(ctx)
 }
 
 // SetPickedCluster adds the selected cluster to the context for the
