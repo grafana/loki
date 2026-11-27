@@ -4057,6 +4057,14 @@ wal:
 # CLI flag: -ingester.shutdown-marker-path
 [shutdown_marker_path: <string> | default = ""]
 
+# Accept GET requests on the /flush and /ingester/shutdown endpoints. Both
+# endpoints change the ingester's state, so a GET request, for example from a
+# crawler or a read-only client, can flush or shut down the ingester. Set to
+# false to accept only POST requests. Kubernetes httpGet lifecycle hooks send
+# GET requests and need this option enabled.
+# CLI flag: -ingester.get-request-for-flush-and-shutdown-enabled
+[get_request_for_flush_and_shutdown_enabled: <boolean> | default = true]
+
 # Interval at which the ingester ownedStreamService checks for changes in the
 # ring to recalculate owned streams.
 # CLI flag: -ingester.owned-streams-check-interval
