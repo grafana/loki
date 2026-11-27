@@ -161,6 +161,9 @@ message Summary {
   int64 streamFirstQueries = 14 [(gogoproto.jsontag) = "streamFirstQueries"];
   // Total number of queries the querier ran in timestamp-first order.
   int64 timestampFirstQueries = 15 [(gogoproto.jsontag) = "timestampFirstQueries"];
+  // Peak number of label sets the range iterators of a single querier job held while evaluating,
+  // for the worst job of the query.
+  int64 intermediateSeriesPeak = 16 [(gogoproto.jsontag) = "intermediateSeriesPeak,omitempty"];
 }
 
 // Statistics from Index queries

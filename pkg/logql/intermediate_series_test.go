@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -496,4 +497,36 @@ func TestStreamRangeVectorIterator_ShouldReleaseTheStepBeforeTheNext(t *testing.
 	require.True(t, rangeIt.Next())
 	require.Equal(t, int64(1), counter.Current())
 	require.Equal(t, int64(3), counter.Peak())
+}
+
+func TestEngine_ShouldReportTheIntermediateSeriesPeakInTheStatistics(t *testing.T) {
+	const numSeries = 5
+	var (
+		start = time.Unix(60, 0)
+		end   = time.Unix(120, 0)
+	)
+
+	for name, tc := range map[string]struct {
+		maxSeries int
+		wantErr   bool
+	}{
+		"success": {maxSeries: 100},
+		"failure": {maxSeries: 2, wantErr: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			eng := NewEngine(EngineOpts{}, NewMockQuerier(1, distinctStreams(numSeries, end)), &fakeLimits{maxSeries: tc.maxSeries, timeout: time.Minute}, log.NewNopLogger())
+			params, err := NewLiteralParams(`count_over_time({app="a"}[1m])`, start, end, 30*time.Second, 0, logproto.FORWARD, 1000, nil, nil)
+			require.NoError(t, err)
+
+			res, err := eng.Query(params).Exec(user.InjectOrgID(context.Background(), "fake"))
+
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Positive(t, res.Statistics.Summary.IntermediateSeriesPeak)
+			require.LessOrEqual(t, res.Statistics.Summary.IntermediateSeriesPeak, int64(numSeries))
+		})
+	}
 }
