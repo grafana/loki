@@ -467,6 +467,10 @@ func (m RangeMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 		return expr, nil
 	}
 
+	if _, ok := splittableVectorOp[expr.Operation]; !ok {
+		return expr, nil
+	}
+
 	// In order to minimize the amount of streams on the downstream query,
 	// we can push down the outer vector aggregation to the downstream query.
 	// This does not work for `count()` and `topk()`, though.

@@ -1858,6 +1858,16 @@ func Test_SplitRangeVectorMapping_Noop(t *testing.T) {
 			`(histogram_sum(histogram_over_time(buckets(1, 10), {app="foo"} | unwrap bar [3m])) / rate({app="foo"}[1m]))`,
 		},
 
+		// approx_topk is not splittable by range, also when a binary operation with a literal makes the query splittable
+		{
+			`approx_topk(5, sum by (project, job) (sum_over_time({service_name="gitlab-ci", kind="job"} != "x" | json job, compute_minutes | keep project, job, compute_minutes | unwrap compute_minutes [7d]))) / on() group_left() sum(sum_over_time({service_name="gitlab-ci", kind="job"} != "x" | json compute_minutes | unwrap compute_minutes [7d])) * 100`,
+			`((approx_topk(5, sum by (project, job) (sum_over_time({service_name="gitlab-ci", kind="job"} != "x" | json job="job",compute_minutes="compute_minutes" | keep project,job,compute_minutes | unwrap compute_minutes [1w]))) / on () group_left sum(sum_over_time({service_name="gitlab-ci", kind="job"} != "x" | json compute_minutes="compute_minutes" | unwrap compute_minutes [1w]))) * 100)`,
+		},
+		{
+			`approx_topk(5, sum by (a) (count_over_time({app="foo"}[3m]))) * 100`,
+			`(approx_topk(5, sum by (a) (count_over_time({app="foo"}[3m]))) * 100)`,
+		},
+
 		// should be noop if range interval is lower or equal to split interval (1m)
 		{
 			`bytes_over_time({app="foo"}[1m])`,

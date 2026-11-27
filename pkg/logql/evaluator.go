@@ -826,7 +826,8 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 				Metric: s.Metric,
 			})
 		default:
-			panic(errors.Errorf("expected aggregation operator but got %q", e.expr.Operation))
+			e.err = errors.Errorf("expected aggregation operator but got %q", e.expr.Operation)
+			return false, 0, SampleVector{}
 		}
 	}
 	vec = vec[:0]
