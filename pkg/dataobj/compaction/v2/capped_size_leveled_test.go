@@ -6,9 +6,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newCappedStrategy(t *testing.T, k int, maxRunUncompressedBytes uint64) *CappedSizeLeveledStrategy {
+func newCappedStrategy(t *testing.T, k int, maxLogsRunUncompressedBytes uint64) *CappedSizeLeveledStrategy {
 	t.Helper()
-	return NewCappedSizeLeveledStrategy(newStrategy(t, k), maxRunUncompressedBytes)
+	return NewCappedSizeLeveledStrategy(newStrategy(t, k), maxLogsRunUncompressedBytes)
 }
 
 func TestCappedSizeLeveledStrategyNeedsCompaction(t *testing.T) {

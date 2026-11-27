@@ -59,7 +59,7 @@ func TestPlanPairs(t *testing.T) {
 		seedPairIndex(t.Context(), t, bucket, "indexes/a", pairTestSchema, testLogObject{"logs/a", "a", "z"})
 		seedPairIndex(t.Context(), t, bucket, "indexes/b", pairTestSchema, testLogObject{"logs/b", "a", "z"})
 		cappedCfg := cfg
-		cappedCfg.LogMaxRunUncompressedBytes = 400
+		cappedCfg.LogsMaxRunUncompressedBytes = 400
 
 		plan, err := PlanPairs(t.Context(), log.NewNopLogger(), bucket, "acme", imWindow(), cappedCfg)
 		require.NoError(t, err)
@@ -72,7 +72,7 @@ func TestPlanPairs(t *testing.T) {
 		seedPairIndex(t.Context(), t, bucket, "indexes/a", pairTestSchema, testLogObject{"logs/a", "a", "z"})
 		seedPairIndex(t.Context(), t, bucket, "indexes/b", pairTestSchema, testLogObject{"logs/b", "a", "z"})
 		cappedCfg := cfg
-		cappedCfg.LogMaxRunUncompressedBytes = 401
+		cappedCfg.LogsMaxRunUncompressedBytes = 401
 
 		plan, err := PlanPairs(t.Context(), log.NewNopLogger(), bucket, "acme", imWindow(), cappedCfg)
 		require.NoError(t, err)

@@ -75,14 +75,14 @@ type pairCompactor struct {
 // settings of c.
 func (c *coordinator) newPairPlanner() *pairPlanner {
 	return &pairPlanner{
-		logger:                  c.logger,
-		bucket:                  c.bucket,
-		metrics:                 c.metrics,
-		strategy:                c.logMergePlanningStrategy,
-		maxRunUncompressedBytes: c.limits.MaxLogsRunSizeUncompressedBytes,
-		minCompactionSize:       uint64(c.cfg.LogMinCompactionSize),
-		maxLogTaskSize:          uint64(c.cfg.LogMaxTaskSize),
-		maxKeySize:              uint64(c.cfg.LogMaxKeySize),
+		logger:                      c.logger,
+		bucket:                      c.bucket,
+		metrics:                     c.metrics,
+		strategy:                    c.logMergePlanningStrategy,
+		maxLogsRunUncompressedBytes: c.limits.MaxLogsRunSizeUncompressedBytes,
+		minCompactionSize:           uint64(c.cfg.LogMinCompactionSize),
+		maxLogTaskSize:              uint64(c.cfg.LogMaxTaskSize),
+		maxKeySize:                  uint64(c.cfg.LogMaxKeySize),
 	}
 }
 

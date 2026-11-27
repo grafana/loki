@@ -105,10 +105,10 @@ type pairPlanner struct {
 	metrics  *coordinatorMetrics
 	strategy *v2.SizeLeveledStrategy
 
-	// maxRunUncompressedBytes returns the exclusive upper bound of the summed
+	// maxLogsRunUncompressedBytes returns the exclusive upper bound of the summed
 	// uncompressed log size of the pairs in one merge for a tenant, in bytes.
 	// 0 means no maximum.
-	maxRunUncompressedBytes func(tenant string) uint64
+	maxLogsRunUncompressedBytes func(tenant string) uint64
 
 	// minCompactionSize is the smallest total log size of a layout group
 	// that planning merges, in uncompressed bytes.
@@ -444,10 +444,10 @@ func (p *pairPlanner) planLayoutGroupMerges(logger log.Logger, tenant string, wi
 		return nil
 	}
 
-	maxRunUncompressedBytes := p.maxRunUncompressedBytes(tenant)
-	strategy := v2.NewCappedSizeLeveledStrategy(p.strategy, maxRunUncompressedBytes)
+	maxLogsRunUncompressedBytes := p.maxLogsRunUncompressedBytes(tenant)
+	strategy := v2.NewCappedSizeLeveledStrategy(p.strategy, maxLogsRunUncompressedBytes)
 	if capped := strategy.CappedRuns(logRuns); capped > 0 {
-		level.Debug(logger).Log("msg", "pair-compaction: leaving pairs unmerged, because their merges reach the maximum run size", "pairs", capped, "max_run_uncompressed_bytes", maxRunUncompressedBytes)
+		level.Debug(logger).Log("msg", "pair-compaction: leaving pairs unmerged, because their merges reach the maximum run size", "pairs", capped, "max_logs_run_uncompressed_bytes", maxLogsRunUncompressedBytes)
 	}
 	specs, _ := strategy.Plan(logRuns, tenant)
 	keys := newSectionKeySizes(logSections)

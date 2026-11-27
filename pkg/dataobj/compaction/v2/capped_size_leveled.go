@@ -14,16 +14,17 @@ import (
 type CappedSizeLeveledStrategy struct {
 	inner *SizeLeveledStrategy
 
-	// maxRunUncompressedBytes is the exclusive upper bound of the summed
+	// maxLogsRunUncompressedBytes is the exclusive upper bound of the summed
 	// uncompressed size of the runs in one merge. 0 means no maximum.
-	maxRunUncompressedBytes uint64
+	maxLogsRunUncompressedBytes uint64
 }
 
 // NewCappedSizeLeveledStrategy returns a strategy that plans like inner, but
 // merges a group of runs only if their summed uncompressed size is below
-// maxRunUncompressedBytes. A maxRunUncompressedBytes of 0 means no maximum.
-func NewCappedSizeLeveledStrategy(inner *SizeLeveledStrategy, maxRunUncompressedBytes uint64) *CappedSizeLeveledStrategy {
-	return &CappedSizeLeveledStrategy{inner: inner, maxRunUncompressedBytes: maxRunUncompressedBytes}
+// maxLogsRunUncompressedBytes. A maxLogsRunUncompressedBytes of 0 means no
+// maximum.
+func NewCappedSizeLeveledStrategy(inner *SizeLeveledStrategy, maxLogsRunUncompressedBytes uint64) *CappedSizeLeveledStrategy {
+	return &CappedSizeLeveledStrategy{inner: inner, maxLogsRunUncompressedBytes: maxLogsRunUncompressedBytes}
 }
 
 // NeedsCompaction reports whether Plan returns at least one merge task.
@@ -56,7 +57,7 @@ func (s *CappedSizeLeveledStrategy) Plan(runs []Run, tenant string) (merges []*c
 func (s *CappedSizeLeveledStrategy) plan(runs []Run, tenant string) (merges []*compactionv2pb.TaskSpec, unmerged []Run, capped int) {
 	planned, unmerged := s.inner.Plan(runs, tenant)
 	for _, task := range planned {
-		if s.maxRunUncompressedBytes == 0 || taskSize(task) < s.maxRunUncompressedBytes {
+		if s.maxLogsRunUncompressedBytes == 0 || taskSize(task) < s.maxLogsRunUncompressedBytes {
 			merges = append(merges, task)
 			continue
 		}

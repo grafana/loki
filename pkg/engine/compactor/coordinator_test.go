@@ -1665,12 +1665,12 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                    string
-		k                       int
-		maxRunUncompressedBytes uint64
-		rows                    []stats.Stat
-		wantMerges              [][]string
-		wantFiltered            []string
+		name                        string
+		k                           int
+		maxLogsRunUncompressedBytes uint64
+		rows                        []stats.Stat
+		wantMerges                  [][]string
+		wantFiltered                []string
 		// wantFilterRange is the ToC time range of the filtered index, in
 		// Unix nanoseconds.
 		wantFilterRange [2]int64
@@ -1726,15 +1726,15 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 			wantFilterRange: [2]int64{40, 80},
 		},
 		{
-			name:                    "skips the window when every full level sums to the maximum run size",
-			k:                       2,
-			maxRunUncompressedBytes: 200,
-			rows:                    []stats.Stat{stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100)},
+			name:                        "skips the window when every full level sums to the maximum run size",
+			k:                           2,
+			maxLogsRunUncompressedBytes: 200,
+			rows:                        []stats.Stat{stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100)},
 		},
 		{
-			name:                    "merges a full level below the maximum run size and filters a full level above it",
-			k:                       2,
-			maxRunUncompressedBytes: 1 << 30,
+			name:                        "merges a full level below the maximum run size and filters a full level above it",
+			k:                           2,
+			maxLogsRunUncompressedBytes: 1 << 30,
 			rows: []stats.Stat{
 				stat("logs/small-a", 0, 10, 30, 100), stat("logs/small-b", 0, 10, 30, 100),
 				stat("logs/large-a", 0, 40, 70, 20<<30), stat("logs/large-b", 0, 45, 80, 20<<30),
@@ -1753,7 +1753,7 @@ func TestCompactTenantLogs_SizeLevelTrigger(t *testing.T) {
 			defer runner.assertUniqueObjects(t)
 			replacer := &fakeReplacer{swapped: true}
 			limits := newFakeLimits("acme")
-			limits.setMaxRunUncompressedBytes("acme", test.maxRunUncompressedBytes)
+			limits.setMaxLogsRunUncompressedBytes("acme", test.maxLogsRunUncompressedBytes)
 			c := newTestCoordinator(t, bucket, runner, replacer, fixedClock(window.Add(time.Hour)), limits)
 			c.logMergePlanningStrategy = newTestLogMergePlanningStrategy(t, test.k)
 
