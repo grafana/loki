@@ -62,16 +62,17 @@ func indexRuns(entries []IndexEntry) []indexRun {
 var errIncompleteRun = errors.New("the ToC lists only part of an index run")
 
 // checkLength returns an error that wraps errIncompleteRun if an index object
-// of r records a run length other than the number of index objects of r. An
-// index object that records no length passes.
+// of r records a run length other than the number of index objects of r. See
+// [indexpointers.CheckRunLength].
 //
 // Call it before pruning r by posting key. The entries of a run share one
 // time range, so a time filter keeps all of them or none, and only a ToC that
 // lists part of the run gives fewer entries than the recorded length.
 func (r indexRun) checkLength() error {
 	for _, entry := range r.entries {
-		if entry.RunLength != 0 && int(entry.RunLength) != len(r.entries) {
-			return fmt.Errorf("%w: index object %s of %s records %d index objects, but the ToC lists %d", errIncompleteRun, entry.Path, r, entry.RunLength, len(r.entries))
+		pointer := indexpointers.IndexPointer{Path: entry.Path, RunID: entry.RunID, RunLength: entry.RunLength}
+		if err := indexpointers.CheckRunLength(pointer, len(r.entries)); err != nil {
+			return fmt.Errorf("%w: %s: %w", errIncompleteRun, r, err)
 		}
 	}
 	return nil

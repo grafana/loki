@@ -105,22 +105,10 @@ func TestIndexRun_CheckLength(t *testing.T) {
 		require.NoError(t, run(2, 2).checkLength())
 	})
 
-	t.Run("accepts a run whose index objects record no length", func(t *testing.T) {
-		require.NoError(t, run(0, 0).checkLength())
-	})
-
-	t.Run("accepts an index object of no run", func(t *testing.T) {
-		require.NoError(t, indexRun{entries: []IndexEntry{{Path: "indexes/legacy"}}}.checkLength())
-	})
-
-	t.Run("returns an error when the ToC lists fewer index objects than the run records", func(t *testing.T) {
+	t.Run("returns an incomplete run error that names the run when an index object records another length", func(t *testing.T) {
 		err := run(3, 3).checkLength()
 		require.ErrorIs(t, err, errIncompleteRun)
-		require.ErrorContains(t, err, "indexes/0")
-	})
-
-	t.Run("returns an error when the ToC lists more index objects than one of them records", func(t *testing.T) {
-		require.ErrorIs(t, run(2, 2, 3).checkLength(), errIncompleteRun)
+		require.ErrorContains(t, err, "run 1 of toc")
 	})
 }
 
@@ -411,7 +399,7 @@ func TestObjectMetastore_Sections_Runs(t *testing.T) {
 
 		_, err := m.Sections(ctx, request(labels.MustNewMatcher(labels.MatchEqual, "app", "api")))
 		require.ErrorIs(t, err, errIncompleteRun)
-		require.ErrorContains(t, err, "records 3 index objects, but the ToC lists 2")
+		require.ErrorContains(t, err, "records a run of 3 index objects, but the ToC lists 2")
 	})
 
 	t.Run("fails when the ToC lists only the index object of a run that the request reads", func(t *testing.T) {
