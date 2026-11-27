@@ -8,9 +8,39 @@ weight: 300
 
 The filesystem object store is the easiest way to get started with Grafana Loki. This topic describes its pros and cons.
 
-The filesystem object store keeps every object, such as chunks, in a directory that you specify. The recommended way to configure this directory is in the `common.storage.filesystem` block:
+The filesystem object store keeps every object, such as chunks, in a directory that you specify.
+
+Loki uses the Thanos-based filesystem client by default, because the `use_thanos_objstore` setting defaults to `true`. The recommended way to configure the chunks directory is under `storage_config.object_store`:
 
 ```yaml
+storage_config:
+  object_store:
+    filesystem:
+      dir: /tmp/loki/chunks
+```
+
+If you use the ruler with local rule storage, configure it separately under `ruler_storage`:
+
+```yaml
+ruler_storage:
+  backend: local
+  local:
+    directory: /tmp/loki/rules
+```
+
+For a complete working example, see the [filesystem example](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/#filesystem-example) in the Thanos storage configuration examples.
+
+{{< admonition type="warning" >}}
+The `common.storage.filesystem.chunks_directory` setting only configures the legacy filesystem client (`storage_config.filesystem.directory`). It is **not** inherited by the Thanos-based client that Loki uses by default. If you set `common.storage.filesystem.chunks_directory` without also setting `storage_config.object_store.filesystem.dir`, Loki silently falls back to using its current working directory for chunk storage instead of the directory you configured.
+{{< /admonition >}}
+
+## Legacy configuration
+
+Loki also supports the legacy filesystem client. This client is deprecated. To use it, set `use_thanos_objstore: false` and configure the directory either in the `common.storage.filesystem` block:
+
+```yaml
+storage_config:
+  use_thanos_objstore: false
 common:
   storage:
     filesystem:
@@ -18,27 +48,28 @@ common:
       rules_directory: /tmp/loki/rules
 ```
 
-You can also configure the chunks directory directly under `storage_config`:
+or directly under `storage_config`:
 
 ```yaml
 storage_config:
+  use_thanos_objstore: false
   filesystem:
     directory: /tmp/loki/
 ```
 
+To convert an existing legacy configuration to the Thanos-based format, refer to the [storage client migration guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/).
+
+## Tenant folders
+
 Loki creates a folder for every tenant. All the chunks for one tenant are stored in that tenant's folder.
 
-If you run Loki in single-tenant mode, Loki puts all the chunks in a folder named `fake`. This is the synthesized tenant name that Loki uses in single-tenant mode.
+If you run Loki in single-tenant mode, Loki puts all the chunks in a folder named `fake` by default. This is the synthesized tenant name that Loki uses in single-tenant mode. You can change this name by setting `auth.no-auth-tenant` (`no_auth_tenant` in the YAML configuration).
 
 See [multi-tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) for more information.
 
-{{< admonition type="note" >}}
-Loki also supports an alternative, opt-in filesystem client based on `thanos-io/objstore`. Enable it by setting `use_thanos_objstore: true` and configuring `storage_config.object_store.filesystem.dir`. This client will become the default way to configure object store clients in a future release. For configuration examples, see [Thanos storage examples](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/) and the [storage client migration guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/).
-{{< /admonition >}}
-
 ## Pros
 
-The filesystem object store is very simple. It requires no additional software to run Loki, and it works with TSDB, which is the recommended index store.
+The filesystem object store is very simple. It requires no additional software to run Loki, and it works with TSDB, which is the only supported index store in Loki 4.0 and newer.
 
 It's great for low volume applications, proof of concepts, and just playing around with Loki.
 
