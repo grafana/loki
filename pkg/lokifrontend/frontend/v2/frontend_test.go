@@ -3,6 +3,7 @@ package v2
 import (
 	"context"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -154,6 +155,81 @@ func TestFrontendBasicWorkflowProto(t *testing.T) {
 	actualResp, err := f.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, resp.(*queryrange.LokiResponse).Data, actualResp.(*queryrange.LokiResponse).Data)
+}
+
+func TestFrontendEncodeFailure(t *testing.T) {
+	// A protobuf Timestamp cannot hold a time after year 9999, so the frontend
+	// cannot encode this request.
+	badReq := &queryrange.LokiInstantRequest{
+		Query:  `sum(count_over_time({app="foo"}[5m]))`,
+		TimeTs: time.Unix(1.7e18, 0),
+	}
+	goodReq := &queryrange.LokiRequest{
+		Query: `{foo="bar"}`,
+	}
+
+	setup := func(t *testing.T) (*Frontend, *mockScheduler) {
+		t.Helper()
+		emptyResp, err := queryrange.NewEmptyResponse(goodReq)
+		require.NoError(t, err)
+		httpResp, err := queryrange.DefaultCodec.EncodeHTTPGrpcResponse(context.Background(), &httpgrpc.HTTPRequest{Url: "/loki/api/v1/query_range"}, emptyResp)
+		require.NoError(t, err)
+
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+		cfg.Encoding = EncodingProtobuf
+		f, ms := setupFrontend(t, cfg, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+			go sendResponseWithDelay(f, 0, msg.UserID, msg.QueryID, httpResp)
+			return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
+		})
+
+		test.Poll(t, 5*time.Second, testFrontendWorkerConcurrency, func() interface{} {
+			var n int
+			ms.checkWithLock(func() {
+				for _, c := range ms.frontendAddr {
+					n += c
+				}
+			})
+			return n
+		})
+		return f, ms
+	}
+
+	requireBadRequest := func(t *testing.T, err error) {
+		t.Helper()
+		resp, ok := httpgrpc.HTTPResponseFromError(err)
+		require.True(t, ok, "expected an HTTP error, got %v", err)
+		require.Equal(t, int32(http.StatusBadRequest), resp.Code)
+		require.Contains(t, string(resp.Body), "cannot encode request")
+	}
+
+	t.Run("request that cannot be encoded returns 400 and does not reach the scheduler", func(t *testing.T) {
+		f, ms := setup(t)
+
+		_, err := f.Do(user.InjectOrgID(context.Background(), "test"), badReq)
+		requireBadRequest(t, err)
+
+		ms.checkWithLock(func() {
+			require.Empty(t, ms.msgs)
+		})
+	})
+
+	t.Run("requests that cannot be encoded keep the scheduler streams open", func(t *testing.T) {
+		f, ms := setup(t)
+
+		for range 10 * testFrontendWorkerConcurrency {
+			_, err := f.Do(user.InjectOrgID(context.Background(), "test"), badReq)
+			requireBadRequest(t, err)
+		}
+
+		_, err := f.Do(user.InjectOrgID(context.Background(), "test"), goodReq)
+		require.NoError(t, err)
+
+		ms.checkWithLock(func() {
+			require.Zero(t, ms.closedStreams)
+			require.Len(t, ms.msgs, 1)
+		})
+	})
 }
 
 func TestFrontendRetryEnqueue(t *testing.T) {
@@ -428,9 +504,10 @@ type mockScheduler struct {
 
 	replyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend
 
-	mu           sync.Mutex
-	frontendAddr map[string]int
-	msgs         []*schedulerpb.FrontendToScheduler
+	mu            sync.Mutex
+	frontendAddr  map[string]int
+	msgs          []*schedulerpb.FrontendToScheduler
+	closedStreams int
 }
 
 func newMockScheduler(t *testing.T, f *Frontend, replyFunc func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend) *mockScheduler {
@@ -445,6 +522,12 @@ func (m *mockScheduler) checkWithLock(fn func()) {
 }
 
 func (m *mockScheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_FrontendLoopServer) error {
+	defer func() {
+		m.mu.Lock()
+		m.closedStreams++
+		m.mu.Unlock()
+	}()
+
 	init, err := frontend.Recv()
 	if err != nil {
 		return err

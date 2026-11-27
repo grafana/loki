@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -301,7 +302,20 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				}
 			}
 
-			err := loop.Send(msg)
+			// gRPC closes the stream when Send cannot encode a message, and the
+			// worker then reconnects after a backoff. Encode the message before
+			// the send, so a request that cannot be encoded fails alone and the
+			// stream stays open. Retries cannot help, because encoding fails the
+			// same way each time.
+			prepared := &grpc.PreparedMsg{}
+			if err := prepared.Encode(loop, msg); err != nil {
+				level.Warn(w.log).Log("msg", "cannot encode request for the scheduler", "queryID", req.queryID, "err", err)
+				req.enqueue <- enqueueResult{status: waitForResponse}
+				req.response <- ResponseTuple{nil, httpgrpc.Errorf(http.StatusBadRequest, "cannot encode request: %s", status.Convert(err).Message())}
+				continue
+			}
+
+			err := loop.SendMsg(prepared)
 			if err != nil {
 				req.enqueue <- enqueueResult{status: failed}
 				return err
