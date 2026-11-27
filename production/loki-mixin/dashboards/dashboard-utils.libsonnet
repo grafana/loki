@@ -366,7 +366,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
   },
 
   p99LatencyByPod(metric, selectorStr)::
-    $.newQueryPanel('Per Pod Latency (p99)', 'ms') +
+    $.newQueryPanel('Per pod p99 request latency', 'ms') +
     latencyPanelWithExtraGrouping(metric, selectorStr, '1e3', 'pod'),
 
   //
@@ -422,7 +422,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
   // namespace is already a dashboard variable), so strip it for the legend.
   // Series whose job has no prefix are left untouched by label_replace.
   runningPodsPanel(matcher)::
-    $.newQueryPanel('Running Pods') +
+    $.newQueryPanel('Running pods') +
     $.queryPanel(
       'label_replace(count by (%(job)s) (up{%(ns)s, %(m)s}), "%(job)s", "$1", "%(job)s", ".*/(.*)")' % {
         job: $._config.per_job_label,
@@ -433,7 +433,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     ),
 
   minReplicasPanel(component)::
-    $.panel('Min Replicas') +
+    $.panel('Minimum replicas') +
     $.newStatPanel(
       'sum(loki_autoscaler_min_replicas{%s, type=~"%s"})' % [$.namespaceMatcher(), $.autoscalerType[component]],
       unit='short',
@@ -442,7 +442,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     ),
 
   maxReplicasPanel(component)::
-    $.panel('Max Replicas') +
+    $.panel('Maximum replicas') +
     $.newStatPanel(
       'sum(loki_autoscaler_max_replicas{%s, type=~"%s"})' % [$.namespaceMatcher(), $.autoscalerType[component]],
       unit='short',
@@ -467,7 +467,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
 
   diskWritesPanel(matcher)::
-    $.newQueryPanel('Disk Writes', 'Bps') +
+    $.newQueryPanel('Disk write throughput', 'Bps') +
     $.queryPanel(
       'sum by(%s, %s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(matcher)],
       '{{%s}} - {{device}}' % $._config.per_instance_label
@@ -475,7 +475,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     $.withStacking,
 
   diskReadsPanel(matcher)::
-    $.newQueryPanel('Disk Reads', 'Bps') +
+    $.newQueryPanel('Disk read throughput', 'Bps') +
     $.queryPanel(
       'sum by(%s, %s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $._config.per_instance_label, $.filterNodeDisk(matcher)],
       '{{%s}} - {{device}}' % $._config.per_instance_label

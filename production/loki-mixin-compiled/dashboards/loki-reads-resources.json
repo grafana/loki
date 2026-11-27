@@ -70,7 +70,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Running Pods",
+                  "title": "Running pods",
                   "type": "timeseries"
                },
                {
@@ -317,7 +317,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (workingset)",
+                  "title": "Memory (working set)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -367,7 +367,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap alloc)",
+                  "title": "Memory (Go heap allocated)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -378,7 +378,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Query Frontend",
+            "title": "Query-frontend",
             "titleSize": "h6"
          },
          {
@@ -429,7 +429,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Running Pods",
+                  "title": "Running pods",
                   "type": "timeseries"
                },
                {
@@ -676,7 +676,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (workingset)",
+                  "title": "Memory (working set)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -726,7 +726,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap alloc)",
+                  "title": "Memory (Go heap allocated)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -737,7 +737,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Query Scheduler",
+            "title": "Query-scheduler",
             "titleSize": "h6"
          },
          {
@@ -788,7 +788,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Running Pods",
+                  "title": "Running pods",
                   "type": "timeseries"
                },
                {
@@ -1035,7 +1035,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (workingset)",
+                  "title": "Memory (working set)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -1085,7 +1085,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap alloc)",
+                  "title": "Memory (Go heap allocated)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -1135,7 +1135,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Writes",
+                  "title": "Disk write throughput",
                   "type": "timeseries"
                },
                {
@@ -1182,7 +1182,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Reads",
+                  "title": "Disk read throughput",
                   "type": "timeseries"
                },
                {
@@ -1229,7 +1229,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Space Utilization",
+                  "title": "Disk space utilization",
                   "type": "timeseries"
                }
             ],
@@ -1288,7 +1288,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Running Pods",
+                  "title": "Running pods",
                   "type": "timeseries"
                },
                {
@@ -1535,7 +1535,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (workingset)",
+                  "title": "Memory (working set)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -1585,7 +1585,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap alloc)",
+                  "title": "Memory (Go heap allocated)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -1635,7 +1635,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Writes",
+                  "title": "Disk write throughput",
                   "type": "timeseries"
                },
                {
@@ -1682,7 +1682,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Reads",
+                  "title": "Disk read throughput",
                   "type": "timeseries"
                },
                {
@@ -1729,7 +1729,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Space Utilization",
+                  "title": "Disk space utilization",
                   "type": "timeseries"
                }
             ],
@@ -1737,7 +1737,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Index Gateway",
+            "title": "Index gateway",
             "titleSize": "h6"
          },
          {
@@ -1788,7 +1788,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Running Pods",
+                  "title": "Running pods",
                   "type": "timeseries"
                },
                {
@@ -2035,7 +2035,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (workingset)",
+                  "title": "Memory (working set)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -2085,7 +2085,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap alloc)",
+                  "title": "Memory (Go heap allocated)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -2135,7 +2135,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Writes",
+                  "title": "Disk write throughput",
                   "type": "timeseries"
                },
                {
@@ -2182,7 +2182,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Reads",
+                  "title": "Disk read throughput",
                   "type": "timeseries"
                },
                {
@@ -2229,7 +2229,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Space Utilization",
+                  "title": "Disk space utilization",
                   "type": "timeseries"
                }
             ],
@@ -2237,7 +2237,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Bloom Gateway",
+            "title": "Bloom gateway",
             "titleSize": "h6"
          },
          {
@@ -2288,7 +2288,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Running Pods",
+                  "title": "Running pods",
                   "type": "timeseries"
                },
                {
@@ -2535,7 +2535,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (workingset)",
+                  "title": "Memory (working set)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -2585,7 +2585,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap alloc)",
+                  "title": "Memory (Go heap allocated)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -2647,7 +2647,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Running Pods",
+                  "title": "Running pods",
                   "type": "timeseries"
                },
                {
@@ -2894,7 +2894,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (workingset)",
+                  "title": "Memory (working set)",
                   "tooltip": {
                      "sort": 2
                   },
@@ -2944,7 +2944,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Memory (go heap alloc)",
+                  "title": "Memory (Go heap allocated)",
                   "tooltip": {
                      "sort": 2
                   },

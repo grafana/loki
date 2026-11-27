@@ -70,7 +70,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Series",
+                  "title": "Chunks",
                   "type": "timeseries"
                },
                {
@@ -117,7 +117,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Chunks per series",
+                  "title": "Chunks per stream",
                   "type": "timeseries"
                }
             ],
@@ -125,7 +125,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Active Series / Chunks",
+            "title": "In-memory chunks",
             "titleSize": "h6"
          },
          {
@@ -293,7 +293,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Flush Stats",
+            "title": "Flush statistics",
             "titleSize": "h6"
          },
          {
@@ -357,7 +357,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Log Entries Per Chunk",
+                  "title": "Log entries per chunk",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -422,7 +422,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Index Entries Per Chunk",
+                  "title": "Index entries per chunk",
                   "type": "timeseries"
                }
             ],
@@ -430,7 +430,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Flush Stats",
+            "title": "Flush statistics",
             "titleSize": "h6"
          },
          {
@@ -481,7 +481,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Queue Length",
+                  "title": "Per pod queue length",
                   "type": "timeseries"
                },
                {
@@ -679,7 +679,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "Flush Rate",
+                  "title": "Flush rate",
                   "type": "timeseries"
                }
             ],
@@ -687,7 +687,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Flush Stats",
+            "title": "Flush statistics",
             "titleSize": "h6"
          },
          {
@@ -738,7 +738,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Chunks Flushed/Second",
+                  "title": "Flushed chunks / sec",
                   "type": "timeseries"
                },
                {
@@ -786,7 +786,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Chunk Flush Reason",
+                  "title": "Flushed chunk share by reason",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -812,7 +812,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Flush Stats",
+            "title": "Flush statistics",
             "titleSize": "h6"
          },
          {
@@ -850,7 +850,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "Chunk Utilization",
+                  "title": "Chunk utilization",
                   "tooltip": {
                      "show": true,
                      "showHistogram": true
@@ -912,7 +912,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "Chunk Size Bytes",
+                  "title": "Chunk size distribution",
                   "tooltip": {
                      "show": true,
                      "showHistogram": true
@@ -999,7 +999,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Chunk Size Quantiles",
+                  "title": "Chunk size",
                   "type": "timeseries"
                }
             ],
@@ -1070,7 +1070,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Chunk Duration hours (end-start)",
+                  "title": "Chunk time span (hours)",
                   "type": "timeseries"
                }
             ],

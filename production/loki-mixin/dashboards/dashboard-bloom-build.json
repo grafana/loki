@@ -272,7 +272,7 @@
           "refId": "D"
         }
       ],
-      "title": "Progress by tenant",
+      "title": "Per tenant progress",
       "type": "timeseries"
     },
     {
@@ -315,7 +315,7 @@
           "refId": "B"
         }
       ],
-      "title": "Errors Planner",
+      "title": "Planner errors",
       "type": "logs"
     },
     {
@@ -413,7 +413,7 @@
           "refId": "A"
         }
       ],
-      "title": "Errors Rate Planner",
+      "title": "Planner error count",
       "type": "timeseries"
     },
     {
@@ -456,7 +456,7 @@
           "refId": "B"
         }
       ],
-      "title": "Errors Builder",
+      "title": "Builder errors",
       "type": "logs"
     },
     {
@@ -554,7 +554,7 @@
           "refId": "A"
         }
       ],
-      "title": "Errors Rate Builder",
+      "title": "Builder error count",
       "type": "timeseries"
     },
     {
@@ -1031,7 +1031,7 @@
               "refId": "D"
             }
           ],
-          "title": "Tasks per builder",
+          "title": "Builders",
           "type": "timeseries"
         },
         {
@@ -1289,7 +1289,7 @@
               "refId": "A"
             }
           ],
-          "title": "Number of bytes from chunks added to blocks during each compaction.",
+          "title": "Chunk bytes per task",
           "type": "timeseries"
         },
         {
@@ -1534,7 +1534,7 @@
               "refId": "C"
             }
           ],
-          "title": "Tasks per tenant",
+          "title": "Tenant tasks",
           "type": "timeseries"
         },
         {
@@ -1806,7 +1806,7 @@
               "refId": "B"
             }
           ],
-          "title": "tokens/s by collision type",
+          "title": "Token share by collision type",
           "type": "timeseries"
         },
         {
@@ -2035,7 +2035,7 @@
               "refId": "B"
             }
           ],
-          "title": "Chunks indexed",
+          "title": "Indexed chunks / sec",
           "type": "timeseries"
         }
       ],
@@ -2275,7 +2275,7 @@
               "refId": "B"
             }
           ],
-          "title": "MB/s per core",
+          "title": "Per core throughput",
           "type": "timeseries"
         },
         {
@@ -2558,7 +2558,7 @@
               "refId": "C"
             }
           ],
-          "title": "CPU per pod",
+          "title": "Per pod CPU",
           "type": "timeseries"
         },
         {
@@ -2722,7 +2722,7 @@
               "refId": "F"
             }
           ],
-          "title": "Memory (workingset)",
+          "title": "Memory (working set)",
           "type": "timeseries"
         },
         {
@@ -2847,7 +2847,7 @@
               "refId": "C"
             }
           ],
-          "title": "Memory per pod (workingset)",
+          "title": "Per pod memory (working set)",
           "type": "timeseries"
         },
         {
@@ -3053,11 +3053,11 @@
               "refId": "A"
             }
           ],
-          "title": "Container restarts reason per pod",
+          "title": "Per pod container restarts",
           "type": "timeseries"
         }
       ],
-      "title": "Builder Resource Usage",
+      "title": "Builder resource usage",
       "type": "row"
     },
     {
@@ -3337,7 +3337,7 @@
               "refId": "C"
             }
           ],
-          "title": "CPU per pod",
+          "title": "Per pod CPU",
           "type": "timeseries"
         },
         {
@@ -3488,7 +3488,7 @@
               "refId": "E"
             }
           ],
-          "title": "Memory (workingset)",
+          "title": "Memory (working set)",
           "type": "timeseries"
         },
         {
@@ -3613,7 +3613,7 @@
               "refId": "C"
             }
           ],
-          "title": "Memory per pod (workingset)",
+          "title": "Per pod memory (working set)",
           "type": "timeseries"
         },
         {
@@ -3819,11 +3819,11 @@
               "refId": "A"
             }
           ],
-          "title": "Container restarts reason per pod",
+          "title": "Per pod container restarts",
           "type": "timeseries"
         }
       ],
-      "title": "Planner Resource Usage",
+      "title": "Planner resource usage",
       "type": "row"
     },
     {
@@ -3928,7 +3928,7 @@
               "refId": "A"
             }
           ],
-          "title": "Created Metas",
+          "title": "Created metas",
           "type": "timeseries"
         },
         {
@@ -3996,7 +3996,7 @@
               "refId": "A"
             }
           ],
-          "title": "Created Metas",
+          "title": "Selected range: created metas",
           "type": "stat"
         },
         {
@@ -4092,7 +4092,7 @@
               "refId": "A"
             }
           ],
-          "title": "Deleted Metas",
+          "title": "Deleted metas",
           "type": "timeseries"
         }
       ],
@@ -4201,7 +4201,7 @@
               "refId": "A"
             }
           ],
-          "title": "Created Blocks",
+          "title": "Created blocks",
           "type": "timeseries"
         },
         {
@@ -4269,7 +4269,7 @@
               "refId": "A"
             }
           ],
-          "title": "Created Blocks",
+          "title": "Selected range: created blocks",
           "type": "stat"
         },
         {
@@ -4365,7 +4365,7 @@
               "refId": "A"
             }
           ],
-          "title": "Deleted Blocks",
+          "title": "Deleted blocks",
           "type": "timeseries"
         },
         {
@@ -4754,7 +4754,7 @@
               "refId": "A"
             }
           ],
-          "title": "Retention time",
+          "title": "Retention duration",
           "type": "timeseries"
         }
       ],
@@ -4919,7 +4919,7 @@
               "refId": "B"
             }
           ],
-          "title": "QPS Planner",
+          "title": "Planner requests / sec",
           "type": "timeseries"
         },
         {
@@ -5042,7 +5042,7 @@
               "refId": "F"
             }
           ],
-          "title": "Latency Planner",
+          "title": "Planner request latency",
           "type": "timeseries"
         },
         {
@@ -5139,7 +5139,7 @@
               "refId": "B"
             }
           ],
-          "title": "QPS Builder",
+          "title": "Builder requests / sec",
           "type": "timeseries"
         },
         {
@@ -5262,7 +5262,7 @@
               "refId": "F"
             }
           ],
-          "title": "Latency Planner",
+          "title": "Builder request latency",
           "type": "timeseries"
         },
         {
@@ -5386,7 +5386,7 @@
               "refId": "B"
             }
           ],
-          "title": "QPS Planner",
+          "title": "Planner requests / sec",
           "type": "timeseries"
         },
         {
@@ -5509,7 +5509,7 @@
               "refId": "F"
             }
           ],
-          "title": "Latency Planner",
+          "title": "Planner request latency",
           "type": "timeseries"
         },
         {
@@ -5606,7 +5606,7 @@
               "refId": "B"
             }
           ],
-          "title": "QPS Builder",
+          "title": "Builder requests / sec",
           "type": "timeseries"
         },
         {
@@ -5729,7 +5729,7 @@
               "refId": "F"
             }
           ],
-          "title": "Latency Builder",
+          "title": "Builder request latency",
           "type": "timeseries"
         },
         {
@@ -5853,7 +5853,7 @@
               "refId": "B"
             }
           ],
-          "title": "QPS Planner",
+          "title": "Planner requests / sec",
           "type": "timeseries"
         },
         {
@@ -5976,7 +5976,7 @@
               "refId": "F"
             }
           ],
-          "title": "Latency Planner",
+          "title": "Planner request latency",
           "type": "timeseries"
         },
         {
@@ -6073,7 +6073,7 @@
               "refId": "B"
             }
           ],
-          "title": "QPS Builder",
+          "title": "Builder requests / sec",
           "type": "timeseries"
         },
         {
@@ -6196,11 +6196,11 @@
               "refId": "F"
             }
           ],
-          "title": "Latency Builder",
+          "title": "Builder request latency",
           "type": "timeseries"
         }
       ],
-      "title": "Object Store",
+      "title": "Object store",
       "type": "row"
     }
   ],

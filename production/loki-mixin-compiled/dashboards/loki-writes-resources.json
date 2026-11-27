@@ -70,7 +70,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Running Pods",
+                  "title": "Running pods",
                   "type": "timeseries"
                },
                {
@@ -429,7 +429,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Running Pods",
+                  "title": "Running pods",
                   "type": "timeseries"
                },
                {
@@ -826,7 +826,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Writes",
+                  "title": "Disk write throughput",
                   "type": "timeseries"
                },
                {
@@ -873,7 +873,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Disk Reads",
+                  "title": "Disk read throughput",
                   "type": "timeseries"
                },
                {
