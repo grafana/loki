@@ -5031,6 +5031,12 @@ builder:
     # CLI flag: -logline-builder.kafka.sasl-password
     [sasl_password: <string> | default = ""]
 
+    # Kafka SASL mechanism. Supported values: "PLAIN", "SCRAM-SHA-256",
+    # "SCRAM-SHA-512". Defaults to the root kafka_config mechanism, then to
+    # PLAIN.
+    # CLI flag: -logline-builder.kafka.sasl-mechanism
+    [sasl_mechanism: <string> | default = ""]
+
     # Kafka consumer group every builder replica joins. Deliberately not
     # inherited from kafka_config.consumer_group: that is the ingesters'
     # per-zone offset namespace, and sharing it makes the two sides overwrite
