@@ -51,6 +51,7 @@ type StickyConnPool struct {
 	// CLIENT TRACKING, RESET, ...) cannot be undone, and a pooled caller must
 	// never inherit it.
 	discardOnClose bool
+	newConnOnGet   bool
 
 	_badConnError atomic.Value
 }
@@ -82,7 +83,13 @@ func (p *StickyConnPool) Get(ctx context.Context) (*Conn, error) {
 	for i := 0; i < 1000; i++ {
 		switch p.state.Load() {
 		case stateDefault:
-			cn, err := p.pool.Get(ctx)
+			var cn *Conn
+			var err error
+			if p.newConnOnGet {
+				cn, err = p.pool.NewConn(ctx)
+			} else {
+				cn, err = p.pool.Get(ctx)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -92,7 +99,7 @@ func (p *StickyConnPool) Get(ctx context.Context) (*Conn, error) {
 				}
 				return cn, nil
 			}
-			p.pool.Remove(ctx, cn, ErrClosed)
+			p.removeConn(ctx, cn, ErrClosed)
 		case stateInited:
 			if err := p.badConnError(); err != nil {
 				return nil, err
@@ -124,6 +131,14 @@ func (p *StickyConnPool) DiscardOnClose() {
 	p.discardOnClose = true
 }
 
+// NewConnOnGet makes the first Get (and the first Get after Reset) dial a new,
+// non-pooled connection instead of borrowing an idle one. Such connections do
+// not acquire a pool turn and are always removed on Close, without freeing one.
+// It must be called before the pool is used.
+func (p *StickyConnPool) NewConnOnGet() {
+	p.newConnOnGet = true
+}
+
 func (p *StickyConnPool) Put(ctx context.Context, cn *Conn) {
 	defer func() {
 		if recover() != nil {
@@ -143,18 +158,26 @@ func (p *StickyConnPool) Put(ctx context.Context, cn *Conn) {
 
 func (p *StickyConnPool) freeConn(ctx context.Context, cn *Conn) {
 	if err := p.badConnError(); err != nil {
-		p.pool.Remove(ctx, cn, err)
-	} else if p.discardOnClose {
-		p.pool.Remove(ctx, cn, ErrClosed)
+		p.removeConn(ctx, cn, err)
+	} else if p.discardOnClose || p.newConnOnGet {
+		p.removeConn(ctx, cn, ErrClosed)
 	} else {
 		p.pool.Put(ctx, cn)
+	}
+}
+
+func (p *StickyConnPool) removeConn(ctx context.Context, cn *Conn, reason error) {
+	if p.newConnOnGet {
+		p.pool.RemoveWithoutTurn(ctx, cn, reason)
+	} else {
+		p.pool.Remove(ctx, cn, reason)
 	}
 }
 
 func (p *StickyConnPool) Remove(ctx context.Context, cn *Conn, reason error) {
 	defer func() {
 		if recover() != nil {
-			p.pool.Remove(ctx, cn, ErrClosed)
+			p.removeConn(ctx, cn, ErrClosed)
 		}
 	}()
 	p._badConnError.Store(BadConnError{wrapped: reason})
@@ -200,7 +223,7 @@ func (p *StickyConnPool) Reset(ctx context.Context) error {
 		if !ok {
 			return ErrClosed
 		}
-		p.pool.Remove(ctx, cn, ErrClosed)
+		p.removeConn(ctx, cn, ErrClosed)
 		p._badConnError.Store(BadConnError{wrapped: nil})
 	default:
 		return errors.New("redis: StickyConnPool does not have a Conn")

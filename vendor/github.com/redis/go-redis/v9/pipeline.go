@@ -87,6 +87,15 @@ func (c *Pipeline) Process(ctx context.Context, cmd Cmder) error {
 
 // BatchProcess queues multiple cmds for later execution.
 func (c *Pipeline) BatchProcess(ctx context.Context, cmd ...Cmder) error {
+	// Public pipelines are uncached. Consume a clone's earlier cache intent
+	// at submission, including when the caller later discards the pipeline.
+	// Internal pipelines (for example ASKING + a redirected command) retain
+	// the state owned by their active invocation.
+	for _, command := range cmd {
+		if state := command.cacheState(); state.depth == 0 {
+			resetCSCCommand(command)
+		}
+	}
 	c.cmds = append(c.cmds, cmd...)
 	return nil
 }
@@ -109,7 +118,9 @@ func (c *Pipeline) Exec(ctx context.Context) ([]Cmder, error) {
 	cmds := c.cmds
 	c.cmds = nil
 
-	return cmds, c.exec(ctx, cmds)
+	// Public pipeline commands are uncached. Do not pass an Exec mark to
+	// internal connection initialization or Cluster topology queries.
+	return cmds, c.exec(cscUnmarkedContext(ctx), cmds)
 }
 
 func (c *Pipeline) Pipelined(ctx context.Context, fn func(Pipeliner) error) ([]Cmder, error) {

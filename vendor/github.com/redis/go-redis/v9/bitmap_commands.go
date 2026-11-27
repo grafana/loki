@@ -19,6 +19,8 @@ type BitMapCmdable interface {
 	BitOpNot(ctx context.Context, destKey string, key string) *IntCmd
 	BitPos(ctx context.Context, key string, bit int64, pos ...int64) *IntCmd
 	BitPosSpan(ctx context.Context, key string, bit int8, start, end int64, span string) *IntCmd
+	BitRangeIntArray(ctx context.Context, key string, start, end int64) *IntSliceCmd
+	BitRangeIntArrayWithOptions(ctx context.Context, key string, start, end int64, opts *BitRangeIntArrayOptions) *IntSliceCmd
 	BitField(ctx context.Context, key string, values ...interface{}) *IntSliceCmd
 	BitFieldRO(ctx context.Context, key string, values ...interface{}) *IntSliceCmd
 }
@@ -159,6 +161,53 @@ func (c cmdable) BitPos(ctx context.Context, key string, bit int64, pos ...int64
 // span = "byte", cmd: bitpos key bit start end byte
 func (c cmdable) BitPosSpan(ctx context.Context, key string, bit int8, start, end int64, span string) *IntCmd {
 	cmd := NewIntCmd(ctx, "bitpos", key, bit, start, end, span)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// BitRangeIntArrayOptions holds the optional arguments of BITRANGEINTARRAY.
+type BitRangeIntArrayOptions struct {
+	// Unit of start and end: "BYTE" (default) or "BIT". Sent as given.
+	Unit string
+	// Limit returns only the lowest *Limit offsets of the range. Nil sends no
+	// LIMIT; a pointer to 0 sends LIMIT 0, which returns an empty array.
+	// In BYTE units a page can hold up to 7 more offsets than the limit, and
+	// the offsets are bit offsets in both units.
+	Limit *int64
+	// Zeros returns the offsets of the clear bits instead of the set bits.
+	Zeros bool
+}
+
+// BitRangeIntArray returns the offsets of the set bits of key in the byte
+// range [start, end], in ascending order. The range is read as in BITCOUNT.
+// cmd: BITRANGEINTARRAY key start end
+// Introduced with Redis 8.12
+func (c cmdable) BitRangeIntArray(ctx context.Context, key string, start, end int64) *IntSliceCmd {
+	return c.BitRangeIntArrayWithOptions(ctx, key, start, end, nil)
+}
+
+// BitRangeIntArrayWithOptions is BitRangeIntArray with a unit, a limit and
+// the ZEROS flag. opts may be nil.
+// cmd: BITRANGEINTARRAY key start end [BYTE|BIT] [LIMIT count] [ZEROS]
+// Introduced with Redis 8.12
+func (c cmdable) BitRangeIntArrayWithOptions(ctx context.Context, key string, start, end int64, opts *BitRangeIntArrayOptions) *IntSliceCmd {
+	args := make([]any, 4, 8)
+	args[0] = "bitrangeintarray"
+	args[1] = key
+	args[2] = start
+	args[3] = end
+	if opts != nil {
+		if opts.Unit != "" {
+			args = append(args, opts.Unit)
+		}
+		if opts.Limit != nil {
+			args = append(args, "limit", *opts.Limit)
+		}
+		if opts.Zeros {
+			args = append(args, "zeros")
+		}
+	}
+	cmd := NewIntSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }

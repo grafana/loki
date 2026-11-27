@@ -132,8 +132,19 @@ func (m *Manager) Listener(
 //
 // Thread-safe: Called by credentials listeners when credentials change.
 func (m *Manager) MarkForReAuth(poolCn *pool.Conn, reAuthFn func(error)) {
-	connID := poolCn.GetID()
-	m.poolHookRef.MarkForReAuth(connID, reAuthFn)
+	if poolCn.IsPubSub() {
+		if !poolCn.IsClosed() {
+			// Pub/Sub connections never return to the pool, so the
+			// pool hook's OnPut never serializes their re-auth.
+			// Schedule through the hook's per-connection queue
+			// instead of a bare goroutine: two rotations arriving
+			// within milliseconds would otherwise race, and the
+			// older credentials could be written to the socket last.
+			m.poolHookRef.markPubSubForReAuth(poolCn, reAuthFn)
+		}
+		return
+	}
+	m.poolHookRef.markForReAuthIfOpen(poolCn, reAuthFn)
 }
 
 // RemoveListener removes the credentials listener for a connection.
@@ -147,4 +158,24 @@ func (m *Manager) MarkForReAuth(poolCn *pool.Conn, reAuthFn func(error)) {
 // Thread-safe: Called during connection removal.
 func (m *Manager) RemoveListener(connID uint64) {
 	m.credentialsListeners.Remove(connID)
+}
+
+// RemoveConn drops all re-auth state of a connection that is closed outside
+// the pools the pool hook is registered on. Pub/sub connections are such
+// connections: they never return to a pool, so OnRemove never runs for them.
+// Call it after the connection is closed: MarkForReAuth then adds no new
+// state for it.
+//
+// Thread-safe: Called when a connection is closed.
+func (m *Manager) RemoveConn(connID uint64) {
+	m.poolHookRef.removeConn(connID)
+}
+
+// IsTracking reports whether the manager holds re-auth state for a
+// connection: a credentials listener, or a pending or active re-auth.
+func (m *Manager) IsTracking(connID uint64) bool {
+	if _, ok := m.credentialsListeners.Get(connID); ok {
+		return true
+	}
+	return m.poolHookRef.hasReAuth(connID)
 }

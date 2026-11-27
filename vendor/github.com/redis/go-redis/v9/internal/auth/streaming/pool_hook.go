@@ -23,6 +23,9 @@ import (
 //  4. Executes the re-auth function while holding the connection
 //  5. Releases the connection back to the pool
 //
+// Pub/Sub connections never return to the pool, so OnPut never sees them;
+// their re-auth is serialized per connection by markPubSubForReAuth instead.
+//
 // The hook ensures that:
 //   - Only one re-auth operation runs per connection at a time
 //   - Connections are not used for commands during re-authentication
@@ -47,8 +50,26 @@ type ReAuthPoolHook struct {
 	scheduledReAuth map[uint64]bool
 	scheduledLock   sync.RWMutex
 
+	// pubSubReAuth tracks in-flight Pub/Sub re-authentication per
+	// connection. Entries are dropped by removeConn when the connection
+	// closes; an idle entry (no re-auth running or pending) holds no
+	// work and is not reported by hasReAuth.
+	pubSubReAuth     map[uint64]*pubSubReAuthState
+	pubSubReAuthLock sync.Mutex
+
 	// manager is a back-reference for cleanup operations
 	manager *Manager
+}
+
+// pubSubReAuthState serializes re-authentication for one Pub/Sub
+// connection. Rotations run one at a time, in arrival order; a rotation
+// that arrives while one is running replaces the pending one, so the
+// last AUTH written to the socket always carries the latest credentials.
+type pubSubReAuthState struct {
+	mu      sync.Mutex
+	running bool
+	pending func(error)
+	closed  bool
 }
 
 // NewReAuthPoolHook creates a new re-authentication pool hook.
@@ -63,6 +84,7 @@ func NewReAuthPoolHook(poolSize int, reAuthTimeout time.Duration) *ReAuthPoolHoo
 	return &ReAuthPoolHook{
 		shouldReAuth:    make(map[uint64]func(error)),
 		scheduledReAuth: make(map[uint64]bool),
+		pubSubReAuth:    make(map[uint64]*pubSubReAuthState),
 		workers:         internal.NewFastSemaphore(int32(poolSize)),
 		reAuthTimeout:   reAuthTimeout,
 	}
@@ -83,6 +105,99 @@ func (r *ReAuthPoolHook) MarkForReAuth(connID uint64, reAuthFn func(error)) {
 	r.shouldReAuthLock.Lock()
 	defer r.shouldReAuthLock.Unlock()
 	r.shouldReAuth[connID] = reAuthFn
+}
+
+// markForReAuthIfOpen is MarkForReAuth for a connection that is not closed.
+// The check holds the same lock as removeConn, so a re-auth marked while the
+// connection closes is either removed by removeConn or never added.
+func (r *ReAuthPoolHook) markForReAuthIfOpen(conn *pool.Conn, reAuthFn func(error)) {
+	r.shouldReAuthLock.Lock()
+	defer r.shouldReAuthLock.Unlock()
+	if conn.IsClosed() {
+		return
+	}
+	r.shouldReAuth[conn.GetID()] = reAuthFn
+}
+
+// markPubSubForReAuth schedules re-authentication for a Pub/Sub connection.
+// Unlike pooled connections, Pub/Sub connections never return to the pool,
+// so there is no OnPut to serialize their re-auth: running each rotation's
+// re-auth in its own goroutine lets an older rotation write AUTH last when
+// two rotations arrive within milliseconds, and the connection stays on the
+// older credentials until the next rotation or a WRONGPASS.
+//
+// Re-auths for one connection run one at a time, in arrival order; a
+// rotation that arrives while one is running replaces any pending re-auth,
+// so the last AUTH written always carries the latest credentials.
+//
+// Thread-safe: Can be called concurrently from multiple goroutines.
+func (r *ReAuthPoolHook) markPubSubForReAuth(conn *pool.Conn, reAuthFn func(error)) {
+	connID := conn.GetID()
+	r.pubSubReAuthLock.Lock()
+	// Refuse rotations for a connection that is already closed. The check
+	// must hold the same lock as removeConn: otherwise a rotation that
+	// slips in after removeConn deleted the entry resurrects tracking
+	// state for a dead connection, and nothing ever cleans it up again.
+	if conn.IsClosed() {
+		r.pubSubReAuthLock.Unlock()
+		return
+	}
+	state, ok := r.pubSubReAuth[connID]
+	if !ok {
+		state = &pubSubReAuthState{}
+		r.pubSubReAuth[connID] = state
+	}
+	// Hold pubSubReAuthLock while deciding under state.mu: if the lock
+	// is released between the lookup and the decision, an older rotation
+	// can pause there, a newer one can claim running, and the older one
+	// then overwrites pending — the worker would write the older
+	// credentials last. removeConn takes the locks in the same order,
+	// so this nesting cannot deadlock.
+	state.mu.Lock()
+	r.pubSubReAuthLock.Unlock()
+
+	if state.closed {
+		state.mu.Unlock()
+		return
+	}
+	if state.running {
+		// A re-auth is in flight: coalesce, keeping only the latest
+		// pending rotation. It runs once the current one finishes.
+		state.pending = reAuthFn
+		state.mu.Unlock()
+		return
+	}
+	state.running = true
+	state.mu.Unlock()
+
+	go func() {
+		fn := reAuthFn
+		for {
+			// A panic in one re-auth must not wedge later rotations
+			// for this connection.
+			func() {
+				defer func() {
+					if rec := recover(); rec != nil {
+						internal.Logger.Printf(context.Background(), "panic in pubsub reauth worker: %v", rec)
+					}
+				}()
+				if !conn.IsClosed() {
+					fn(nil)
+				}
+			}()
+
+			state.mu.Lock()
+			next := state.pending
+			state.pending = nil
+			if next == nil || state.closed {
+				state.running = false
+				state.mu.Unlock()
+				return
+			}
+			state.mu.Unlock()
+			fn = next
+		}
+	}()
 }
 
 // OnGet is called when a connection is retrieved from the pool.
@@ -204,8 +319,9 @@ func (r *ReAuthPoolHook) OnPut(_ context.Context, conn *pool.Conn) (bool, bool, 
 				reAuthFn(nil)
 			}
 
-			// Release the connection: transition from UNUSABLE back to IDLE
-			stateMachine.Transition(pool.StateIdle)
+			// Release the connection: UNUSABLE back to IDLE. A conn closed during
+			// reAuthFn (e.g. onAuthenticationErr after a rejected AUTH) stays CLOSED.
+			_, _ = stateMachine.TryTransition([]pool.ConnState{pool.StateUnusable}, pool.StateIdle)
 		}()
 	}
 
@@ -226,16 +342,54 @@ func (r *ReAuthPoolHook) OnPut(_ context.Context, conn *pool.Conn) (bool, bool, 
 //
 // Thread-safe: Called when connections are removed due to errors, timeouts, or pool closure.
 func (r *ReAuthPoolHook) OnRemove(_ context.Context, conn *pool.Conn, _ error) {
-	connID := conn.GetID()
+	r.removeConn(conn.GetID())
+}
+
+// removeConn drops all re-auth state of a connection: its pending and active
+// re-auth and its credentials listener.
+func (r *ReAuthPoolHook) removeConn(connID uint64) {
 	r.shouldReAuthLock.Lock()
 	r.scheduledLock.Lock()
 	delete(r.scheduledReAuth, connID)
 	delete(r.shouldReAuth, connID)
 	r.scheduledLock.Unlock()
 	r.shouldReAuthLock.Unlock()
+	r.pubSubReAuthLock.Lock()
+	if state, ok := r.pubSubReAuth[connID]; ok {
+		delete(r.pubSubReAuth, connID)
+		state.mu.Lock()
+		// A worker that already picked up the next rotation drops it;
+		// one that is mid-flight finishes and stops.
+		state.closed = true
+		state.pending = nil
+		state.mu.Unlock()
+	}
+	r.pubSubReAuthLock.Unlock()
 	if r.manager != nil {
 		r.manager.RemoveListener(connID)
 	}
+}
+
+// hasReAuth reports whether a re-auth is pending or active for a connection.
+func (r *ReAuthPoolHook) hasReAuth(connID uint64) bool {
+	r.shouldReAuthLock.RLock()
+	_, pending := r.shouldReAuth[connID]
+	r.shouldReAuthLock.RUnlock()
+	r.scheduledLock.RLock()
+	_, scheduled := r.scheduledReAuth[connID]
+	r.scheduledLock.RUnlock()
+	if pending || scheduled {
+		return true
+	}
+	r.pubSubReAuthLock.Lock()
+	state, ok := r.pubSubReAuth[connID]
+	r.pubSubReAuthLock.Unlock()
+	if !ok {
+		return false
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return state.running || state.pending != nil
 }
 
 var _ pool.PoolHook = (*ReAuthPoolHook)(nil)

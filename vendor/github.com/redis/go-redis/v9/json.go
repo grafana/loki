@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/redis/go-redis/v9/internal/proto"
@@ -173,7 +174,10 @@ func (cmd *JSONCmd) readReply(rd *proto.Reader) error {
 		expanded := make([]interface{}, size)
 
 		for i := 0; i < size; i++ {
-			if expanded[i], err = rd.ReadReply(); err != nil {
+			// A null element is a value, not a missing reply. With RESP3,
+			// JSON.NUMINCRBY reports null for each match that is not a
+			// number.
+			if expanded[i], err = rd.ReadReply(); err != nil && err != Nil {
 				return err
 			}
 		}
@@ -254,7 +258,14 @@ func (cmd *JSONSliceCmd) readReply(rd *proto.Reader) error {
 		} else {
 			cmd.val = response.([]interface{})
 		}
-
+	} else if readType == proto.RespString {
+		// With RESP2 a legacy path (one that does not start with "$") gets
+		// a single value instead of an array.
+		s, err := rd.ReadString()
+		if err != nil {
+			return err
+		}
+		cmd.val = []interface{}{s}
 	} else {
 		n, err := rd.ReadArrayLen()
 		if err != nil {
@@ -330,6 +341,38 @@ func (cmd *IntPointerSliceCmd) Result() ([]*int64, error) {
 }
 
 func (cmd *IntPointerSliceCmd) readReply(rd *proto.Reader) error {
+	// A legacy path (one that does not start with "$") gets a single value
+	// instead of an array with one value per match.
+	readType, err := rd.PeekReplyType()
+	if err != nil {
+		return err
+	}
+	switch readType {
+	case proto.RespInt:
+		val, err := rd.ReadInt()
+		if err != nil {
+			return err
+		}
+		cmd.val = []*int64{&val}
+		return nil
+	case proto.RespString:
+		// JSON.TOGGLE replies with the new value as "true" or "false".
+		s, err := rd.ReadString()
+		if err != nil {
+			return err
+		}
+		var val int64
+		switch s {
+		case "true":
+			val = 1
+		case "false":
+		default:
+			return fmt.Errorf("redis: can't parse int reply: %.100q", s)
+		}
+		cmd.val = []*int64{&val}
+		return nil
+	}
+
 	n, err := rd.ReadArrayLen()
 	if err != nil {
 		return err
@@ -428,28 +471,26 @@ func (c cmdable) JSONArrPop(ctx context.Context, key, path string, index int) *S
 	return cmd
 }
 
-// JSONArrTrim trims an array to contain only the specified inclusive range of elements.
+// JSONArrTrim keeps the whole array (start 0, stop -1) and returns its length.
+// Use JSONArrTrimWithArgs to trim to a range.
 // For more information, see https://redis.io/commands/json.arrtrim
 func (c cmdable) JSONArrTrim(ctx context.Context, key, path string) *IntSliceCmd {
-	args := []interface{}{"JSON.ARRTRIM", key, path}
-	cmd := NewIntSliceCmd(ctx, args...)
-	_ = c(ctx, cmd)
-	return cmd
+	return c.JSONArrTrimWithArgs(ctx, key, path, nil)
 }
 
 // JSONArrTrimWithArgs trims an array to contain only the specified inclusive range of elements.
+// Start defaults to 0 and Stop to -1 (the last element).
 // For more information, see https://redis.io/commands/json.arrtrim
 func (c cmdable) JSONArrTrimWithArgs(ctx context.Context, key, path string, options *JSONArrTrimArgs) *IntSliceCmd {
-	args := []interface{}{"JSON.ARRTRIM", key, path}
-
+	// The server requires both start and stop.
+	start, stop := 0, -1
 	if options != nil {
-		args = append(args, options.Start)
-
+		start = options.Start
 		if options.Stop != nil {
-			args = append(args, *options.Stop)
+			stop = *options.Stop
 		}
 	}
-	cmd := NewIntSliceCmd(ctx, args...)
+	cmd := NewIntSliceCmd(ctx, "JSON.ARRTRIM", key, path, start, stop)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -525,9 +566,9 @@ func (c cmdable) JSONGetWithArgs(ctx context.Context, key string, options *JSONG
 		if options.Space != "" {
 			args = append(args, "SPACE", options.Space)
 		}
-		for _, path := range paths {
-			args = append(args, path)
-		}
+	}
+	for _, path := range paths {
+		args = append(args, path)
 	}
 	cmd := newJSONCmd(ctx, args...)
 	_ = c(ctx, cmd)

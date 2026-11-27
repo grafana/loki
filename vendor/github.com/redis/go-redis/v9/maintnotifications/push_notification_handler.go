@@ -60,8 +60,8 @@ func (snh *NotificationHandler) HandlePushNotification(ctx context.Context, hand
 	}
 
 	// Record maintenance notification metric
-	if maintenanceCallback := pool.GetMetricMaintenanceNotificationCallback(); maintenanceCallback != nil {
-		if conn, ok := handlerCtx.Conn.(*pool.Conn); ok {
+	if conn, ok := handlerCtx.Conn.(*pool.Conn); ok {
+		if maintenanceCallback := pool.MetricsOf(conn).MaintenanceNotification; maintenanceCallback != nil {
 			maintenanceCallback(ctx, conn, notificationType)
 		}
 	}
@@ -157,6 +157,14 @@ func (snh *NotificationHandler) handleMoving(ctx context.Context, handlerCtx pus
 				return
 			}
 
+			// PubSub owns reconnect + resubscribe. The handoff worker only dials
+			// and re-inits the socket, which leaves the subscription silently
+			// dead (Ping still succeeds). Keep the timeS/2 delay, mark only, and
+			// let PubSub reconnect itself. See #4245.
+			if poolConn.IsPubSub() {
+				return
+			}
+
 			// Queue the handoff immediately if the connection is idle in the pool.
 			// If the connection is in use (StateInUse), it will be queued when returned to the pool via OnPut.
 			// This handles the case where the connection is idle and might never be retrieved again.
@@ -168,17 +176,28 @@ func (snh *NotificationHandler) handleMoving(ctx context.Context, handlerCtx pus
 				// primary pool cannot do that, which would close the
 				// connection while leaving a dead slot behind.
 				owner := snh.manager.hookForConn(poolConn)
-				if owner != nil && owner.workerManager != nil {
+				// Claim the connection (IDLE -> UNUSABLE) BEFORE queueing: a Get may
+				// have acquired it since the state check above. Queueing first would
+				// let the worker re-initialize it under the holder's commands, or close
+				// it under the holder when its wait for the connection times out. A
+				// failed claim needs nothing more: the handoff mark stays, so OnPut
+				// queues the handoff when the holder returns the connection.
+				if owner == nil || owner.workerManager == nil {
+					return
+				}
+				if claimed, ok := poolConn.ClaimIdleForHandoff(); ok {
 					if err := owner.workerManager.queueHandoff(poolConn); err != nil {
 						internal.Logger.Printf(context.Background(), "%s", logs.FailedToQueueHandoff(poolConn.GetID(), err))
-					} else {
-						// Mark the connection as queued for handoff to prevent it from being retrieved
-						// This transitions the connection to StateUnusable
-						if err := poolConn.MarkQueuedForHandoff(); err != nil {
-							internal.Logger.Printf(context.Background(), "%s", logs.FailedToMarkForHandoff(poolConn.GetID(), err))
-						} else {
-							internal.Logger.Printf(context.Background(), "%s", logs.MarkedForHandoff(poolConn.GetID()))
+						// Claimed but no worker will take it: remove it, as OnPut does
+						// when queueing fails, instead of leaving it UNUSABLE for good.
+						if owner.pool != nil {
+							owner.pool.RemoveWithoutTurn(context.Background(), poolConn, err)
 						}
+					} else {
+						// Clear the mark so the connection is not queued again. Metadata
+						// only: the worker may already own the connection's state.
+						poolConn.MarkHandoffQueued(claimed)
+						internal.Logger.Printf(context.Background(), "%s", logs.MarkedForHandoff(poolConn.GetID()))
 					}
 				}
 			}
@@ -236,7 +255,7 @@ func (snh *NotificationHandler) handleMigrating(ctx context.Context, handlerCtx 
 	conn.SetRelaxedTimeout(snh.manager.config.RelaxedTimeout, snh.manager.config.RelaxedTimeout)
 
 	// Record relaxed timeout metric
-	if relaxedTimeoutCallback := pool.GetMetricConnectionRelaxedTimeoutCallback(); relaxedTimeoutCallback != nil {
+	if relaxedTimeoutCallback := pool.MetricsOf(conn).ConnectionRelaxedTimeout; relaxedTimeoutCallback != nil {
 		relaxedTimeoutCallback(ctx, 1, conn, PoolNameMain, "MIGRATING")
 	}
 
@@ -302,7 +321,7 @@ func (snh *NotificationHandler) handleFailingOver(ctx context.Context, handlerCt
 	conn.SetRelaxedTimeout(snh.manager.config.RelaxedTimeout, snh.manager.config.RelaxedTimeout)
 
 	// Record relaxed timeout metric
-	if relaxedTimeoutCallback := pool.GetMetricConnectionRelaxedTimeoutCallback(); relaxedTimeoutCallback != nil {
+	if relaxedTimeoutCallback := pool.MetricsOf(conn).ConnectionRelaxedTimeout; relaxedTimeoutCallback != nil {
 		relaxedTimeoutCallback(ctx, 1, conn, PoolNameMain, "FAILING_OVER")
 	}
 
@@ -371,6 +390,12 @@ func (snh *NotificationHandler) handleSMigrating(ctx context.Context, handlerCtx
 		internal.Logger.Printf(ctx, "%s", logs.RelaxedTimeoutDueToNotification(conn.GetID(), "SMIGRATING", snh.manager.config.RelaxedTimeout))
 	}
 	conn.SetRelaxedTimeout(snh.manager.config.RelaxedTimeout, snh.manager.config.RelaxedTimeout)
+
+	// Record relaxed timeout metric
+	if relaxedTimeoutCallback := pool.MetricsOf(conn).ConnectionRelaxedTimeout; relaxedTimeoutCallback != nil {
+		relaxedTimeoutCallback(ctx, 1, conn, PoolNameMain, "SMIGRATING")
+	}
+
 	return nil
 }
 

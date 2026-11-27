@@ -238,6 +238,10 @@ func (hwm *handoffWorkerManager) processHandoffRequest(request HandoffRequest) {
 					// Failed to queue retry - remove from pending and close connection
 					hwm.pending.Delete(request.Conn.GetID())
 					hwm.closeConnFromRequest(context.Background(), request, err)
+					// No retry will run, so nothing else untracks the operation.
+					if hwm.poolHook.operationsManager != nil {
+						hwm.poolHook.operationsManager.UntrackOperationWithConnID(request.SeqID, request.ConnID)
+					}
 				} else {
 					// Successfully queued retry - remove from pending (will be re-added by queueHandoff)
 					hwm.pending.Delete(request.Conn.GetID())
@@ -249,16 +253,16 @@ func (hwm *handoffWorkerManager) processHandoffRequest(request HandoffRequest) {
 			hwm.pending.Delete(request.Conn.GetID())
 			go hwm.closeConnFromRequest(ctx, request, err)
 		}
-
-		// Clear handoff state if not returned for retry
-		seqID := request.Conn.GetMovingSeqID()
-		connID := request.Conn.GetID()
-		if hwm.poolHook.operationsManager != nil {
-			hwm.poolHook.operationsManager.UntrackOperationWithConnID(seqID, connID)
-		}
 	} else {
 		// Success - remove from pending map
 		hwm.pending.Delete(request.Conn.GetID())
+	}
+
+	// The handoff is over (succeeded or will not be retried): untrack the
+	// operation. The request carries the seqID; the connection's handoff
+	// state is already cleared after a success.
+	if hwm.poolHook.operationsManager != nil {
+		hwm.poolHook.operationsManager.UntrackOperationWithConnID(request.SeqID, request.ConnID)
 	}
 }
 
@@ -367,8 +371,13 @@ func (hwm *handoffWorkerManager) performConnectionHandoff(ctx context.Context, c
 	// Use circuit breaker to protect against failing endpoints
 	circuitBreaker := hwm.circuitBreakerManager.GetCircuitBreaker(newEndpoint)
 
-	// Check if circuit breaker is open before attempting handoff
-	if circuitBreaker.IsOpen() {
+	// Gate the handoff on the circuit breaker. A half-open admission reserves
+	// a probe slot so that, once OpenTimeout elapses, concurrent handoffs to a
+	// recovering endpoint stay bounded by MaxHalfOpenRequests instead of all
+	// being admitted at once; a closed admission reserves nothing, and the
+	// settle paths below must not release a slot this handoff never held.
+	allowed, res := circuitBreaker.allowRequest()
+	if !allowed {
 		internal.Logger.Printf(ctx, "%s", logs.CircuitBreakerOpen(connID, newEndpoint))
 		return false, ErrCircuitBreakerOpen // Don't retry when circuit breaker is open
 	}
@@ -378,15 +387,21 @@ func (hwm *handoffWorkerManager) performConnectionHandoff(ctx context.Context, c
 
 	// Update circuit breaker based on result
 	if err != nil {
-		// Only track dial/network errors in circuit breaker, not initialization errors
+		// Only track dial/network errors in circuit breaker, not initialization errors.
 		if shouldRetry {
-			circuitBreaker.recordFailure()
+			circuitBreaker.recordFailure(res)
+		} else {
+			// Initialization error: not a dial/network failure, so it neither
+			// opens nor closes the breaker. Give the admission back so a
+			// half-open slot does not starve future recovery probes (a no-op
+			// for a closed admission).
+			circuitBreaker.releaseRequest(res)
 		}
 		return shouldRetry, err
 	}
 
 	// Success - record in circuit breaker
-	circuitBreaker.recordSuccess()
+	circuitBreaker.recordSuccess(res)
 	return false, nil
 }
 
@@ -438,7 +453,7 @@ func (hwm *handoffWorkerManager) performHandoffInternal(
 		conn.SetRelaxedTimeoutWithDeadline(relaxedTimeout, relaxedTimeout, deadline)
 
 		// Record relaxed timeout metric (post-handoff)
-		if relaxedTimeoutCallback := pool.GetMetricConnectionRelaxedTimeoutCallback(); relaxedTimeoutCallback != nil {
+		if relaxedTimeoutCallback := pool.MetricsOf(conn).ConnectionRelaxedTimeout; relaxedTimeoutCallback != nil {
 			relaxedTimeoutCallback(ctx, 1, conn, PoolNameMain, "HANDOFF")
 		}
 
@@ -454,6 +469,9 @@ func (hwm *handoffWorkerManager) performHandoffInternal(
 		// Initialization failed - remove the connection
 		return false, err
 	}
+	// Record the logical handoff target (hostname:port), not RemoteAddr.
+	// Hostless MOVED/ASK must reuse this endpoint (#4230 / #4233 review).
+	conn.SetServingEndpoint(newEndpoint)
 	defer func() {
 		if oldConn != nil {
 			oldConn.Close()
@@ -471,7 +489,7 @@ func (hwm *handoffWorkerManager) performHandoffInternal(
 
 	// successfully completed the handoff, no retry needed and no error
 	// Notify metrics: connection handoff succeeded
-	if handoffCallback := pool.GetMetricConnectionHandoffCallback(); handoffCallback != nil {
+	if handoffCallback := pool.MetricsOf(conn).ConnectionHandoff; handoffCallback != nil {
 		handoffCallback(ctx, conn, PoolNameMain)
 	}
 

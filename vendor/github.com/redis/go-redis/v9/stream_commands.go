@@ -2,11 +2,8 @@ package redis
 
 import (
 	"context"
-	"strconv"
-	"strings"
+	"errors"
 	"time"
-
-	"github.com/redis/go-redis/v9/internal/otel"
 )
 
 // XTrimLimitDisabled is a sentinel value for the LIMIT argument of stream
@@ -92,7 +89,7 @@ type StreamCmdable interface {
 //   - IdempotentID: A unique identifier for the message (used with IDMP)
 //   - IdempotentAuto: If true, Redis will auto-generate an idempotent ID based on message content (IDMPAUTO)
 //
-// ProducerID and IdempotentID are mutually exclusive with IdempotentAuto.
+// IdempotentID is mutually exclusive with IdempotentAuto.
 // When using idempotent production, ID must be "*" or empty.
 type XAddArgs struct {
 	Stream     string
@@ -226,16 +223,30 @@ func (c cmdable) XRevRangeN(ctx context.Context, stream, start, stop string, cou
 	return cmd
 }
 
+// XReadArgs holds the arguments for XRead.
+//
+// Streams lists the stream keys. Set ID to read every stream from the same
+// ID, or IDs to read each stream from its own ID, in the same order as
+// Streams. If IDs is set and its length differs from Streams, XRead returns
+// an error without sending the command. With ID and IDs both empty, Streams
+// holds the keys followed by one ID per stream, e.g. stream1 stream2 id1 id2.
 type XReadArgs struct {
-	Streams  []string // list of streams and ids, e.g. stream1 stream2 id1 id2
+	Streams  []string // stream keys, optionally followed by one ID per stream
 	Count    int64
 	MaxCount int64 // cumulative cap on total entries across all streams (Redis >= 8.10)
 	MaxSize  int64 // soft cumulative cap on total reply size in bytes across all streams (Redis >= 8.10)
 	Block    time.Duration
-	ID       string
+	ID       string   // ID for every stream; ignored when IDs is set
+	IDs      []string // one ID per stream, in Streams order; takes precedence over ID
 }
 
 func (c cmdable) XRead(ctx context.Context, a *XReadArgs) *XStreamSliceCmd {
+	if len(a.IDs) > 0 && len(a.IDs) != len(a.Streams) {
+		cmd := NewXStreamSliceCmd(ctx)
+		cmd.SetErr(errors.New("redis: XRead IDs length must match Streams length"))
+		return cmd
+	}
+
 	args := make([]interface{}, 0, 2*len(a.Streams)+10)
 	args = append(args, "xread")
 
@@ -255,7 +266,7 @@ func (c cmdable) XRead(ctx context.Context, a *XReadArgs) *XStreamSliceCmd {
 	}
 	if a.Block >= 0 {
 		args = append(args, "block")
-		args = append(args, int64(a.Block/time.Millisecond))
+		args = append(args, formatMs(ctx, a.Block))
 		keyPos += 2
 	}
 	args = append(args, "streams")
@@ -263,7 +274,12 @@ func (c cmdable) XRead(ctx context.Context, a *XReadArgs) *XStreamSliceCmd {
 	for _, s := range a.Streams {
 		args = append(args, s)
 	}
-	if a.ID != "" {
+	switch {
+	case len(a.IDs) > 0:
+		for _, id := range a.IDs {
+			args = append(args, id)
+		}
+	case a.ID != "":
 		for range a.Streams {
 			args = append(args, a.ID)
 		}
@@ -357,7 +373,7 @@ func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSlic
 		keyPos += 2
 	}
 	if a.Block >= 0 {
-		args = append(args, "block", int64(a.Block/time.Millisecond))
+		args = append(args, "block", formatMs(ctx, a.Block))
 		keyPos += 2
 	}
 	if a.NoAck {
@@ -365,7 +381,7 @@ func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSlic
 		keyPos++
 	}
 	if a.Claim > 0 {
-		args = append(args, "claim", int64(a.Claim/time.Millisecond))
+		args = append(args, "claim", formatMs(ctx, a.Claim))
 		keyPos += 2
 	}
 	args = append(args, "streams")
@@ -381,32 +397,8 @@ func (c cmdable) XReadGroup(ctx context.Context, a *XReadGroupArgs) *XStreamSlic
 	cmd.SetFirstKeyPos(keyPos)
 	_ = c(ctx, cmd)
 
-	// Record stream lag for each message (if command succeeded). Gated on the
-	// result being readable WITHOUT blocking: this command carries a
-	// read-timeout marker, so on the deferred autopipeline face it is diverted
-	// and still running when we get here — and the default Block: 0 form can
-	// wait indefinitely for messages, so reading the outcome would block the
-	// submit call instead of returning a future (review finding by codex on
-	// #3942). Skipped for a submission that has not executed yet; emitting
-	// this from the execution path is a follow-up in the OTel wiring.
-	if otel.Enabled() && cmd.resultReady() && cmd.rawErr() == nil {
-		streams := cmd.Val()
-		for _, stream := range streams {
-			for _, msg := range stream.Messages {
-				// Parse message ID to extract timestamp (format: "millisecondsTime-sequenceNumber")
-				if parts := strings.SplitN(msg.ID, "-", 2); len(parts) == 2 {
-					if timestampMs, err := strconv.ParseInt(parts[0], 10, 64); err == nil {
-						// Calculate lag (time since message was created)
-						messageTime := time.Unix(0, timestampMs*int64(time.Millisecond))
-						lag := time.Since(messageTime)
-						// Record lag metric
-						otel.RecordStreamLag(ctx, lag, nil, stream.Stream, a.Group, a.Consumer)
-					}
-				}
-			}
-		}
-	}
-
+	// Stream lag is recorded after the reply is read
+	// (baseClient.recordCommandSamples), on every execution path.
 	return cmd
 }
 
@@ -565,27 +557,27 @@ type XClaimArgs struct {
 }
 
 func (c cmdable) XClaim(ctx context.Context, a *XClaimArgs) *XMessageSliceCmd {
-	args := xClaimArgs(a)
+	args := xClaimArgs(ctx, a)
 	cmd := NewXMessageSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }
 
 func (c cmdable) XClaimJustID(ctx context.Context, a *XClaimArgs) *StringSliceCmd {
-	args := xClaimArgs(a)
+	args := xClaimArgs(ctx, a)
 	args = append(args, "justid")
 	cmd := NewStringSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }
 
-func xClaimArgs(a *XClaimArgs) []interface{} {
+func xClaimArgs(ctx context.Context, a *XClaimArgs) []interface{} {
 	args := make([]interface{}, 0, 5+len(a.Messages))
 	args = append(args,
 		"xclaim",
 		a.Stream,
 		a.Group, a.Consumer,
-		int64(a.MinIdle/time.Millisecond))
+		formatMs(ctx, a.MinIdle))
 	for _, id := range a.Messages {
 		args = append(args, id)
 	}

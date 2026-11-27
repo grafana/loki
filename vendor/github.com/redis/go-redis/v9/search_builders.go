@@ -341,7 +341,10 @@ func (b *AggregateBuilder) Collect(o FTAggregateCollect) *AggregateBuilder {
 // SortBy adds SORTBY <field> ASC|DESC. Consecutive SortBy calls (with no
 // other step in between) are merged into a single SORTBY clause so fields
 // act as tiebreakers. A SortBy call after a non-SortBy step starts a new
-// SORTBY step.
+// SORTBY step. The server currently allows only one SORTBY between two
+// GroupBy steps and returns an error for a second one, e.g. for
+// SortBy().Filter().SortBy(). SortBy().GroupBy().SortBy() works. The builder
+// does not check this and leaves it to the server.
 //
 // Note: this is a semantics change from earlier experimental versions of
 // the builder, where SortBy always accumulated into a single SORTBY clause
@@ -370,9 +373,28 @@ func (b *AggregateBuilder) SortByMax(max int) *AggregateBuilder {
 	return b
 }
 
-// Filter sets FILTER <expr>.
+// Filter adds a FILTER <expr> step at the current position in the pipeline.
+// You can call it multiple times, e.g. before and after a GroupBy. To filter
+// before paging, call Filter before SortBy and Limit.
+//
+// Note: this is a semantics change from earlier experimental versions of
+// the builder, where Filter set a single FILTER that was always sent at the
+// end of the pipeline, after LIMIT.
 func (b *AggregateBuilder) Filter(expr string) *AggregateBuilder {
-	b.options.Filter = expr
+	b.options.Steps = append(b.options.Steps, FTAggregateStep{
+		Filter: &FTAggregateFilter{Expression: expr},
+	})
+	return b
+}
+
+// Limit adds a LIMIT <offset> <num> step at the current position in the
+// pipeline. The server merges the SortBy and all Limit steps between two
+// GroupBy steps into one sort/limit stage at the position of the first of
+// them, and a later Limit replaces an earlier Limit or SortByMax.
+func (b *AggregateBuilder) Limit(offset, num int) *AggregateBuilder {
+	b.options.Steps = append(b.options.Steps, FTAggregateStep{
+		Limit: &FTAggregateLimit{Offset: offset, Num: num},
+	})
 	return b
 }
 
@@ -540,10 +562,10 @@ type DropIndexBuilder struct {
 // NewDropIndexBuilder creates a new DropIndexBuilder for FT.DROPINDEX commands.
 // EXPERIMENTAL: this API is subject to change, use with caution.
 func (c *Client) NewDropIndexBuilder(ctx context.Context, index string) *DropIndexBuilder {
-	return &DropIndexBuilder{c: c, ctx: ctx, index: index}
+	return &DropIndexBuilder{c: c, ctx: ctx, index: index, options: &FTDropIndexOptions{}}
 }
 
-// DeleteRuncs includes DD.
+// DeleteDocs includes DD.
 func (b *DropIndexBuilder) DeleteDocs() *DropIndexBuilder { b.options.DeleteDocs = true; return b }
 
 // Run executes FT.DROPINDEX.
