@@ -572,6 +572,15 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			cur = cur.next
 		}
 
+		if GetRangeType(params) == RangeType {
+			if xs, ok, err := ev.sharedOffsetStepEvaluators(ctx, queries, params); ok {
+				if err != nil {
+					return nil, err
+				}
+				return NewConcatStepEvaluator(xs), nil
+			}
+		}
+
 		acc := NewBufferedAccumulator(len(queries))
 		results, err := ev.Downstream(ctx, queries, acc)
 		if err != nil {

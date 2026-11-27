@@ -1005,7 +1005,7 @@ func Test_splitMetricQuery(t *testing.T) {
 			splitInterval: 3 * time.Hour,
 		},
 
-		// step larger than split interval
+		// step larger than split interval: every step gets a split of its own
 		{
 			input: &LokiRequest{
 				StartTs: time.Unix(0, 0),
@@ -1016,30 +1016,36 @@ func Test_splitMetricQuery(t *testing.T) {
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
-					EndTs:   time.Unix(6*3600, 0),
+					EndTs:   time.Unix(0, 0),
 					Step:    6 * 3600 * seconds,
 					Query:   shortRange,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(6*3600, 0),
-					EndTs:   time.Unix(12*3600, 0),
+					EndTs:   time.Unix(6*3600, 0),
 					Step:    6 * 3600 * seconds,
 					Query:   shortRange,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(12*3600, 0),
-					EndTs:   time.Unix(18*3600, 0),
+					EndTs:   time.Unix(12*3600, 0),
 					Step:    6 * 3600 * seconds,
 					Query:   shortRange,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(18*3600, 0),
-					EndTs:   time.Unix(24*3600, 0),
+					EndTs:   time.Unix(18*3600, 0),
 					Step:    6 * 3600 * seconds,
 					Query:   shortRange,
 				},
 				&LokiRequest{
 					StartTs: time.Unix(24*3600, 0),
+					EndTs:   time.Unix(24*3600, 0),
+					Step:    6 * 3600 * seconds,
+					Query:   shortRange,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(30*3600, 0),
 					EndTs:   time.Unix(30*3600, 0),
 					Step:    6 * 3600 * seconds,
 					Query:   shortRange,
@@ -1057,8 +1063,62 @@ func Test_splitMetricQuery(t *testing.T) {
 			expected: []queryrangebase.Request{
 				&LokiRequest{
 					StartTs: time.Unix(0, 0),
+					EndTs:   time.Unix(0, 0),
+					Step:    6 * 3600 * seconds,
+					Query:   shortRange,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(6*3600, 0),
 					EndTs:   time.Unix(6*3600, 0),
 					Step:    6 * 3600 * seconds,
+					Query:   shortRange,
+				},
+			},
+			splitInterval: 15 * time.Minute,
+		},
+		// step equal to split interval: no two splits evaluate the same step
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(0, 0),
+				EndTs:   time.Unix(2*3600, 0),
+				Step:    3600 * seconds,
+				Query:   shortRange,
+			},
+			expected: []queryrangebase.Request{
+				&LokiRequest{
+					StartTs: time.Unix(0, 0),
+					EndTs:   time.Unix(0, 0),
+					Step:    3600 * seconds,
+					Query:   shortRange,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(3600, 0),
+					EndTs:   time.Unix(3600, 0),
+					Step:    3600 * seconds,
+					Query:   shortRange,
+				},
+				&LokiRequest{
+					StartTs: time.Unix(2*3600, 0),
+					EndTs:   time.Unix(2*3600, 0),
+					Step:    3600 * seconds,
+					Query:   shortRange,
+				},
+			},
+			splitInterval: time.Hour,
+		},
+		// a single step whose step is larger than the split interval still gets a split
+		{
+			input: &LokiRequest{
+				StartTs: time.Unix(3600, 0),
+				EndTs:   time.Unix(3600, 0),
+				Step:    3600 * seconds,
+				Query:   shortRange,
+			},
+			expected: []queryrangebase.Request{
+				&LokiRequest{
+					StartTs: time.Unix(3600, 0),
+					EndTs:   time.Unix(3600, 0),
+					Step:    3600 * seconds,
 					Query:   shortRange,
 				},
 			},
