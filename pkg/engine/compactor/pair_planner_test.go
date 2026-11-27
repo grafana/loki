@@ -268,7 +268,7 @@ func TestPlanPairWindow(t *testing.T) {
 		seedPairIndex(ctx, t, bucket, "indexes/a", schema, testLogObject{"logs/a", "a", "z"})
 		seedPairIndex(ctx, t, bucket, "indexes/b", schema, testLogObject{"logs/b", "a", "z"})
 		limits := newFakeLimits("acme")
-		limits.setMaxRunSize("acme", 400)
+		limits.setMaxRunUncompressedBytes("acme", 400)
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(now), limits)
 
 		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
@@ -282,7 +282,7 @@ func TestPlanPairWindow(t *testing.T) {
 		seedPairIndex(ctx, t, bucket, "indexes/a", schema, testLogObject{"logs/a", "a", "z"})
 		seedPairIndex(ctx, t, bucket, "indexes/b", schema, testLogObject{"logs/b", "a", "z"})
 		limits := newFakeLimits("acme")
-		limits.setMaxRunSize("acme", 401)
+		limits.setMaxRunUncompressedBytes("acme", 401)
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(now), limits)
 
 		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
@@ -295,7 +295,7 @@ func TestPlanPairWindow(t *testing.T) {
 		seedPairIndex(ctx, t, bucket, "indexes/a", schema, testLogObject{"logs/a", "a", "z"})
 		seedPairIndex(ctx, t, bucket, "indexes/b", schema, testLogObject{"logs/b", "a", "z"})
 		limits := newFakeLimits("acme")
-		limits.setMaxRunSize("acme", 400)
+		limits.setMaxRunUncompressedBytes("acme", 400)
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(now), limits)
 		planner := c.newPairPlanner()
 
@@ -303,7 +303,7 @@ func TestPlanPairWindow(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, plan.jobs)
 
-		limits.setMaxRunSize("acme", 0)
+		limits.setMaxRunUncompressedBytes("acme", 0)
 		plan, err = planner.planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
 		require.NoError(t, err)
 		require.Len(t, plan.jobs, 1)

@@ -1017,7 +1017,7 @@ func recordActors(dispatcher *planDispatcher) func() []string {
 // for every tenant, with no maximum run size.
 type integrationLimits struct{}
 
-func (integrationLimits) LogCompactionMaxRunSize(string) uint64 {
+func (integrationLimits) MaxLogsRunSizeUncompressedBytes(string) uint64 {
 	return 0
 }
 

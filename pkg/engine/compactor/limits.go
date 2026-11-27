@@ -13,9 +13,9 @@ type Limits interface {
 	// tenant.
 	DeletionSweepEnabled(userID string) bool
 
-	// LogCompactionMaxRunSize returns the exclusive upper bound of the
+	// MaxLogsRunSizeUncompressedBytes returns the exclusive upper bound of the
 	// uncompressed size of a run that log compaction writes for the tenant,
 	// in bytes. Log compaction merges a group of runs only if their summed
 	// size is below it. 0 means no maximum.
-	LogCompactionMaxRunSize(userID string) uint64
+	MaxLogsRunSizeUncompressedBytes(userID string) uint64
 }

@@ -366,7 +366,7 @@ func (c *coordinator) planLogMerge(
 	sections []v2.Section[logSortPrefix],
 ) (logCompactionPlan, error) {
 	entryLogger := log.With(c.logger, "tenant", tenant, "entry", sourceIndexRun.String())
-	strategy := v2.NewCappedSizeLeveledStrategy(c.logMergePlanningStrategy, c.limits.LogCompactionMaxRunSize(tenant))
+	strategy := v2.NewCappedSizeLeveledStrategy(c.logMergePlanningStrategy, c.limits.MaxLogsRunSizeUncompressedBytes(tenant))
 	runs := v2.CalculateRuns(sections, compareLogSortPrefix)
 	singleRuns := countSingleObjectRuns(runs)
 	cappedRuns := strategy.CappedRuns(runs)
