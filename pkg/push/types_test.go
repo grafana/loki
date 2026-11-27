@@ -3,6 +3,7 @@ package push
 import (
 	"testing"
 	time "time"
+	"unsafe"
 
 	"github.com/stretchr/testify/require"
 )
@@ -108,4 +109,23 @@ func BenchmarkStreamAdapter(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+func TestPushRequestMemorySize(t *testing.T) {
+	req := &PushRequest{
+		Format: "loki",
+		Streams: []Stream{{
+			Labels: `{a="b"}`,
+			Entries: []Entry{{
+				Line:               "hello",
+				StructuredMetadata: LabelsAdapter{{Name: "n", Value: "vv"}},
+			}},
+		}},
+	}
+	want := int(unsafe.Sizeof(PushRequest{})) + 4 + // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
+		int(unsafe.Sizeof(Stream{})) + 7 + // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
+		int(unsafe.Sizeof(Entry{})) + 5 + // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
+		int(unsafe.Sizeof(LabelAdapter{})) + 3 // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
+	require.Equal(t, want, req.MemorySize())
+	require.Equal(t, 0, (*PushRequest)(nil).MemorySize())
 }
