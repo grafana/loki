@@ -40,22 +40,13 @@ func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 	})
 }
 
-// dataObjectBucket returns the bucket for reading source log objects and writing
-// compacted log objects. Both live at the unprefixed dataobj root (the objects/
-// namespace), not under the index-storage prefix that c.bucket carries, so it
-// prefers dataBucket and falls back to bucket when dataBucket is unset (e.g.
-// tests that share a single bucket).
-func (c *Context) dataObjectBucket() objstore.Bucket {
-	if c.dataBucket != nil {
-		return c.dataBucket
-	}
-	return c.bucket
-}
-
 func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) ([]v2.ResultArtifact, error) {
 	start := time.Now()
-	if c.bucket == nil {
-		return nil, errors.New("no object store bucket configured")
+	if c.indexBucket == nil {
+		return nil, errors.New("LogMerge: no index bucket configured")
+	}
+	if c.dataBucket == nil {
+		return nil, errors.New("LogMerge: no data object bucket configured")
 	}
 
 	inputs, err := c.prepareLogMergeInputs(ctx, node)
@@ -230,7 +221,6 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			set[sec.SectionIndex] = struct{}{}
 		}
 	}
-	srcBucket := c.dataObjectBucket()
 	keyRange, err := sortPrefixRange(node.KeyRange)
 	if err != nil {
 		return nil, fmt.Errorf("invalid LogMerge task: %w", err)
@@ -240,7 +230,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 	sources := make([]*logSource, 0, len(paths))
 	for _, path := range paths {
 		want := wanted[path]
-		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 1<<20) // 1MB
+		obj, err := dataobj.FromBucket(ctx, c.dataBucket, path, 1<<20) // 1MB
 		if err != nil {
 			return nil, fmt.Errorf("opening object %q: %w", path, err)
 		}

@@ -53,14 +53,15 @@ type Config struct {
 	// goes uncounted. A dry run does not use it.
 	DeletionSweepMetrics *deletion.SweepMetrics
 
-	Bucket objstore.Bucket
+	// IndexBucket is the index storage. It is prefixed with
+	// metastore.IndexStoragePrefix and holds the ToCs and the index objects.
+	// IndexMerge, IndexFilter, and LogMerge require it.
+	IndexBucket objstore.Bucket
 
-	// DataBucket is the unprefixed dataobj root. LogMerge reads source log
-	// objects from it, and DeletionSweep scans objects and stores file lists
-	// in it. Unlike Bucket, which the compaction wiring prefixes with the
-	// index-storage prefix for index I/O and ToC, it holds objects/ and the
-	// index storage. LogMerge falls back to Bucket when it is nil.
-	// DeletionSweep requires it.
+	// DataBucket is the root of the data object storage. It holds objects/
+	// and the index storage. LogMerge reads source log objects from it and
+	// writes compacted log objects to it. DeletionSweep scans objects and
+	// stores file lists in it. LogMerge and DeletionSweep require it.
 	DataBucket objstore.Bucket
 
 	// GetExternalInputs is an optional function called for each node in the
@@ -115,7 +116,7 @@ type NewLogMergeObserverFunc func(thread int) LogMergeObserver
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
 		plan:               plan,
-		bucket:             cfg.Bucket,
+		indexBucket:        cfg.IndexBucket,
 		dataBucket:         cfg.DataBucket,
 		logger:             logger,
 		getExternalInputs:  cfg.GetExternalInputs,
@@ -145,10 +146,10 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 
 // Context is the execution context
 type Context struct {
-	logger     log.Logger
-	plan       *physical.Plan
-	bucket     objstore.Bucket
-	dataBucket objstore.Bucket
+	logger      log.Logger
+	plan        *physical.Plan
+	indexBucket objstore.Bucket
+	dataBucket  objstore.Bucket
 
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 

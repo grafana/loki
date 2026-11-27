@@ -40,8 +40,6 @@ func (c *Context) doDeletionSweep(ctx context.Context, node *physical.DeletionSw
 	if node.Tenant == "" {
 		return nil, errors.New("DeletionSweep: malformed plan: empty tenant")
 	}
-	// Use the data bucket without a fallback to the index bucket. A sweep of
-	// the index bucket would scan nothing and store its file list there.
 	bucket := c.dataBucket
 	if bucket == nil {
 		return nil, errors.New("DeletionSweep: no data object bucket configured")
