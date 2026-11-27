@@ -41,8 +41,9 @@ type taskPriority struct {
 	// byte.
 	level int
 
-	// window is the ToC window of the work. An older window runs first,
-	// because it gets no more data and its compaction is final.
+	// window is the ToC window of the work. A newer window runs first,
+	// because queries read recent data the most, and a backlog of old windows
+	// must not delay the compaction of the current one.
 	window time.Time
 
 	// planOrder is the order in which the compactor planned the job of the
@@ -64,7 +65,7 @@ func (p taskPriority) before(other taskPriority) bool {
 		return p.level < other.level
 	}
 	if !p.window.Equal(other.window) {
-		return p.window.Before(other.window)
+		return p.window.After(other.window)
 	}
 	return p.planOrder < other.planOrder
 }
