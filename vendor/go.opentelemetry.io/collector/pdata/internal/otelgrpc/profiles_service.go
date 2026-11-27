@@ -51,7 +51,7 @@ func (*UnimplementedProfilesServiceServer) Export(context.Context, *internal.Exp
 	return nil, status.Errorf(codes.Unimplemented, "method Export not implemented")
 }
 
-func RegisterProfilesServiceServer(s *grpc.Server, srv ProfilesServiceServer) {
+func RegisterProfilesServiceServer(s grpc.ServiceRegistrar, srv ProfilesServiceServer) {
 	s.RegisterService(&profilesServiceServiceDesc, srv)
 }
 

@@ -49,7 +49,7 @@ func (*UnimplementedTraceServiceServer) Export(context.Context, *internal.Export
 	return nil, status.Errorf(codes.Unimplemented, "method Export not implemented")
 }
 
-func RegisterTraceServiceServer(s *grpc.Server, srv TraceServiceServer) {
+func RegisterTraceServiceServer(s grpc.ServiceRegistrar, srv TraceServiceServer) {
 	s.RegisterService(&traceServiceServiceDesc, srv)
 }
 
