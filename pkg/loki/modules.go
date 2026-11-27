@@ -16,6 +16,7 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/dns"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/codec"
@@ -917,28 +918,65 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	logproto.RegisterQuerierServer(t.Server.GRPC, t.Ingester)
 	logproto.RegisterStreamDataServer(t.Server.GRPC, t.Ingester)
 
+	registerIngesterHTTPRoutes(t.Server.HTTP, t.Ingester, t.Cfg.Ingester.GETRequestForFlushAndShutdownEnabled)
+	return t.Ingester, nil
+}
+
+// registerIngesterHTTPRoutes registers the ingester's operator endpoints. /flush and
+// /ingester/shutdown change state, so a GET request on them is rejected with 405
+// Method Not Allowed unless allowGETForFlushAndShutdown is true.
+func registerIngesterHTTPRoutes(router *mux.Router, i ingester.Interface, allowGETForFlushAndShutdown bool) {
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 	)
-	t.Server.HTTP.Methods("GET", "POST").Path("/flush").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)),
+	rejectGETMiddleware := rejectGETUnlessAllowed(allowGETForFlushAndShutdown)
+
+	router.Methods("GET", "POST").Path("/flush").Handler(
+		httpMiddleware.Wrap(
+			rejectGETMiddleware.Wrap(
+				http.HandlerFunc(i.FlushHandler),
+			),
+		),
+	)
+
+	router.Methods("POST", "GET").Path("/ingester/shutdown").Handler(
+		httpMiddleware.Wrap(
+			rejectGETMiddleware.Wrap(
+				http.HandlerFunc(i.ShutdownHandler),
+			),
+		),
 	)
 	// Tenant-scoped flush (experimental). The tenant is the "tenant" param rather than
 	// X-Scope-OrgID because the caller is an operator, so it carries no auth
 	// middleware, like /flush.
-	t.Server.HTTP.Methods("POST").Path("/flush/tenant").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushTenantHandler)),
+	router.Methods("POST").Path("/flush/tenant").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(i.FlushTenantHandler)),
 	)
-	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_shutdown").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PrepareShutdown)),
+	router.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_shutdown").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(i.PrepareShutdown)),
 	)
-	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_partition_downscale").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PreparePartitionDownscaleHandler)),
+	router.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_partition_downscale").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(i.PreparePartitionDownscaleHandler)),
 	)
-	t.Server.HTTP.Methods("POST", "GET").Path("/ingester/shutdown").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.ShutdownHandler)),
-	)
-	return t.Ingester, nil
+}
+
+// rejectGETUnlessAllowed returns a middleware that answers a GET request with
+// 405 Method Not Allowed unless allowGET is true, and passes every other request
+// to the wrapped handler.
+func rejectGETUnlessAllowed(allowGET bool) middleware.Func {
+	return func(next http.Handler) http.Handler {
+		if allowGET {
+			return next
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet {
+				w.Header().Set("Allow", http.MethodPost)
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (t *Loki) initPatternIngester() (_ services.Service, err error) {
