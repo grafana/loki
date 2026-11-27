@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -369,39 +370,91 @@ func TestRecordBytesProcessedTotal(t *testing.T) {
 		step:        time.Minute,
 		queryExpr:   syntax.MustParseExpr(`{foo="bar"} |= "buzz"`),
 	}
-	result := stats.Result{Summary: stats.Summary{TotalBytesProcessed: 100000}}
-
-	// Use a tenant unique to this test so we do not collide with the shared,
-	// package-level counter incremented by other tests.
-	const tenantID = "record-bytes-tenant"
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-
 	now := time.Now()
 	params.start, params.end = now.Add(-1*time.Hour), now
+	result := stats.Result{Summary: stats.Summary{TotalBytesProcessed: 100000}}
 
-	bytesProcessedTotal.DeleteLabelValues(tenantID)
-	counter := bytesProcessedTotal.WithLabelValues(tenantID)
+	type series struct {
+		tenant      string
+		multiTenant string
+		bytes       float64
+	}
 
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil, nil)
-	require.Equal(t, float64(100000), testutil.ToFloat64(counter))
+	// Tenant IDs are unique to this test so they do not collide with the shared,
+	// package-level counter incremented by other tests.
+	for _, tc := range []struct {
+		name    string
+		orgID   string
+		queries int
+		want    []series
+	}{
+		{
+			name:    "single tenant has no multi_tenant label value",
+			orgID:   "record-bytes-single",
+			queries: 1,
+			want:    []series{{tenant: "record-bytes-single", multiTenant: "", bytes: 100000}},
+		},
+		{
+			name:    "single tenant accumulates across queries",
+			orgID:   "record-bytes-accumulate",
+			queries: 2,
+			want:    []series{{tenant: "record-bytes-accumulate", multiTenant: "", bytes: 200000}},
+		},
+		{
+			name:    "multi-tenant query splits bytes equally and is labelled",
+			orgID:   "record-bytes-multi-b|record-bytes-multi-a",
+			queries: 1,
+			want: []series{
+				{tenant: "record-bytes-multi-a", multiTenant: "true", bytes: 50000},
+				{tenant: "record-bytes-multi-b", multiTenant: "true", bytes: 50000},
+			},
+		},
+		{
+			name:    "duplicate tenant IDs collapse to a single-tenant query",
+			orgID:   "record-bytes-dup|record-bytes-dup",
+			queries: 1,
+			want:    []series{{tenant: "record-bytes-dup", multiTenant: "", bytes: 100000}},
+		},
+		{
+			name:    "duplicate tenant IDs are de-duplicated before splitting",
+			orgID:   "record-bytes-dedup-b|record-bytes-dedup-a|record-bytes-dedup-b",
+			queries: 1,
+			want: []series{
+				{tenant: "record-bytes-dedup-a", multiTenant: "true", bytes: 50000},
+				{tenant: "record-bytes-dedup-b", multiTenant: "true", bytes: 50000},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, s := range tc.want {
+				bytesProcessedTotal.DeletePartialMatch(prometheus.Labels{"tenant": s.tenant})
+			}
 
-	// A second query for the same tenant accumulates.
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil, nil)
-	require.Equal(t, float64(200000), testutil.ToFloat64(counter))
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+			for i := 0; i < tc.queries; i++ {
+				RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil, nil)
+			}
 
-	// Federated multi-tenant queries divide the byte total evenly across tenants.
-	fedA, fedB := "record-bytes-fed-a", "record-bytes-fed-b"
-	bytesProcessedTotal.DeleteLabelValues(fedA)
-	bytesProcessedTotal.DeleteLabelValues(fedB)
-	fedCtx := user.InjectOrgID(context.Background(), fmt.Sprintf("%s|%s", fedA, fedB))
-	RecordRangeAndInstantQueryMetrics(fedCtx, util_log.Logger, params, "200", result, nil, nil)
-	require.Equal(t, float64(50000), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(fedA)))
-	require.Equal(t, float64(50000), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(fedB)))
+			for _, s := range tc.want {
+				require.Equal(t, s.bytes, testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(s.tenant, s.multiTenant)))
 
-	// When no tenant can be resolved from the context the metric is skipped rather
-	// than recorded under an empty tenant label (and must not panic).
-	RecordRangeAndInstantQueryMetrics(context.Background(), util_log.Logger, params, "200", result, nil, nil)
-	require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues("")))
+				// The bytes must land only on the expected multi_tenant value.
+				other := "true"
+				if s.multiTenant == "true" {
+					other = ""
+				}
+				require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(s.tenant, other)))
+			}
+		})
+	}
+
+	t.Run("no tenant in context is skipped", func(t *testing.T) {
+		// When no tenant can be resolved from the context the metric is skipped rather
+		// than recorded under an empty tenant label (and must not panic).
+		RecordRangeAndInstantQueryMetrics(context.Background(), util_log.Logger, params, "200", result, nil, nil)
+		require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues("", "")))
+		require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues("", "true")))
+	})
 }
 
 func TestRecordChunkFetchFailuresTotal(t *testing.T) {
