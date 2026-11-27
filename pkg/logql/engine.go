@@ -192,6 +192,10 @@ type EngineOpts struct {
 	EnableHistograms bool `yaml:"enable_histograms" category:"experimental"`
 
 	MaxQuerySeriesCutoffDryRun bool `yaml:"max_query_series_cutoff_dry_run" category:"experimental" doc:"hidden"`
+
+	// IntermediateSeriesBreadcrumbs are the counts of intermediate series at which a job logs a line
+	// while it is still alive, so that a job killed by OOM leaves a trace.
+	IntermediateSeriesBreadcrumbs IntermediateSeriesBreadcrumbThresholds `yaml:"intermediate_series_breadcrumbs" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlags(f *flag.FlagSet) {
@@ -204,6 +208,9 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.BoolVar(&opts.MaxQuerySeriesCutoff, prefix+"max-query-series-cutoff", false, "Experimental: Fail a query on max_query_series as soon as a range iterator or vector aggregation holds more series than the limit, where the query's output cannot be smaller. Logs Drilldown requests are exempt.")
 	f.BoolVar(&opts.EnableHistograms, prefix+"enable-histograms", false, "Experimental: Enable the histogram functions, histogram_over_time and the functions that read its result, such as histogram_quantile. The functions are in development, so a query that uses one fails while this is disabled. Enable it on the queriers, on the query frontends, and on the rulers that evaluate rules themselves, because each of them refuses a query that uses histograms without it.")
 	f.BoolVar(&opts.MaxQuerySeriesCutoffDryRun, prefix+"max-query-series-cutoff-dry-run", false, "Experimental: Evaluate the max_query_series cut-off without failing queries early, and count the queries where it would have fired in loki_logql_series_cutoff_dry_run_total. Has no effect when max_query_series_cutoff is enabled.")
+
+	opts.IntermediateSeriesBreadcrumbs = IntermediateSeriesBreadcrumbThresholds{10_000, 50_000, 100_000, 500_000}
+	f.Var(&opts.IntermediateSeriesBreadcrumbs, prefix+"intermediate-series-breadcrumbs", "Experimental: Comma-separated counts of intermediate series. A query job logs a line the first time the label sets its range iterators hold reach each count. Set empty to turn off.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
@@ -236,15 +243,18 @@ type queryOpts struct {
 	histogramsEnabled bool
 	// maxQuerySeriesCutoffDryRun controls if the early cut-off only reports that it would have fired.
 	maxQuerySeriesCutoffDryRun bool
+	// intermediateSeriesBreadcrumbs are the counts of intermediate series a job logs a line at.
+	intermediateSeriesBreadcrumbs []int
 }
 
 // newQueryOpts returns the queryOpts for a query run by an engine configured with opts.
 func newQueryOpts(opts EngineOpts) queryOpts {
 	return queryOpts{
-		logExecutingQuery:          opts.LogExecutingQuery,
-		histogramsEnabled:          opts.EnableHistograms,
-		maxQuerySeriesCutoff:       opts.MaxQuerySeriesCutoff,
-		maxQuerySeriesCutoffDryRun: opts.MaxQuerySeriesCutoffDryRun,
+		logExecutingQuery:             opts.LogExecutingQuery,
+		histogramsEnabled:             opts.EnableHistograms,
+		maxQuerySeriesCutoff:          opts.MaxQuerySeriesCutoff,
+		maxQuerySeriesCutoffDryRun:    opts.MaxQuerySeriesCutoffDryRun,
+		intermediateSeriesBreadcrumbs: opts.IntermediateSeriesBreadcrumbs,
 	}
 }
 
@@ -442,6 +452,24 @@ func (q *query) checkBlocked(ctx context.Context, tenants []string) bool {
 	return false
 }
 
+// newIntermediateSeriesCounter returns the counter of one job over expr. It logs a breadcrumb
+// line the first time the count reaches each of the configured thresholds.
+func (q *query) newIntermediateSeriesCounter(ctx context.Context, tenantIDs []string, expr syntax.SampleExpr) *intermediateSeriesCounter {
+	c := newIntermediateSeriesCounter(0)
+	if len(q.opts.intermediateSeriesBreadcrumbs) == 0 {
+		return c
+	}
+	return c.notifyOnCrossing(q.opts.intermediateSeriesBreadcrumbs, func(threshold, current int64) {
+		level.Info(logutil.WithContext(ctx, q.logger)).Log(
+			"msg", "query job holds many intermediate series",
+			"tenant", strings.Join(tenantIDs, "|"),
+			"query", expr.String(),
+			"threshold", threshold,
+			"intermediate_series", current,
+		)
+	})
+}
+
 // evalSample evaluate a sampleExpr
 func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_parser.Value, error) {
 	if lit, ok := expr.(*syntax.LiteralExpr); ok {
@@ -488,7 +516,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 	maxSeries := seriesLimitFor(tenantIDs, q.limits)
 
-	ctx = withIntermediateSeriesCounter(ctx, newIntermediateSeriesCounter(0))
+	ctx = withIntermediateSeriesCounter(ctx, q.newIntermediateSeriesCounter(ctx, tenantIDs, expr))
 	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params, RootContext(expr, q.maxQuerySeriesCutoffLimit(ctx, maxSeries)).withCutoffTracker(cutoffTrackerFromContext(ctx)))
 	if err != nil {
 		return nil, err
