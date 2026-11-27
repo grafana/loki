@@ -150,6 +150,32 @@ func TestRunLengthFromValue(t *testing.T) {
 	})
 }
 
+func TestCheckRunLength(t *testing.T) {
+	pointer := func(runLength int32) IndexPointer {
+		return IndexPointer{Path: "indexes/a", RunID: 1, RunLength: runLength}
+	}
+
+	t.Run("accepts a pointer that records the number of index pointers that the ToC lists", func(t *testing.T) {
+		require.NoError(t, CheckRunLength(pointer(2), 2))
+	})
+
+	t.Run("accepts a pointer that records no run length whatever the ToC lists", func(t *testing.T) {
+		require.NoError(t, CheckRunLength(pointer(0), 5))
+	})
+
+	t.Run("accepts an index pointer of no run", func(t *testing.T) {
+		require.NoError(t, CheckRunLength(IndexPointer{Path: "indexes/legacy"}, 1))
+	})
+
+	t.Run("returns an error that names the pointer when the ToC lists fewer index pointers than it records", func(t *testing.T) {
+		require.ErrorContains(t, CheckRunLength(pointer(3), 2), "index indexes/a records a run of 3 index objects, but the ToC lists 2")
+	})
+
+	t.Run("returns an error when the ToC lists more index pointers than it records", func(t *testing.T) {
+		require.Error(t, CheckRunLength(pointer(2), 3))
+	})
+}
+
 func TestShardBucketsFromCount(t *testing.T) {
 	t.Run("returns the bucket count for a power of two", func(t *testing.T) {
 		buckets, err := ShardBucketsFromCount(64)
