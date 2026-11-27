@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logline"
@@ -42,12 +41,15 @@ type LoglineHintProvider struct {
 	wrapReader func(logline.Reader) logline.Reader
 }
 
+// NewLoglineHintProvider returns a provider that looks up hints in the indexes
+// of indexStore. metadataCache enables the cache of parsed index metadata;
+// pass nil where indexes are not opened, as on the query-frontend.
 func NewLoglineHintProvider(
 	indexStore *store.Store,
 	ngramLength, maxParallel, maxConjunctions int,
 	queryMultipleObserver func(reason string, termBatchesProcessed int),
 	logger log.Logger,
-	cacheReg prometheus.Registerer,
+	metadataCache *MetadataCacheConfig,
 ) (*LoglineHintProvider, error) {
 	if indexStore == nil {
 		return nil, fmt.Errorf("indexStore cannot be nil")
@@ -70,10 +72,12 @@ func NewLoglineHintProvider(
 		queryMultipleObserver: queryMultipleObserver,
 		logger:                logger,
 	}
-	// Only create a metadata cache on queriers
-	if cacheReg != nil {
-		p.cache = newMetadataCache(defaultMetadataCacheEntries, cacheReg)
-		p.startCacheInvalidationLoop()
+	if metadataCache != nil && metadataCache.MaxBytes > 0 {
+		cache, err := newMetadataCache(maxMetadataCacheEntries, metadataCache.MaxBytes, metadataCache.Registerer)
+		if err != nil {
+			return nil, err
+		}
+		p.cache = cache
 	}
 	return p, nil
 }
@@ -294,18 +298,6 @@ func (p *LoglineHintProvider) openIndexReader(
 		})
 	}
 	return reader, nil
-}
-
-func (p *LoglineHintProvider) startCacheInvalidationLoop() {
-	ch := p.store.PollNotify()
-	if ch == nil {
-		return
-	}
-	go func() {
-		for snap := range ch {
-			p.cache.evictStale(snap)
-		}
-	}()
 }
 
 // aggregateConjunctionRanges unions the ranges of every conjunction. Each

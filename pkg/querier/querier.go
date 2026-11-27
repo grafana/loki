@@ -183,7 +183,11 @@ type SingleTenantQuerier struct {
 // The querier reads a stream-first sample request from dataObjStore only when the query-frontend
 // marked the request eligible. It reads from the tenant's data-object start time to now minus the
 // storage lag. A nil dataObjStore makes the querier read no data objects.
-func New(cfg Config, chunkStore Store, dataObjStore Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, loglineStore *loglinestore.Store, ngramLength, maxHintParallel int) (*SingleTenantQuerier, error) {
+//
+// A non-nil loglineStore answers logline index lookups. The querier opens the indexes the
+// query-frontend sends and does not poll the catalog. loglineMetadataCacheMaxBytes bounds the
+// metadata it keeps for the indexes it opened; 0 disables that cache.
+func New(cfg Config, chunkStore Store, dataObjStore Store, ingesterQuerier *IngesterQuerier, limits querier_limits.Limits, d deletion.DeleteGetter, logger log.Logger, loglineStore *loglinestore.Store, ngramLength, maxHintParallel int, loglineMetadataCacheMaxBytes uint64) (*SingleTenantQuerier, error) {
 	q := &SingleTenantQuerier{
 		cfg:             cfg,
 		chunkStore:      chunkStore,
@@ -205,7 +209,10 @@ func New(cfg Config, chunkStore Store, dataObjStore Store, ingesterQuerier *Inge
 			0,
 			observeQueryMultipleTermBatches,
 			logger,
-			prometheus.DefaultRegisterer,
+			&hintprovider.MetadataCacheConfig{
+				MaxBytes:   loglineMetadataCacheMaxBytes,
+				Registerer: prometheus.DefaultRegisterer,
+			},
 		)
 		if err != nil {
 			return nil, err

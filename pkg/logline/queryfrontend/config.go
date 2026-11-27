@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -59,6 +60,10 @@ type Config struct {
 	// hint cache. Only used when no external cache backend is configured.
 	// Defaults to 100 when zero.
 	HintCacheMaxSizeMB int64 `yaml:"hint_cache_max_size_mb"`
+	// MetadataCacheMaxSizeMB bounds the estimated size in megabytes of the
+	// parsed index metadata a querier caches. Past it, the least recently used
+	// indexes are evicted. 0 disables the cache.
+	MetadataCacheMaxSizeMB int64 `yaml:"metadata_cache_max_size_mb"`
 	// MaxHintRangesPerRequest is the maximum number of hint ranges attached to
 	// one split or shard sub-request. When a sub-request has more hint ranges
 	// than this limit, the smallest gaps between each document shard's ranges
@@ -89,6 +94,8 @@ func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"TTL for cached hint results. Uses Loki results cache backend; set to 0 to disable.")
 	f.Int64Var(&c.HintCacheMaxSizeMB, prefix+".hint-cache-max-size-mb", 0,
 		"Max size in MB for embedded hint cache when no external backend is configured (default 100)")
+	f.Int64Var(&c.MetadataCacheMaxSizeMB, prefix+".metadata-cache-max-size-mb", int64(hintprovider.DefaultMetadataCacheMaxBytes>>20),
+		"Maximum estimated size in MB of the parsed index metadata each querier caches. When the cache is full, the least recently used indexes are evicted. 0 disables the cache.")
 	f.IntVar(&c.MaxHintRangesPerRequest, prefix+".max-hint-ranges-per-request", defaultMaxHintRangesPerRequest,
 		"Maximum number of hint ranges attached to one split or shard sub-request. When a sub-request has more hint ranges than this limit, Loki merges the smallest gaps between each document shard's ranges until it fits. The merged ranges still cover every match. 0 disables the limit.")
 
@@ -142,8 +149,20 @@ func (c *Config) Validate() error {
 	if c.HintCacheMaxSizeMB == 0 {
 		c.HintCacheMaxSizeMB = 100
 	}
+	if c.MetadataCacheMaxSizeMB < 0 {
+		return fmt.Errorf("metadata_cache_max_size_mb must be >= 0")
+	}
 	if c.MaxHintRangesPerRequest < 0 {
 		return fmt.Errorf("max_hint_ranges_per_request must be >= 0")
 	}
 	return nil
+}
+
+// MetadataCacheMaxBytes returns MetadataCacheMaxSizeMB in bytes, or 0 when the
+// cache is disabled.
+func (c *Config) MetadataCacheMaxBytes() uint64 {
+	if c.MetadataCacheMaxSizeMB <= 0 {
+		return 0
+	}
+	return uint64(c.MetadataCacheMaxSizeMB) << 20
 }

@@ -1,7 +1,9 @@
 package loki
 
 import (
+	"context"
 	"flag"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -349,6 +351,44 @@ func TestLoglineStoreConfigBorrowsIngesterWindow(t *testing.T) {
 			require.Zero(t, l.Cfg.Logline.Store.QueryIngestersWithin)
 		})
 	}
+}
+
+// A querier opens the logline indexes the query-frontend sends, so it does not
+// poll the catalog. A catalog the poll cannot read must not stop it starting.
+func TestQuerierDoesNotPollLoglineCatalog(t *testing.T) {
+	dir := t.TempDir()
+	objects := filepath.Join(dir, "objects")
+	// A poll fails on a meta.json it cannot decode.
+	indexDir := filepath.Join(objects, loglinestore.DefaultBucketPrefix, "2026-02-26", "01JQ0000000000000000000000")
+	require.NoError(t, os.MkdirAll(indexDir, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(indexDir, "meta.json"), []byte("{"), 0o600))
+
+	cfg := minimalWorkingConfig(t, dir, Querier, func(cfg *Config) {
+		cfg.StorageConfig.ObjectStore.Filesystem.Directory = objects
+		cfg.Logline.Query.Enabled = true
+		cfg.Logline.Store.MinDate = "2026-01-01"
+		// A frontend address gives the querier a worker service to start.
+		cfg.Worker.FrontendAddress = "127.0.0.1:1"
+		cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = "inmemory"
+	})
+	c, err := New(cfg)
+	require.NoError(t, err)
+
+	svcs, err := c.ModuleManager.InitModuleServices(Querier)
+	require.NoError(t, err)
+	require.NotNil(t, svcs[Querier])
+
+	// The module manager starts a module after its dependencies, so start them all.
+	all := make([]services.Service, 0, len(svcs))
+	for _, svc := range svcs {
+		all = append(all, svc)
+	}
+	manager, err := services.NewManager(all...)
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	require.NoError(t, services.StartManagerAndAwaitHealthy(ctx, manager))
+	require.NoError(t, services.StopManagerAndAwaitStopped(context.Background(), manager))
 }
 
 func TestCompactorAddress(t *testing.T) {

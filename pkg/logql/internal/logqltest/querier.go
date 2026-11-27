@@ -52,7 +52,7 @@ func newScriptQuerier(t *testing.T, stores *scriptStores, dataObjQueryStart time
 	overrides, err := validation.NewOverrides(limits, nil)
 	require.NoError(t, err)
 
-	q, err := querier.New(cfg, chunks.store, dataObjStore, nil, overrides, noDeletes{}, log.NewNopLogger(), nil, 0, 0)
+	q, err := querier.New(cfg, chunks.store, dataObjStore, nil, overrides, noDeletes{}, log.NewNopLogger(), nil, 0, 0, 0)
 	require.NoError(t, err)
 
 	return q

@@ -242,6 +242,7 @@ func TestQuerier_HintRanges(t *testing.T) {
 				nil,
 				0,
 				0,
+				0,
 			)
 			require.NoError(t, err)
 
@@ -299,6 +300,7 @@ func TestQuerier_HintRanges(t *testing.T) {
 				&mockDeleteGettter{},
 				log.NewNopLogger(),
 				nil,
+				0,
 				0,
 				0,
 			)
@@ -1539,7 +1541,7 @@ func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.P
 		return nil, err
 	}
 
-	return New(cfg, store, nil, iq, limits, dg, log.NewNopLogger(), nil, 0, 0)
+	return New(cfg, store, nil, iq, limits, dg, log.NewNopLogger(), nil, 0, 0, 0)
 }
 
 func TestQuerier_DetectedLabels(t *testing.T) {
@@ -1956,7 +1958,7 @@ func TestSingleTenantQuerier_storeForSelectSamples(t *testing.T) {
 			querierDataObjStore = dataObjStore
 		}
 		cfg := Config{DataObjStorageLag: storageLag}
-		q, err := New(cfg, chunkStore, querierDataObjStore, nil, &testutil.MockLimits{DataObjQueryStartTimeVal: tenantStart}, &mockDeleteGettter{}, log.NewNopLogger(), nil, 0, 0)
+		q, err := New(cfg, chunkStore, querierDataObjStore, nil, &testutil.MockLimits{DataObjQueryStartTimeVal: tenantStart}, &mockDeleteGettter{}, log.NewNopLogger(), nil, 0, 0, 0)
 		require.NoError(t, err)
 		q.now = func() time.Time { return now }
 
@@ -2062,7 +2064,7 @@ func TestSingleTenantQuerier_storeForSelectSamples(t *testing.T) {
 	})
 
 	t.Run("returns an error for a stream-first request without a tenant", func(t *testing.T) {
-		q, err := New(Config{DataObjStorageLag: storageLag}, &mockStore{}, &mockStore{}, nil, &testutil.MockLimits{DataObjQueryStartTimeVal: hour(0)}, &mockDeleteGettter{}, log.NewNopLogger(), nil, 0, 0)
+		q, err := New(Config{DataObjStorageLag: storageLag}, &mockStore{}, &mockStore{}, nil, &testutil.MockLimits{DataObjQueryStartTimeVal: hour(0)}, &mockDeleteGettter{}, log.NewNopLogger(), nil, 0, 0, 0)
 		require.NoError(t, err)
 
 		params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{Start: hour(1), End: hour(2), Order: logproto.SAMPLE_ORDER_BY_STREAM, DataObjOptions: &logproto.DataObjOptions{Eligible: true}}}

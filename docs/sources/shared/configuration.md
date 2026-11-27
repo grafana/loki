@@ -5155,6 +5155,12 @@ query:
   # CLI flag: -logline-query.hint-cache-max-size-mb
   [hint_cache_max_size_mb: <int> | default = 0]
 
+  # Maximum estimated size in MB of the parsed index metadata each querier
+  # caches. When the cache is full, the least recently used indexes are evicted.
+  # 0 disables the cache.
+  # CLI flag: -logline-query.metadata-cache-max-size-mb
+  [metadata_cache_max_size_mb: <int> | default = 512]
+
   # Maximum number of hint ranges attached to one split or shard sub-request.
   # When a sub-request has more hint ranges than this limit, Loki merges the
   # smallest gaps between each document shard's ranges until it fits. The merged
