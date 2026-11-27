@@ -122,7 +122,11 @@ func (r *batchRangeVectorIterator) Next() bool {
 	return r.err == nil
 }
 
+// Close releases the label sets the iterator reserved, so the job counter reflects what is held now.
+// Clearing r.metrics makes a repeated Close release nothing.
 func (r *batchRangeVectorIterator) Close() error {
+	r.limits.counter.Release(len(r.metrics))
+	clear(r.metrics)
 	return r.iter.Close()
 }
 
@@ -184,6 +188,9 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 				metric, err = syntax.ParseMetric(lbs)
 				if err != nil {
 					r.err = fmt.Errorf("failed to parse metric %q: %w", lbs, err)
+					return
+				}
+				if r.err = r.limits.counter.Reserve(1); r.err != nil {
 					return
 				}
 				r.metrics[lbs] = metric
