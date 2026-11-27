@@ -149,6 +149,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 			{"org-id", "", "0000000000", "0000000001", "", "query not set\n"},
 			{"org-id", `not a query`, "0000000000", "0000000001", "", "invalid query expression: parse error"},
 			{"org-id", `{foo=~".*"}`, "0000000000", "0000000001", "", "invalid query expression: parse error : queries require at least one regexp or equality matcher that does not have an empty-compatible value"},
+			{"org-id", `{job=""}`, "0000000000", "0000000001", "", "invalid query expression: parse error : queries require at least one regexp or equality matcher that does not have an empty-compatible value"},
 			{"org-id", `{foo!="bar"}`, "0000000000", "0000000001", "", "invalid query expression: parse error : queries require at least one regexp or equality matcher that does not have an empty-compatible value"},
 			{"org-id", `{foo="bar"} |~ "["`, "0000000000", "0000000001", "", `invalid query expression: parse error : stage '|~ "["' : error parsing regexp: missing closing ]`},
 			{"org-id", `{foo="bar"} | addr=ip("not-an-ip")`, "0000000000", "0000000001", "", `invalid query expression: parse error : stage '| addr=ip("not-an-ip")' : ip: invalid pattern: "not-an-ip"`},
