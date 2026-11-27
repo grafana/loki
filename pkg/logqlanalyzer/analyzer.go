@@ -128,8 +128,8 @@ type StageAnalysisRecorder struct {
 	records    []StageAnalysisRecord
 }
 
-func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *log.LabelsBuilder) ([]byte, bool) {
-	lineBefore := string(line)
+func (s StageAnalysisRecorder) Process(ts int64, line log.UnsafeBytes, lbs *log.LabelsBuilder) (log.UnsafeBytes, bool) {
+	lineBefore := line.SafeCopyString()
 	labelsBefore := lbs.UnsortedLabels(nil)
 
 	lineResult, ok := s.origin.Process(ts, line, lbs)
@@ -139,7 +139,7 @@ func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *log.LabelsBui
 		LabelsBefore: labelsBefore,
 		LineBefore:   lineBefore,
 		LabelsAfter:  lbs.UnsortedLabels(nil),
-		LineAfter:    string(lineResult),
+		LineAfter:    lineResult.SafeCopyString(),
 		FilteredOut:  !ok,
 	}
 	return lineResult, ok

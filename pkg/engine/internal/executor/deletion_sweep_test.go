@@ -159,7 +159,7 @@ func TestExecuteDeletionSweep(t *testing.T) {
 // was last modified at modified.
 func storeReachableIndex(t *testing.T, root string, bucket objstore.Bucket, tenant, indexPath string, modified time.Time) {
 	t.Helper()
-	builder, err := indexobj.NewBuilder(tenant, metastore.DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	builder, err := indexobj.NewBuilder(tenant, metastore.DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), nil)))
 	require.NoError(t, builder.AppendStat("objects/tenants/"+tenant+"/ff/not-stored", 0, 0, nil, modified, modified, 1, 1))

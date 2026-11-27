@@ -89,7 +89,7 @@ func (it *SampleIterator) Next() bool {
 
 			// currRow.line is a view into the memory of the batch. The release of the batch lets the next
 			// read overwrite it, so Process must not keep it after it returns.
-			sample, ok := it.currExtractor.Process(currRow.timestamp, currRow.line, currRow.metadata)
+			sample, ok := it.currExtractor.Process(currRow.timestamp, logqllog.UnsafeBytes{UnsafeData: currRow.line}, currRow.metadata)
 			if !ok {
 				continue // dropped by the pipeline, for instance by a label filter
 			}

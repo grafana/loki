@@ -60,16 +60,21 @@ func BenchmarkIndexMerge(b *testing.B) {
 	cfg := defaults.IndexobjBuilder
 
 	bucket := objstore.NewInMemBucket()
-	run := &compactionv2pb.RunRef{}
-	var inputBytes int64
+	// The sections of one run must be in key order and must not overlap, or the
+	// merge fails on a row out of order. The sources overlap in key range, so each
+	// source is its own run.
+	var (
+		sourceRuns []*compactionv2pb.RunRef
+		inputBytes int64
+	)
 	for i := range benchIndexSources {
 		path := fmt.Sprintf("indexes/source-%d", i)
 		pb, size := benchPostings(b, rng, cfg)
 		uploadSections(b, bucket, path, pb)
-		run.Sections = append(run.Sections, &compactionv2pb.SectionRef{ObjectPath: path})
+		sourceRuns = append(sourceRuns, &compactionv2pb.RunRef{Sections: []*compactionv2pb.SectionRef{{ObjectPath: path}}})
 		inputBytes += size
 	}
-	node := &physical.IndexMerge{Tenant: benchIndexTenant, Runs: []*compactionv2pb.RunRef{run}}
+	node := &physical.IndexMerge{Tenant: benchIndexTenant, Runs: sourceRuns}
 
 	b.Run("merge", func(b *testing.B) {
 		b.SetBytes(inputBytes)

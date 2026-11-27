@@ -289,7 +289,7 @@ func Test_NilFilterDoesntPanic(t *testing.T) {
 
 			p, err := expr.Pipeline()
 			require.Nil(t, err)
-			_, _, matches := p.ForStream(labelBar).Process(0, []byte("bleepbloop"), labels.EmptyLabels())
+			_, _, matches := p.ForStream(labelBar).Process(0, log.UnsafeBytes{UnsafeData: []byte("bleepbloop")}, labels.EmptyLabels())
 
 			require.True(t, matches)
 		})
@@ -656,7 +656,7 @@ func Test_FilterMatcher(t *testing.T) {
 			} else {
 				sp := p.ForStream(labelBar)
 				for _, lc := range tt.lines {
-					_, _, matches := sp.Process(0, []byte(lc.l), labels.EmptyLabels())
+					_, _, matches := sp.Process(0, log.UnsafeBytes{UnsafeData: []byte(lc.l)}, labels.EmptyLabels())
 					assert.Equalf(t, lc.e, matches, "query for line '%s' was %v and not %v", lc.l, matches, lc.e)
 				}
 			}
@@ -729,7 +729,7 @@ func TestOrLineFilterEmptyOperandIsIgnored(t *testing.T) {
 			sp := p.ForStream(labelBar)
 			var kept []string
 			for _, l := range lines {
-				if _, _, ok := sp.Process(0, []byte(l), labels.EmptyLabels()); ok {
+				if _, _, ok := sp.Process(0, log.UnsafeBytes{UnsafeData: []byte(l)}, labels.EmptyLabels()); ok {
 					kept = append(kept, l)
 				}
 			}
@@ -965,7 +965,7 @@ func BenchmarkContainsFilter(b *testing.B) {
 			sp := p.ForStream(labelBar)
 			for i := 0; i < b.N; i++ {
 				for _, line := range lines {
-					sp.Process(0, line, labels.EmptyLabels())
+					sp.Process(0, log.UnsafeBytes{UnsafeData: line}, labels.EmptyLabels())
 				}
 			}
 		})
@@ -1377,18 +1377,18 @@ func TestMultiStageExpr_PushableLineFilters_WithoutPushableLineFilters(t *testin
 				restStreamPipeline := restPipeline.ForStream(streamLabels)
 
 				for _, line := range slices.Concat(contractLines, test.wantKeep, test.wantDrop) {
-					wantLine, wantLabels, wantOK := originalStreamPipeline.Process(0, []byte(line), metadata)
+					wantLine, wantLabels, wantOK := originalStreamPipeline.Process(0, log.UnsafeBytes{UnsafeData: []byte(line)}, metadata)
 
 					gotOK := pushableFilter == nil || pushableFilter.Filter([]byte(line))
-					var gotLine []byte
+					var gotLine log.UnsafeBytes
 					var gotLabels log.LabelsResult
 					if gotOK {
-						gotLine, gotLabels, gotOK = restStreamPipeline.Process(0, []byte(line), metadata)
+						gotLine, gotLabels, gotOK = restStreamPipeline.Process(0, log.UnsafeBytes{UnsafeData: []byte(line)}, metadata)
 					}
 
 					require.Equal(t, wantOK, gotOK, "line %q, AST rewritten by Pipeline: %v", line, rewritten)
 					if wantOK {
-						require.Equal(t, string(wantLine), string(gotLine), "line %q, AST rewritten by Pipeline: %v", line, rewritten)
+						require.Equal(t, string(wantLine.UnsafeData), string(gotLine.UnsafeData), "line %q, AST rewritten by Pipeline: %v", line, rewritten)
 						require.Equal(t, wantLabels.String(), gotLabels.String(), "line %q, AST rewritten by Pipeline: %v", line, rewritten)
 					}
 				}
@@ -1711,9 +1711,9 @@ func TestMultiStageExpr_PushableLabelFilters(t *testing.T) {
 					}
 					for _, line := range contractLines {
 						for _, metadata := range contractMetadata {
-							_, _, wholeOK := wholeStream.Process(0, []byte(line), metadata)
+							_, _, wholeOK := wholeStream.Process(0, log.UnsafeBytes{UnsafeData: []byte(line)}, metadata)
 							for i, pushableStream := range pushableStreams {
-								_, _, pushableOK := pushableStream.Process(0, []byte(line), metadata)
+								_, _, pushableOK := pushableStream.Process(0, log.UnsafeBytes{UnsafeData: []byte(line)}, metadata)
 								if !pushableOK {
 									require.False(t, wholeOK, "filter %s, stream %s, line %q, metadata %s, AST rewritten by Pipeline: %v", filters[i], streamLabels, line, metadata, rewritten)
 								}
@@ -1863,7 +1863,7 @@ func BenchmarkReorderedPipeline(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		_, _, result = sp.Process(0, logfmtLine, labels.EmptyLabels())
+		_, _, result = sp.Process(0, log.UnsafeBytes{UnsafeData: logfmtLine}, labels.EmptyLabels())
 	}
 }
 

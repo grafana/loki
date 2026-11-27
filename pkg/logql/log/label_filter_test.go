@@ -173,7 +173,7 @@ func TestBinary_Filter(t *testing.T) {
 		t.Run(tt.f.String(), func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
-			_, got := tt.f.Process(0, nil, b)
+			_, got := tt.f.Process(0, UnsafeBytes{}, b)
 			require.Equal(t, tt.want, got)
 			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
 		})
@@ -206,7 +206,7 @@ func TestBytes_Filter(t *testing.T) {
 		t.Run(f.String(), func(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 			b.Reset()
-			_, got := f.Process(0, nil, b)
+			_, got := f.Process(0, UnsafeBytes{}, b)
 			require.Equal(t, tt.want, got)
 			wantLbs := labels.FromStrings("bar", tt.wantLabel)
 			require.Equal(t, wantLbs, b.LabelsResult().Labels())
@@ -275,7 +275,7 @@ func TestErrorFiltering(t *testing.T) {
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			b.SetErr(tt.err, nil)
-			_, got := tt.f.Process(0, nil, b)
+			_, got := tt.f.Process(0, UnsafeBytes{}, b)
 			require.Equal(t, tt.want, got)
 			require.Equal(t, tt.wantLbs, b.LabelsResult().Labels())
 		})
@@ -410,7 +410,7 @@ func TestStringLabelFilter(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ok := tc.filter.Process(0, []byte("sample log line"), NewBaseLabelsBuilder().ForLabels(tc.labels, labels.StableHash(tc.labels)))
+			_, ok := tc.filter.Process(0, UnsafeBytes{UnsafeData: []byte("sample log line")}, NewBaseLabelsBuilder().ForLabels(tc.labels, labels.StableHash(tc.labels)))
 			assert.Equal(t, tc.shouldMatch, ok)
 		})
 	}
@@ -469,7 +469,7 @@ func BenchmarkLineLabelFilters(b *testing.B) {
 			b.ResetTimer()
 
 			for i := 0; i < b.N; i++ {
-				_, result = f.Process(0, line, lbl)
+				_, result = f.Process(0, UnsafeBytes{UnsafeData: line}, lbl)
 			}
 		})
 	}

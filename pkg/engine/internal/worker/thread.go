@@ -88,13 +88,14 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	Bucket         objstore.Bucket
-	DataBucket     objstore.Bucket
-	Logger         log.Logger
-	ScratchStore   scratch.Store
-	IndexobjCfg    logsobj.BuilderBaseConfig
-	LogsobjCfg     logsobj.BuilderBaseConfig
-	BuilderMetrics *logsobj.BuilderMetrics
+	Bucket          objstore.Bucket
+	DataBucket      objstore.Bucket
+	Logger          log.Logger
+	ScratchStore    scratch.Store
+	IndexobjCfg     logsobj.BuilderBaseConfig
+	TenantOverrides executor.TenantOverrides
+	LogsobjCfg      logsobj.BuilderBaseConfig
+	BuilderMetrics  *logsobj.BuilderMetrics
 
 	// IndexMergeObserver is optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
@@ -216,12 +217,13 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	level.Info(logger).Log(startFields...)
 
 	cfg := executor.Config{
-		Bucket:         t.Bucket,
-		DataBucket:     t.DataBucket,
-		ScratchStore:   t.ScratchStore,
-		IndexobjCfg:    t.IndexobjCfg,
-		LogsobjCfg:     t.LogsobjCfg,
-		BuilderMetrics: t.BuilderMetrics,
+		Bucket:          t.Bucket,
+		DataBucket:      t.DataBucket,
+		ScratchStore:    t.ScratchStore,
+		IndexobjCfg:     t.IndexobjCfg,
+		TenantOverrides: t.TenantOverrides,
+		LogsobjCfg:      t.LogsobjCfg,
+		BuilderMetrics:  t.BuilderMetrics,
 
 		IndexMergeObserver:   t.IndexMergeObserver,
 		LogMergeObserver:     t.LogMergeObserver,

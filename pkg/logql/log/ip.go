@@ -59,8 +59,8 @@ func (f *IPLineFilter) ToStage() Stage {
 }
 
 // `Process` implements `Stage` interface
-func (f *IPLineFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-	return line, f.filterTy(line, f.ty)
+func (f *IPLineFilter) Process(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+	return line, f.filterTy(line.UnsafeData, f.ty)
 }
 
 // Hints implements Stage.
@@ -114,8 +114,8 @@ func NewIPLabelFilter(pattern, label string, ty LabelFilterType) *IPLabelFilter 
 }
 
 // `Process` implements `Stage` interface
-func (f *IPLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	return line, f.filterTy(line, f.Ty, lbs)
+func (f *IPLabelFilter) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
+	return line, f.filterTy(line.UnsafeData, f.Ty, lbs)
 }
 
 // Hints implements Stage.

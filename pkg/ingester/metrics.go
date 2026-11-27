@@ -44,6 +44,7 @@ type ingesterMetrics struct {
 	chunkEntries                  prometheus.Histogram
 	chunkSize                     prometheus.Histogram
 	chunkCompressionRatio         prometheus.Histogram
+	indexedChunkBytes             prometheus.Counter
 	chunksPerTenant               *prometheus.CounterVec
 	chunkSizePerTenant            *prometheus.CounterVec
 	chunkAge                      prometheus.Histogram
@@ -219,6 +220,11 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "ingester_chunk_compression_ratio",
 			Help:      "Compression ratio of chunks (when stored).",
 			Buckets:   prometheus.LinearBuckets(.75, 2, 10),
+		}),
+		indexedChunkBytes: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingester_indexed_chunk_uncompressed_bytes_total",
+			Help:      "Total uncompressed bytes of stored chunks as recorded in their index entries, rounded to whole KB per chunk.",
 		}),
 		chunksPerTenant: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,

@@ -12,4 +12,10 @@ type Limits interface {
 	// DeletionSweepEnabled reports whether the deletion sweep runs for the
 	// tenant.
 	DeletionSweepEnabled(userID string) bool
+
+	// MaxLogsRunSizeUncompressedBytes returns the exclusive upper bound of the
+	// uncompressed size of a run that log compaction writes for the tenant,
+	// in bytes. Log compaction merges a group of runs only if their summed
+	// size is below it. 0 means no maximum.
+	MaxLogsRunSizeUncompressedBytes(userID string) uint64
 }

@@ -252,7 +252,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sample, ok := tt.ex.ForStream(tt.in).Process(0, []byte(tt.line), tt.structuredMetadata)
+			sample, ok := tt.ex.ForStream(tt.in).Process(0, UnsafeBytes{UnsafeData: []byte(tt.line)}, tt.structuredMetadata)
 			require.Equal(t, tt.wantOk, ok)
 			if ok {
 				require.Equal(t, tt.want, sample.Value)
@@ -347,7 +347,7 @@ func TestLabelExtractorWithStages(t *testing.T) {
 		ex := mustSampleExtractor(LabelExtractorWithStages("x", ConvertFloat, nil, false, true, pre, NoopStage))
 
 		sample, ok := ex.ForStream(labels.FromStrings("bar", "foo")).
-			Process(0, []byte(`{"x":"1.5","y":{"z":`), labels.FromStrings("detected_level", "error"))
+			Process(0, UnsafeBytes{UnsafeData: []byte(`{"x":"1.5","y":{"z":`)}, labels.FromStrings("detected_level", "error"))
 		require.True(t, ok)
 		require.Equal(t, 1.5, sample.Value)
 		require.Empty(t, sample.Labels.Labels())
@@ -363,9 +363,9 @@ func TestLabelExtractorWithStages(t *testing.T) {
 			ForStream(labels.FromStrings("bar", "foo"))
 		metadata := labels.FromStrings("detected_level", "error")
 
-		_, ok := sse.Process(0, []byte(`{"x":"1.5","level":"error"}`), metadata)
+		_, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte(`{"x":"1.5","level":"error"}`)}, metadata)
 		require.True(t, ok)
-		_, ok = sse.Process(0, []byte(`{"x":"1.5","level":"info"}`), metadata)
+		_, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte(`{"x":"1.5","level":"info"}`)}, metadata)
 		require.False(t, ok)
 	})
 }
@@ -376,7 +376,7 @@ func TestDistinctValueSampleExtractor(t *testing.T) {
 
 	t.Run("hashes distinct values and groups labels", func(t *testing.T) {
 		sample, ok := ex.ForStream(labels.FromStrings("mac", "aa:bb", "version", "1", "extra", "x")).
-			Process(0, []byte("line"), labels.EmptyLabels())
+			Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 		require.True(t, ok)
 		require.Equal(t, labels.FromStrings("version", "1"), sample.Labels.Labels())
 		require.Equal(t, xxhash.Sum64String("aa:bb"), math.Float64bits(sample.Value))
@@ -384,13 +384,13 @@ func TestDistinctValueSampleExtractor(t *testing.T) {
 
 	t.Run("skips missing values", func(t *testing.T) {
 		_, ok := ex.ForStream(labels.FromStrings("version", "1")).
-			Process(0, []byte("line"), labels.EmptyLabels())
+			Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 		require.False(t, ok)
 	})
 
 	t.Run("reads structured metadata", func(t *testing.T) {
 		sample, ok := ex.ForStream(labels.FromStrings("version", "2")).
-			Process(0, []byte("line"), labels.FromStrings("mac", "cc:dd"))
+			Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.FromStrings("mac", "cc:dd"))
 		require.True(t, ok)
 		require.Equal(t, xxhash.Sum64String("cc:dd"), math.Float64bits(sample.Value))
 	})
@@ -404,7 +404,7 @@ func TestDistinctValueSampleExtractor(t *testing.T) {
 		require.NoError(t, err)
 
 		sample, ok := ex.ForStream(labels.FromStrings("version", "1")).
-			Process(0, []byte(`{"x":"v","y":{"z":`), labels.FromStrings("detected_level", "error"))
+			Process(0, UnsafeBytes{UnsafeData: []byte(`{"x":"v","y":{"z":`)}, labels.FromStrings("detected_level", "error"))
 		require.True(t, ok)
 		require.Equal(t, xxhash.Sum64String("v"), math.Float64bits(sample.Value))
 		require.Empty(t, sample.Labels.Labels())
@@ -424,7 +424,7 @@ func TestNewDistinctValueSampleExtractorAllowsEmptyGroups(t *testing.T) {
 		require.NoError(t, err)
 
 		sample, ok := ex.ForStream(labels.FromStrings("mac", "aa:bb", "job", "devices", "version", "1")).
-			Process(0, []byte("line"), labels.EmptyLabels())
+			Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 		require.True(t, ok)
 		require.Equal(t, xxhash.Sum64String("aa:bb"), math.Float64bits(sample.Value))
 		require.Equal(t, labels.FromStrings("job", "devices", "version", "1"), sample.Labels.Labels())
@@ -435,7 +435,7 @@ func TestNewDistinctValueSampleExtractorAllowsEmptyGroups(t *testing.T) {
 		require.NoError(t, err)
 
 		sample, ok := ex.ForStream(labels.FromStrings("mac", "aa:bb", "version", "1")).
-			Process(0, []byte("line"), labels.EmptyLabels())
+			Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 		require.True(t, ok)
 		require.Equal(t, xxhash.Sum64String("aa:bb"), math.Float64bits(sample.Value))
 		require.Equal(t, labels.EmptyLabels(), sample.Labels.Labels())
@@ -458,7 +458,7 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	)
 
 	sse := se.ForStream(lbs)
-	sample, ok := sse.Process(0, []byte(`foo`), labels.EmptyLabels())
+	sample, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte(`foo`)}, labels.EmptyLabels())
 	require.True(t, ok)
 	require.Equal(t, 1., sample.Value)
 	assertLabelResult(t, lbs, sample.Labels)
@@ -473,13 +473,13 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	require.NoError(t, err)
 
 	sse = se.ForStream(lbs)
-	sample, ok = sse.Process(0, []byte(`foo`), labels.EmptyLabels())
+	sample, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte(`foo`)}, labels.EmptyLabels())
 	require.True(t, ok)
 	require.Equal(t, 3., sample.Value)
 	assertLabelResult(t, labels.FromStrings("namespace", "dev"), sample.Labels)
 
 	sse = se.ForStream(lbs)
-	_, ok = sse.Process(0, []byte(`nope`), labels.EmptyLabels())
+	_, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte(`nope`)}, labels.EmptyLabels())
 	require.False(t, ok)
 
 	t.Run("a filter on __error__ before the parser keeps the parser reporting its error", func(t *testing.T) {
@@ -490,7 +490,7 @@ func TestNewLineSampleExtractor(t *testing.T) {
 		se, err := NewLineSampleExtractor(CountExtractor, stages, nil, false, true)
 		require.NoError(t, err)
 
-		sample, ok := se.ForStream(lbs).Process(0, []byte(`not json`), labels.EmptyLabels())
+		sample, ok := se.ForStream(lbs).Process(0, UnsafeBytes{UnsafeData: []byte(`not json`)}, labels.EmptyLabels())
 		require.True(t, ok)
 		require.Equal(t, "JSONParserErr", sample.Labels.Labels().Get(logqlerr.ErrorLabel))
 	})
@@ -503,7 +503,7 @@ func TestNewLineSampleExtractor(t *testing.T) {
 		se, err := NewLineSampleExtractor(CountExtractor, stages, nil, false, true)
 		require.NoError(t, err)
 
-		sample, ok := se.ForStream(lbs).Process(0, []byte(`not json`), labels.FromStrings("detected_level", "error"))
+		sample, ok := se.ForStream(lbs).Process(0, UnsafeBytes{UnsafeData: []byte(`not json`)}, labels.FromStrings("detected_level", "error"))
 		require.True(t, ok)
 		assertLabelResult(t, labels.EmptyLabels(), sample.Labels)
 	})
@@ -519,9 +519,9 @@ func TestNewLineSampleExtractor(t *testing.T) {
 		sse := se.ForStream(lbs)
 		metadata := labels.FromStrings("detected_level", "error")
 
-		_, ok := sse.Process(0, []byte(`level=error`), metadata)
+		_, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte(`level=error`)}, metadata)
 		require.True(t, ok)
-		_, ok = sse.Process(0, []byte(`level=info`), metadata)
+		_, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte(`level=info`)}, metadata)
 		require.False(t, ok)
 	})
 }
@@ -537,7 +537,7 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	sse := se.ForStream(lbs)
-	sample, ok := sse.Process(0, []byte(`foo`), structuredMetadata)
+	sample, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte(`foo`)}, structuredMetadata)
 	require.True(t, ok)
 	require.Equal(t, 1., sample.Value)
 	assertLabelResult(t, expectedLabelsResults, sample.Labels)
@@ -550,7 +550,7 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	// test duplicated structured metadata with stream labels
 	expectedLabelsResults = appendLabel(lbs, "foo_extracted", "baz")
 	expectedLabelsResults = appendLabels(expectedLabelsResults, structuredMetadata)
-	sample, ok = sse.Process(0, []byte(`foo`), appendLabel(structuredMetadata, "foo", "baz"))
+	sample, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte(`foo`)}, appendLabel(structuredMetadata, "foo", "baz"))
 	require.True(t, ok)
 	require.Equal(t, 1., sample.Value)
 	assertLabelResult(t, expectedLabelsResults, sample.Labels)
@@ -568,13 +568,13 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	sse = se.ForStream(lbs)
-	sample, ok = sse.Process(0, []byte(`foo`), structuredMetadata)
+	sample, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte(`foo`)}, structuredMetadata)
 	require.True(t, ok)
 	require.Equal(t, 3., sample.Value)
 	assertLabelResult(t, labels.FromStrings("foo", "bar"), sample.Labels)
 
 	sse = se.ForStream(lbs)
-	_, ok = sse.Process(0, []byte(`nope`), labels.EmptyLabels())
+	_, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte(`nope`)}, labels.EmptyLabels())
 	require.False(t, ok)
 }
 
@@ -612,7 +612,7 @@ func TestFilteringSampleExtractor(t *testing.T) {
 
 	for _, test := range tt {
 		t.Run(test.name, func(t *testing.T) {
-			_, ok := se.ForStream(test.labels).Process(test.ts, []byte(test.line), test.structuredMetadata)
+			_, ok := se.ForStream(test.labels).Process(test.ts, UnsafeBytes{UnsafeData: []byte(test.line)}, test.structuredMetadata)
 			require.Equal(t, test.ok, ok)
 
 			_, ok = se.ForStream(test.labels).ProcessString(test.ts, test.line, test.structuredMetadata)
@@ -646,7 +646,7 @@ func (p *stubStreamExtractor) BaseLabels() LabelsResult {
 
 func (p *stubStreamExtractor) Process(
 	_ int64,
-	_ []byte,
+	_ UnsafeBytes,
 	structuredMetadata labels.Labels,
 ) (ExtractedSample, bool) {
 	builder := NewBaseLabelsBuilder().ForLabels(labels.FromStrings("foo", "bar"), 0)
@@ -692,9 +692,9 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 		require.Equal(t, ref.BaseLabels().String(), fsse.BaseLabels().String())
 
 		for i := 0; i < 3; i++ {
-			fs, ok := fsse.Process(int64(i), []byte("line"), labels.EmptyLabels())
+			fs, ok := fsse.Process(int64(i), UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 			require.True(t, ok)
-			rs, ok := ref.Process(int64(i), []byte("line"), labels.EmptyLabels())
+			rs, ok := ref.Process(int64(i), UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 			require.True(t, ok)
 			require.Equal(t, 1., fs.Value)
 			require.Equal(t, rs.Labels.String(), fs.Labels.String())
@@ -713,9 +713,9 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 		require.IsType(t, &noopConstantLabelStreamExtractor{}, fsse)
 
 		sm := labels.FromStrings("namespace", "override", "trace_id", "t1")
-		fs, ok := fsse.Process(0, []byte("line"), sm)
+		fs, ok := fsse.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, sm)
 		require.True(t, ok)
-		rs, ok := builderExtractor([]string{"namespace"}, lbs).Process(0, []byte("line"), sm)
+		rs, ok := builderExtractor([]string{"namespace"}, lbs).Process(0, UnsafeBytes{UnsafeData: []byte("line")}, sm)
 		require.True(t, ok)
 		require.Equal(t, rs.Labels.String(), fs.Labels.String())
 		assertLabelResult(t, labels.FromStrings("namespace", "dev"), fs.Labels)
@@ -727,7 +727,7 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 		sse := se.ForStream(lbs)
 		require.IsType(t, &noopConstantLabelStreamExtractor{}, sse)
 
-		fs, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		fs, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 		require.True(t, ok)
 		require.Equal(t, 1., fs.Value)
 		assertLabelResult(t, labels.EmptyLabels(), fs.Labels)
@@ -739,7 +739,7 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 		sse := se.ForStream(lbs)
 		require.IsType(t, &noopConstantLabelStreamExtractor{}, sse)
 
-		s1, ok := sse.Process(0, []byte("hello"), labels.EmptyLabels())
+		s1, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte("hello")}, labels.EmptyLabels())
 		require.True(t, ok)
 		require.Equal(t, 5., s1.Value)
 		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s1.Labels)
@@ -756,7 +756,7 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 		sse := se.ForStream(lbs)
 		require.IsType(t, &streamLineSampleExtractor{}, sse)
 
-		s, ok := sse.Process(0, []byte("x"), labels.FromStrings("trace_id", "t1"))
+		s, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte("x")}, labels.FromStrings("trace_id", "t1"))
 		require.True(t, ok)
 		assertLabelResult(t, appendLabels(lbs, labels.FromStrings("trace_id", "t1")), s.Labels)
 	})
@@ -779,12 +779,12 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 
 		assertLabelResult(t, lbs, sse.BaseLabels())
 
-		s, ok := sse.Process(0, []byte("keep me"), labels.EmptyLabels())
+		s, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte("keep me")}, labels.EmptyLabels())
 		require.True(t, ok)
 		require.Equal(t, 1., s.Value)
 		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
 
-		_, ok = sse.Process(0, []byte("drop me"), labels.EmptyLabels())
+		_, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte("drop me")}, labels.EmptyLabels())
 		require.False(t, ok)
 	})
 
@@ -797,7 +797,7 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 		sse := se.ForStream(lbs)
 		require.IsType(t, &streamLineSampleExtractor{}, sse)
 
-		s, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		s, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 		require.True(t, ok)
 		require.Equal(t, 1., s.Value)
 	})
@@ -811,7 +811,7 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 		sse := se.ForStream(lbs)
 		require.IsType(t, &filteredConstantLabelStreamExtractor{}, sse)
 
-		s, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		s, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 		require.True(t, ok)
 		require.Equal(t, 1., s.Value)
 		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
@@ -826,7 +826,7 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 		sse := se.ForStream(lbs)
 		require.IsType(t, &filteredConstantLabelStreamExtractor{}, sse)
 
-		_, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		_, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 		require.False(t, ok)
 	})
 
@@ -840,13 +840,13 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 		require.IsType(t, &streamLineSampleExtractor{}, sse)
 
 		// The builder path adds the metadata, so the filter matches the line carrying trace_id=t1.
-		s, ok := sse.Process(0, []byte("line"), labels.FromStrings("trace_id", "t1"))
+		s, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.FromStrings("trace_id", "t1"))
 		require.True(t, ok)
 		require.Equal(t, 1., s.Value)
 		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
 
 		// A line whose metadata does not match is dropped.
-		_, ok = sse.Process(0, []byte("line"), labels.FromStrings("trace_id", "other"))
+		_, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.FromStrings("trace_id", "other"))
 		require.False(t, ok)
 	})
 
@@ -865,9 +865,9 @@ func TestLineSampleExtractor_ForStream_ShouldReturnOptimizedExtractorWhenOutputH
 
 		a := labels.FromStrings("app", "a")
 		b := labels.FromStrings("app", "b")
-		ra, ok := se.ForStream(a).Process(0, []byte("x"), labels.EmptyLabels())
+		ra, ok := se.ForStream(a).Process(0, UnsafeBytes{UnsafeData: []byte("x")}, labels.EmptyLabels())
 		require.True(t, ok)
-		rb, ok := se.ForStream(b).Process(0, []byte("x"), labels.EmptyLabels())
+		rb, ok := se.ForStream(b).Process(0, UnsafeBytes{UnsafeData: []byte("x")}, labels.EmptyLabels())
 		require.True(t, ok)
 		assertLabelResult(t, a, ra.Labels)
 		assertLabelResult(t, b, rb.Labels)
@@ -896,16 +896,16 @@ func TestLineSampleExtractor_ForStream_FilteredConstantIsolatesFromSiblingStream
 
 	// Interleave A → B → A. B's line carries namespace="prod" in metadata; it does not match namespace="dev"
 	// and is dropped, but it leaves namespace="prod" in the shared builder overlay.
-	ra, ok := seA.Process(0, []byte("line"), labels.EmptyLabels())
+	ra, ok := seA.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 	require.True(t, ok)
 	assertLabelResult(t, labels.FromStrings("app", "a"), ra.Labels)
 
-	_, ok = seB.Process(0, []byte("line"), labels.FromStrings("namespace", "prod"))
+	_, ok = seB.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.FromStrings("namespace", "prod"))
 	require.False(t, ok)
 
 	// A's own stream label namespace="dev" matches, so its line must still be kept — not dropped because
 	// of B's leftover metadata.
-	ra, ok = seA.Process(0, []byte("line"), labels.EmptyLabels())
+	ra, ok = seA.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 	require.True(t, ok, "stream A must match its own namespace stream label, not stream B's leftover metadata")
 	require.Equal(t, 1., ra.Value)
 	assertLabelResult(t, labels.FromStrings("app", "a"), ra.Labels)
@@ -930,13 +930,13 @@ func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadata
 		require.IsType(t, &noopConstantLabelStreamExtractor{}, sse)
 
 		// A normal line still takes the fast, constant-label path.
-		s, ok := sse.Process(0, []byte("line"), labels.EmptyLabels())
+		s, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 		require.True(t, ok)
 		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
 
 		// A line whose structured metadata carries __error__ must surface it, so it leaves the
 		// cached constant labels for the per-line builder, exactly like the normal path.
-		s, ok = sse.Process(0, []byte("line"), errLabel)
+		s, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, errLabel)
 		require.True(t, ok)
 		assertLabelResult(t, groupedWithErr, s.Labels)
 
@@ -946,7 +946,7 @@ func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadata
 		assertLabelResult(t, groupedWithErr, s.Labels)
 
 		// The cached constant path still serves the next normal line unaffected by the error line.
-		s, ok = sse.Process(0, []byte("line"), labels.EmptyLabels())
+		s, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte("line")}, labels.EmptyLabels())
 		require.True(t, ok)
 		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
 	})
@@ -959,7 +959,7 @@ func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadata
 		sse := se.ForStream(streamLabels)
 		require.IsType(t, &filteredConstantLabelStreamExtractor{}, sse)
 
-		s, ok := sse.Process(0, []byte("keep me"), errLabel)
+		s, ok := sse.Process(0, UnsafeBytes{UnsafeData: []byte("keep me")}, errLabel)
 		require.True(t, ok)
 		assertLabelResult(t, groupedWithErr, s.Labels)
 
@@ -969,11 +969,11 @@ func TestLineSampleExtractor_ForStream_ConstantPathFallsBackOnStructuredMetadata
 		assertLabelResult(t, groupedWithErr, s.Labels)
 
 		// The stage still drops a line it rejects, even one whose structured metadata carries __error__.
-		_, ok = sse.Process(0, []byte("drop me"), errLabel)
+		_, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte("drop me")}, errLabel)
 		require.False(t, ok)
 
 		// The cached constant path still serves the next normal line unaffected by the error line.
-		s, ok = sse.Process(0, []byte("keep me"), labels.EmptyLabels())
+		s, ok = sse.Process(0, UnsafeBytes{UnsafeData: []byte("keep me")}, labels.EmptyLabels())
 		require.True(t, ok)
 		assertLabelResult(t, labels.FromStrings("namespace", "dev"), s.Labels)
 	})
@@ -1092,7 +1092,7 @@ func BenchmarkLineSampleExtractor_Process(b *testing.B) {
 			sse := bm.build(b).ForStream(streamLabels)
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, _ = sse.Process(int64(i), line, structuredMetadata)
+				_, _ = sse.Process(int64(i), UnsafeBytes{UnsafeData: line}, structuredMetadata)
 			}
 		})
 	}

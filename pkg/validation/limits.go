@@ -213,15 +213,16 @@ type Limits struct {
 	BloomBuildTaskMaxRetries    int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries"`
 	BloomBuilderResponseTimeout time.Duration `yaml:"bloom_build_builder_response_timeout" json:"bloom_build_builder_response_timeout"`
 
-	BloomCreationEnabled           bool             `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled"`
-	DataObjIndexCompactionEnabled  bool             `yaml:"dataobj_index_compaction_enabled" json:"dataobj_index_compaction_enabled" category:"experimental"`
-	DataObjLogCompactionEnabled    bool             `yaml:"dataobj_log_compaction_enabled" json:"dataobj_log_compaction_enabled" category:"experimental"`
-	DataObjDeletionSweepEnabled    bool             `yaml:"dataobj_deletion_sweep_enabled" json:"dataobj_deletion_sweep_enabled" category:"experimental"`
-	BloomPlanningStrategy          string           `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy"`
-	BloomSplitSeriesKeyspaceBy     int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by"`
-	BloomTaskTargetSeriesChunkSize flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size"`
-	BloomBlockEncoding             string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding"`
-	BloomPrefetchBlocks            bool             `yaml:"bloom_prefetch_blocks" json:"bloom_prefetch_blocks"`
+	BloomCreationEnabled                             bool             `yaml:"bloom_creation_enabled" json:"bloom_creation_enabled"`
+	DataObjIndexCompactionEnabled                    bool             `yaml:"dataobj_index_compaction_enabled" json:"dataobj_index_compaction_enabled" category:"experimental"`
+	DataObjLogCompactionEnabled                      bool             `yaml:"dataobj_log_compaction_enabled" json:"dataobj_log_compaction_enabled" category:"experimental"`
+	DataObjDeletionSweepEnabled                      bool             `yaml:"dataobj_deletion_sweep_enabled" json:"dataobj_deletion_sweep_enabled" category:"experimental"`
+	DataObjCompactionMaxLogsRunSizeUncompressedBytes flagext.ByteSize `yaml:"dataobj_compaction_max_logs_run_size_uncompressed_bytes" json:"dataobj_compaction_max_logs_run_size_uncompressed_bytes" category:"experimental"`
+	BloomPlanningStrategy                            string           `yaml:"bloom_planning_strategy" json:"bloom_planning_strategy"`
+	BloomSplitSeriesKeyspaceBy                       int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by"`
+	BloomTaskTargetSeriesChunkSize                   flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size"`
+	BloomBlockEncoding                               string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding"`
+	BloomPrefetchBlocks                              bool             `yaml:"bloom_prefetch_blocks" json:"bloom_prefetch_blocks"`
 
 	BloomMaxBlockSize flagext.ByteSize `yaml:"bloom_max_block_size" json:"bloom_max_block_size"`
 	BloomMaxBloomSize flagext.ByteSize `yaml:"bloom_max_bloom_size" json:"bloom_max_bloom_size"`
@@ -275,6 +276,10 @@ type Limits struct {
 	// DataObjShardFactor is the number of stream shard buckets in new data
 	// objects for the tenant. Zero means the default.
 	DataObjShardFactor ShardFactor `yaml:"dataobj_shard_factor" json:"dataobj_shard_factor" doc:"hidden"`
+
+	// DataObjBloomDenyList names the structured metadata columns that get no
+	// bloom filter in the data object indexes of the tenant.
+	DataObjBloomDenyList dskit_flagext.StringSliceCSV `yaml:"dataobj_bloom_deny_list" json:"dataobj_bloom_deny_list" category:"experimental"`
 
 	// TSDBShardedIndexShardFactor is the number of fingerprint-range files the
 	// compactor splits the tenant's sharded TSDB index copy into.
@@ -566,6 +571,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.DataObjIndexCompactionEnabled, "dataobj-compaction.index.enable", false, "Experimental. Whether dataobj index compaction runs for the tenant.")
 	f.BoolVar(&l.DataObjLogCompactionEnabled, "dataobj-compaction.log.enable", false, "Experimental. Whether dataobj log compaction runs for the tenant. Log compaction implies index compaction; enabling log compaction without index compaction is a configuration error.")
 	f.BoolVar(&l.DataObjDeletionSweepEnabled, "dataobj-compaction.deletion-sweep.enable", false, "Experimental. Whether the dataobj deletion sweep runs for the tenant. A sweep finds the objects of the tenant that no table of contents (ToC) file can reach. An object that two sweeps, at least 23 hours apart, both find unreachable is a deletion candidate. Sweeps delete the candidates, or only log them if -dataobj.compaction.deletion-sweep.dry-run is true. The sweep also needs -dataobj.compaction.deletion-sweep.enabled.")
+	// The default is the lower bound of size level 5. Merges into level 5 and
+	// above rewrite much data for little query benefit.
+	_ = l.DataObjCompactionMaxLogsRunSizeUncompressedBytes.Set("8TB")
+	f.Var(&l.DataObjCompactionMaxLogsRunSizeUncompressedBytes, "dataobj-compaction.max-logs-run-size-uncompressed-bytes", "Experimental. Exclusive upper bound of the uncompressed size of a run that dataobj log compaction writes for the tenant. Log compaction merges runs of a similar size in groups. It merges a group only if the summed size of its runs is below this value, and otherwise keeps the runs as they are. Units are powers of 2, so 1TB is 2^40 bytes. 0 means no maximum.")
 	f.StringVar(&l.BloomPlanningStrategy, "bloom-build.planning-strategy", "split_keyspace_by_factor", "Deprecated: Bloom planning strategy to use in bloom creation. Can be one of: 'split_keyspace_by_factor', 'split_by_series_chunks_size'")
 	f.IntVar(&l.BloomSplitSeriesKeyspaceBy, "bloom-build.split-keyspace-by", 256, "Deprecated: Only if `bloom-build.planning-strategy` is 'split'. Number of splits to create for the series keyspace when building blooms. The series keyspace is split into this many parts to parallelize bloom creation.")
 	_ = l.BloomTaskTargetSeriesChunkSize.Set(defaultBloomTaskTargetChunkSize)
@@ -632,6 +641,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	l.SortSchema = DefaultSortSchema
 	l.DataObjShardFactor = streams.DefaultShardBuckets
+	_ = l.DataObjBloomDenyList.Set("observed_timestamp")
+	f.Var(&l.DataObjBloomDenyList, "limits.dataobj-bloom-deny-list", "Experimental: Comma-separated names of structured metadata columns that get no bloom filter in the data object index. An empty value denies no column.")
 	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Must be a power of two from 1 to %d.", MaxShardFactor))
 	f.IntVar(&l.TSDBShardedIndexShardFactor, "limits.tsdb-sharded-index-shard-factor", 0, "Experimental: Number of fingerprint-range files the compactor splits the tenant's index into in the sharded_path_prefix of a schema period. 0 and 1 write a single file; larger values must be powers of two.")
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
@@ -1234,6 +1245,13 @@ func (o *Overrides) DeletionSweepEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).DataObjDeletionSweepEnabled
 }
 
+// MaxLogsRunSizeUncompressedBytes returns the exclusive upper bound of the
+// uncompressed size of a run that dataobj log compaction writes for the
+// tenant, in bytes. 0 means no maximum.
+func (o *Overrides) MaxLogsRunSizeUncompressedBytes(userID string) uint64 {
+	return uint64(o.getOverridesForUser(userID).DataObjCompactionMaxLogsRunSizeUncompressedBytes)
+}
+
 func (o *Overrides) BloomPlanningStrategy(userID string) string {
 	return o.getOverridesForUser(userID).BloomPlanningStrategy
 }
@@ -1517,6 +1535,20 @@ func (o *Overrides) DataObjShardLayout(userID string) streams.ShardLayout {
 		return streams.DefaultShardLayout()
 	}
 	return layout
+}
+
+// DataObjBloomDenyList returns the names of the structured metadata columns
+// that get no bloom filter in the data object indexes of userID.
+func (o *Overrides) DataObjBloomDenyList(userID string) []string {
+	list := o.getOverridesForUser(userID).DataObjBloomDenyList
+	trimmed := make([]string, 0, len(list))
+	for _, name := range list {
+		// StringSliceCSV splits on commas and keeps the spaces around a name.
+		if name = strings.TrimSpace(name); name != "" {
+			trimmed = append(trimmed, name)
+		}
+	}
+	return trimmed
 }
 
 // TSDBShardedIndexShardFactor returns the number of fingerprint-range files of

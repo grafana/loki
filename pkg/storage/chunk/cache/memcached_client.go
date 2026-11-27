@@ -28,7 +28,7 @@ import (
 // MemcachedClient interface exists for mocking memcacheClient.
 type MemcachedClient interface {
 	GetMulti(ctx context.Context, keys []string, opts ...memcache.Option) (map[string]*memcache.Item, error)
-	Set(item *memcache.Item) error
+	Set(item *memcache.Item, opts ...memcache.Option) error
 }
 
 type serverSelector interface {
@@ -229,21 +229,29 @@ func (c *memcachedClient) Stop() {
 	c.wait.Wait()
 }
 
-func (c *memcachedClient) Set(item *memcache.Item) error {
+func (c *memcachedClient) Set(item *memcache.Item, opts ...memcache.Option) error {
 	// Skip hitting memcached at all if the item is bigger than the max allowed size.
 	if c.maxItemSize > 0 && len(item.Value) > c.maxItemSize {
 		c.skipped.Inc()
 		return nil
 	}
 
-	err := c.Client.Set(item)
+	err := c.Client.Set(item, opts...)
 	if err == nil {
 		return nil
 	}
 
 	// Inject the server address in order to have more information about which memcached
 	// backend server failed. This is a best effort.
-	addr, addrErr := c.serverList.PickServer(item.Key)
+	var o memcache.Options
+	for _, opt := range opts {
+		opt(&o)
+	}
+	selectorKey := item.Key
+	if o.ShardKey != "" {
+		selectorKey = o.ShardKey
+	}
+	addr, addrErr := c.serverList.PickServer(selectorKey)
 	if addrErr != nil {
 		return err
 	}

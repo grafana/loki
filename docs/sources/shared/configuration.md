@@ -4057,6 +4057,14 @@ wal:
 # CLI flag: -ingester.shutdown-marker-path
 [shutdown_marker_path: <string> | default = ""]
 
+# Accept GET requests on the /flush and /ingester/shutdown endpoints. Both
+# endpoints change the ingester's state, so a GET request, for example from a
+# crawler or a read-only client, can flush or shut down the ingester. Set to
+# false to accept only POST requests. Kubernetes httpGet lifecycle hooks send
+# GET requests and need this option enabled.
+# CLI flag: -ingester.get-request-for-flush-and-shutdown-enabled
+[get_request_for_flush_and_shutdown_enabled: <boolean> | default = true]
+
 # Interval at which the ingester ownedStreamService checks for changes in the
 # ring to recalculate owned streams.
 # CLI flag: -ingester.owned-streams-check-interval
@@ -4727,6 +4735,14 @@ shard_streams:
 # CLI flag: -dataobj-compaction.deletion-sweep.enable
 [dataobj_deletion_sweep_enabled: <boolean> | default = false]
 
+# Experimental. Exclusive upper bound of the uncompressed size of a run that
+# dataobj log compaction writes for the tenant. Log compaction merges runs of a
+# similar size in groups. It merges a group only if the summed size of its runs
+# is below this value, and otherwise keeps the runs as they are. Units are
+# powers of 2, so 1TB is 2^40 bytes. 0 means no maximum.
+# CLI flag: -dataobj-compaction.max-logs-run-size-uncompressed-bytes
+[dataobj_compaction_max_logs_run_size_uncompressed_bytes: <int> | default = 8TB]
+
 # Deprecated: Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
 # CLI flag: -bloom-build.planning-strategy
@@ -4906,6 +4922,11 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Experimental: Comma-separated names of structured metadata columns that get no
+# bloom filter in the data object index. An empty value denies no column.
+# CLI flag: -limits.dataobj-bloom-deny-list
+[dataobj_bloom_deny_list: <string> | default = "observed_timestamp"]
 ```
 
 ### local_storage_config
@@ -6423,8 +6444,10 @@ http_config:
 [signature_version: <string> | default = "v4"]
 
 # The S3 storage class which objects will use. Supported values are: STANDARD,
-# STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
-# with MinIO.
+# STANDARD_IA, GLACIER_IR, INTELLIGENT_TIERING, REDUCED_REDUNDANCY.
+# REDUCED_REDUNDANCY is only intended for use with MinIO. Grafana Labs has only
+# tested Loki with STANDARD and STANDARD_IA; use GLACIER_IR and
+# INTELLIGENT_TIERING at your own risk.
 # CLI flag: -<prefix>.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
@@ -7304,8 +7327,10 @@ s3:
 
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
-  # STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
-  # with MinIO.
+  # STANDARD_IA, GLACIER_IR, INTELLIGENT_TIERING, REDUCED_REDUNDANCY.
+  # REDUCED_REDUNDANCY is only intended for use with MinIO. Grafana Labs has
+  # only tested Loki with STANDARD and STANDARD_IA; use GLACIER_IR and
+  # INTELLIGENT_TIERING at your own risk.
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 

@@ -1,11 +1,15 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/buger/jsonparser)](https://goreportcard.com/report/github.com/buger/jsonparser) [![Audit](https://img.shields.io/badge/ReqProof-L3%20Assurance-success)](https://reqproof.com) ![License](https://img.shields.io/dub/l/vibe-d.svg)
-# Alternative JSON parser for Go (10x times faster standard library)
+# The fastests JSON parser for Go
 
 It does not require you to know the structure of the payload (eg. create structs), and allows accessing fields by providing the path to them. It is up to **6.5x faster** than standard `encoding/json` package (depending on payload size and usage), **allocates no memory**. See benchmarks below.
+
+[Project recently celebrated 10 years!](https://blog.reqproof.com/p/celebrating-ten-years-of-jsonparser)
 
 ---
 
 ## 🔒 Formally Verified — the first Go library proven to L3 assurance by [ReqProof](https://reqproof.com)
+
+[![jsonparser — Proof of Quality](https://portal.reqproof.com/projects/jsonparser-real/card.svg)](https://portal.reqproof.com/projects/jsonparser-real/card)
 
 jsonparser is the **reference case study** for [ReqProof](https://reqproof.com) — a git-native requirements-engineering and formal-verification platform. Every public API is traced to a formal requirement, every requirement is tested with **100% Modified Condition/Decision Coverage (MC/DC)**, and the entire parser is fuzzed by a custom **structure-aware JSON fuzzer** ([github.com/probelabs/json-fuzz](https://github.com/probelabs/json-fuzz)) that generates grammar-valid mutations at 250,000 inputs/second.
 
@@ -191,11 +195,11 @@ Receives data structure, and key path to extract value from.
 Returns:
 * `value` - Pointer to original data structure containing key value, or just empty slice if nothing found or error
 * `dataType` - 	Can be: `NotExist`, `String`, `Number`, `Object`, `Array`, `Boolean` or `Null`
-* `offset` - Offset from provided data structure where key value ends. Used mostly internally, for example for `ArrayEach` helper.
+* `offset` - Offset from provided data structure where key value ends. Used mostly internally, for example for `EachArray` helper.
 * `err` - If the key is not found or any other parsing issue, it should return error. If key not found it also sets `dataType` to `NotExist`
 
 Accepts multiple keys to specify path to JSON value (in case of quering nested structures).
-If no keys are provided it will try to extract the closest JSON value (simple ones or object/array), useful for reading streams or arrays, see `ArrayEach` implementation.
+If no keys are provided it will try to extract the closest JSON value (simple ones or object/array), useful for reading streams or arrays, see `EachArray` implementation.
 
 Note that keys can be an array indexes: `jsonparser.GetInt("person", "avatars", "[0]", "url")`, pretty cool, yeah?
 
@@ -314,6 +318,56 @@ Accepts multiple keys to specify path to JSON value (in case of updating or crea
 
 Note that keys can be an array indexes: `jsonparser.Delete(data, "person", "avatars", "[0]", "url")`
 
+### **`GetUint64`**
+```go
+func GetUint64(data []byte, keys ...string) (uint64, error)
+```
+Like `GetInt` but returns `uint64`. Use for large IDs, timestamps, or counters that exceed `int64`.
+
+### **`GetArrayLen`** and **`GetObjectLen`**
+```go
+func GetArrayLen(data []byte, keys ...string) (int, error)
+func GetObjectLen(data []byte, keys ...string) (int, error)
+```
+Returns the number of elements in the addressed array or object without invoking a callback. Single-pass count.
+
+### **`EachKeyErr`**
+```go
+func EachKeyErr(data []byte, cb func(idx int, value []byte, vt ValueType, err error) error, paths ...[]string) error
+```
+Like `EachKey` but the callback returns an `error`. Return `io.EOF` for graceful stop, any other error to abort iteration immediately.
+
+### **`DeleteFound`**
+```go
+func DeleteFound(data []byte, keys ...string) (result []byte, found bool)
+```
+Like `Delete` but also returns whether the key was found and removed.
+
+### **`Escape`** and **`SetString`**
+```go
+func Escape(in string) []byte
+func SetString(data []byte, val string, keys ...string) ([]byte, error)
+```
+`Escape` produces a JSON-quoted, RFC 8259-escaped string literal (the inverse of `Unescape`).
+`SetString` is a convenience wrapper that calls `Set` with the value pre-escaped and quoted — so you never get invalid JSON from forgetting quotes:
+```go
+// Instead of: Set(data, []byte("hello"), "key")  // produces invalid JSON
+data, _ = jsonparser.SetString(data, "hello", "key")  // produces {"key":"hello"}
+```
+
+### **`EachKeyWildcard`**, **`EachArrayWildcard`** and **`SetWildcard`**
+```go
+func EachKeyWildcard(data []byte, cb func(idx int, value []byte, vt ValueType, err error), path ...string) error
+func EachArrayWildcard(data []byte, cb func(idx int, value []byte, vt ValueType, offset int, err error) error, keys ...string) (int, error)
+func SetWildcard(data []byte, setValue []byte, keys ...string) ([]byte, error)
+```
+Wildcard path support using `[*]` to fan out across all array elements:
+```go
+// Set "active" on every user in the array
+jsonparser.SetWildcard(data, []byte("true"), "users", "[*]", "active")
+```
+
+
 ### **`Append`**
 ```go
 func Append(data []byte, value []byte, keys ...string) ([]byte, error)
@@ -328,8 +382,24 @@ behavior. Returns `MalformedArrayError` if the addressed value is not an array.
 data, _ = jsonparser.Append(data, []byte(`"new_item"`), "items")
 ```
 
+### **`ParsePath`** and **`CompilePath`**
+```go
+func ParsePath(jsonPath string) ([]string, error)
+func CompilePath(jsonPath string) (CompiledPath, error)
+```
+Parse JSONPath-style strings into jsonparser's `[]string` path format:
+```go
+path, _ := jsonparser.ParsePath("$.person.name.fullName")
+// path == []string{"person", "name", "fullName"}
+```
+`CompilePath` pre-compiles for reuse with `Get`, `Set`, `Delete`, etc:
+```go
+cp, _ := jsonparser.CompilePath("$.users[0].name")
+name, _ := cp.Get(data)     // reuse across calls
+data, _ = cp.Set(data, val)
+```
 
-## What makes it so fast?
+
 * It does not rely on `encoding/json`, `reflection` or `interface{}`, the only real package dependency is `bytes`.
 * Operates with JSON payload on byte level, providing you pointers to the original data structure: no memory allocation.
 * No automatic type conversions, by default everything is a []byte, but it provides you value type, so you can convert by yourself (there is few helpers included).
@@ -369,7 +439,7 @@ https://github.com/buger/jsonparser/blob/master/benchmark/benchmark_small_payloa
 | tidwall/gjson | 402 | 64 | 3 |
 | pquerna/ffjson | **632** | **520** | **10** |
 | mailru/easyjson | **237** | **216** | **7** |
-| buger/jsonparser (ObjectEach) | **205** | 64 | 2 |
+| buger/jsonparser (EachObject) | **205** | 64 | 2 |
 | buger/jsonparser (EachKey) | **227** | **0** | **0** |
 | buger/jsonparser (Get) | **339** | **0** | **0** |
 
@@ -424,7 +494,7 @@ This project uses [ReqProof](https://reqproof.com) for formal requirements verif
 
 ReqProof found **2 real bugs** during the verification process ([see PR #281](https://github.com/buger/jsonparser/pull/281)):
 1. `Delete` panic on truncated JSON input — bounds check missing after internal sentinel value
-2. `ArrayEach` callback silently swallowing parse errors — the callback's `err` parameter was always nil
+2. `EachArray` callback silently swallowing parse errors — the callback's `err` parameter was always nil
 
 It also identified and safely removed **7 dead code blocks** that MC/DC analysis proved unreachable from any input.
 

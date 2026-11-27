@@ -47,13 +47,14 @@ func ResolveServers(servers []string) ([]net.Addr, error) {
 }
 
 // ServerSelector is the interface that selects a memcache server
-// as a function of the item's key.
+// as a function of the item key or the shard key.
 //
 // All ServerSelector implementations must be safe for concurrent use
 // by multiple goroutines.
 type ServerSelector interface {
 	// PickServer returns the server address that a given item
-	// should be shared onto.
+	// should be shared onto. The client passes the shard key of the call
+	// when it has one, and the item key otherwise.
 	PickServer(key string) (net.Addr, error)
 	Each(func(net.Addr) error) error
 }

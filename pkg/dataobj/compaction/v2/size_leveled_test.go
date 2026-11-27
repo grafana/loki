@@ -17,7 +17,7 @@ type namedRun struct {
 }
 
 func (r namedRun) Sections() []*compactionv2pb.SectionRef {
-	return []*compactionv2pb.SectionRef{{ObjectPath: r.path}}
+	return []*compactionv2pb.SectionRef{{ObjectPath: r.path, UncompressedSize: int64(r.size)}}
 }
 func (r namedRun) Size() uint64 { return r.size }
 

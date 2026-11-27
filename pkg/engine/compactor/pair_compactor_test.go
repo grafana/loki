@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -546,6 +547,98 @@ func TestPairCompactorPlanAndStart(t *testing.T) {
 		require.Len(t, replacer.snapshot(), 1)
 	})
 
+	t.Run("a second scan reads no stats of index runs that it read before", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairs(t, bucket, "indexes/a", "indexes/b", "indexes/c")
+		counting := newCountingBucket(bucket)
+		c := newPairTestCoordinator(t, counting.wrapped(), &fakeRunner{err: errors.New("worker failed")}, &fakeReplacer{swapped: true})
+		p := c.newPairCompactor("acme")
+
+		p.planAndStart(t.Context())
+		p.runningJobs.Wait()
+		readsAfterFirstScan := counting.reads.Load()
+		p.planAndStart(t.Context())
+		p.runningJobs.Wait()
+
+		require.Equal(t, float64(3), testutil.ToFloat64(c.metrics.pairStatsCacheRequestsTotal.WithLabelValues("acme", statsCacheMiss)))
+		require.Equal(t, float64(3), testutil.ToFloat64(c.metrics.pairStatsCacheRequestsTotal.WithLabelValues("acme", statsCacheHit)))
+		require.NotZero(t, readsAfterFirstScan)
+		require.Equal(t, readsAfterFirstScan, counting.reads.Load(), "the second scan must read no index object")
+		require.Equal(t, float64(3), testutil.ToFloat64(c.metrics.pairStatsCacheIndexRuns.WithLabelValues("acme")))
+	})
+
+	cacheRequests := func(c *coordinator, result string) float64 {
+		return testutil.ToFloat64(c.metrics.pairStatsCacheRequestsTotal.WithLabelValues("acme", result))
+	}
+
+	t.Run("a scan drops the cached stats of an index run that left the ToC of its window", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairs(t, bucket, "indexes/a")
+		c := newPairTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true})
+		p := c.newPairCompactor("acme")
+		p.planAndStart(t.Context())
+
+		require.NoError(t, bucket.Delete(t.Context(), metastore.TableOfContentsPath("acme", imWindow())))
+		seedPairs(t, bucket, "indexes/b")
+		p.planAndStart(t.Context())
+
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.pairStatsCacheIndexRuns.WithLabelValues("acme")))
+		require.Equal(t, float64(2), cacheRequests(c, statsCacheMiss))
+		require.Zero(t, cacheRequests(c, statsCacheHit))
+	})
+
+	t.Run("a scan whose ToC read fails keeps the cached stats of the window", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairs(t, bucket, "indexes/a")
+		failing := &tocFailingBucket{Bucket: bucket}
+		c := newPairTestCoordinator(t, failing, &fakeRunner{}, &fakeReplacer{swapped: true})
+		p := c.newPairCompactor("acme")
+		p.planAndStart(t.Context())
+
+		failing.fail.Store(true)
+		p.planAndStart(t.Context())
+		failing.fail.Store(false)
+		p.planAndStart(t.Context())
+
+		require.Equal(t, float64(1), cacheRequests(c, statsCacheMiss))
+		require.Equal(t, float64(1), cacheRequests(c, statsCacheHit))
+	})
+
+	t.Run("a scan keeps the cached stats of an index run that a planned job leases", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairs(t, bucket, "indexes/a")
+		c := newPairTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true})
+		p := c.newPairCompactor("acme")
+		p.planAndStart(t.Context())
+
+		lease := jobLease{indexes: []string{"indexes/a"}}
+		require.True(t, p.leases.tryAcquire(lease))
+		p.planAndStart(t.Context())
+		p.leases.release(lease)
+		p.planAndStart(t.Context())
+
+		require.Equal(t, float64(1), cacheRequests(c, statsCacheMiss))
+		require.Equal(t, float64(1), cacheRequests(c, statsCacheHit))
+	})
+
+	t.Run("a scan from the cache plans the same jobs as a scan without it", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairs(t, bucket, "indexes/b", "indexes/c", "indexes/d")
+		seedSplitSource(t, bucket)
+		c := newPairTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{swapped: true})
+		uncached := c.newPairPlanner(newLogSectionsCache("acme", newCoordinatorMetrics(prometheus.NewRegistry())))
+		cached := c.newPairPlanner(newLogSectionsCache("acme", c.metrics))
+
+		want, err := uncached.planWindow(t.Context(), "acme", imWindow(), leaseSnapshot{}, splitLegacy)
+		require.NoError(t, err)
+		for range 2 {
+			got, err := cached.planWindow(t.Context(), "acme", imWindow(), leaseSnapshot{}, splitLegacy)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+		}
+		require.Equal(t, float64(4), cacheRequests(c, statsCacheHit))
+	})
+
 	t.Run("a scan sets the last plan timestamp only when it read every index run", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedPairs(t, bucket, "indexes/a")
@@ -583,6 +676,23 @@ func TestPairCompactorRunJob(t *testing.T) {
 		require.Empty(t, runner.snapshot())
 		require.Empty(t, replacer.snapshot())
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeStale))
+	})
+
+	t.Run("a job whose source index object is gone from the bucket runs no task and counts as a corrupt index", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairs(t, bucket, "indexes/a", "indexes/b")
+		require.NoError(t, bucket.Delete(t.Context(), "indexes/b"))
+		runner := &fakeRunner{}
+		replacer := &fakeReplacer{swapped: true}
+		c := newPairTestCoordinator(t, bucket, runner, replacer)
+		p := c.newPairCompactor("acme")
+
+		p.runJob(t.Context(), &pairMerge{scope: jobScope{window: imWindow(), sources: []indexRun{runOfPath("indexes/a"), runOfPath("indexes/b")}}}, 0)
+
+		require.Empty(t, runner.snapshot())
+		require.Empty(t, replacer.snapshot())
+		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeFailed))
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelPairMerge)))
 	})
 
 	t.Run("a job that ctx stops before its first slot records no outcome", func(t *testing.T) {

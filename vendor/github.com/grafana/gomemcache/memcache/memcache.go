@@ -170,16 +170,23 @@ func New(server ...string) *Client {
 
 // NewFromSelector returns a new Client using the provided ServerSelector.
 func NewFromSelector(ss ServerSelector) *Client {
-	return NewShardedFromSelector(ss, 1)
+	return NewStripedFromSelector(ss, 1)
 }
 
-// NewShardedFromSelector returns a new Client using the provided ServerSelector
-// with free connection lists striped over numShards different shards.
-func NewShardedFromSelector(ss ServerSelector, numShards int) *Client {
-	numShards = nextPowerTwo(numShards)
-	shards := make([]*freeConnectionShard, numShards)
-	for i := range numShards {
-		shards[i] = &freeConnectionShard{
+// NewShardedFromSelector is the former name of NewStripedFromSelector.
+//
+// Deprecated: Use NewStripedFromSelector.
+func NewShardedFromSelector(ss ServerSelector, numStripes int) *Client {
+	return NewStripedFromSelector(ss, numStripes)
+}
+
+// NewStripedFromSelector returns a new Client using the provided ServerSelector
+// with the free connection lists split into numStripes stripes.
+func NewStripedFromSelector(ss ServerSelector, numStripes int) *Client {
+	numStripes = nextPowerTwo(numStripes)
+	stripes := make([]*freeConnectionStripe, numStripes)
+	for i := range numStripes {
+		stripes[i] = &freeConnectionStripe{
 			mtx:  sync.Mutex{},
 			free: make(map[string][]*conn),
 		}
@@ -188,7 +195,7 @@ func NewShardedFromSelector(ss ServerSelector, numShards int) *Client {
 	c := &Client{
 		selector: ss,
 		closed:   make(chan struct{}),
-		shards:   shards,
+		stripes:  stripes,
 	}
 
 	go c.releaseIdleConnectionsUntilClosed()
@@ -243,7 +250,7 @@ type Client struct {
 	closeOnce sync.Once
 
 	selector ServerSelector
-	shards   []*freeConnectionShard
+	stripes  []*freeConnectionStripe
 }
 
 // Item is an item to be got or stored in a memcached server.
@@ -276,16 +283,16 @@ const (
 	freeSize      = unsafe.Sizeof(map[string][]*conn(nil)) //nolint:unused
 )
 
-// freeConnectionShard is a subset of free connections to a server. Shards
-// are picked using a cheap hash of the server address string. Shards exist
+// freeConnectionStripe is a subset of free connections to a server. Stripes
+// are picked using a cheap hash of the server address string. Stripes exist
 // to reduce contention when locks are taken.
-type freeConnectionShard struct {
+type freeConnectionStripe struct {
 	mtx  sync.Mutex
 	free map[string][]*conn
 
 	// Pad the size of this struct so that each instance of it ends up on a separate
-	// cache line. This ensures the locking/unlocking of the mutex for a single shard
-	// does not invalidate the cache line another shard is on.
+	// cache line. This ensures the locking/unlocking of the mutex for a single stripe
+	// does not invalidate the cache line another stripe is on.
 	_padding [cacheLineSize - mtxSize - freeSize]byte //nolint:unused
 }
 
@@ -326,23 +333,23 @@ func (cn *conn) condRelease(err *error) {
 	}
 }
 
-func (c *Client) pickShard(id string) *freeConnectionShard {
-	if len(c.shards) == 1 {
-		return c.shards[0]
+func (c *Client) pickStripe(id string) *freeConnectionStripe {
+	if len(c.stripes) == 1 {
+		return c.stripes[0]
 	}
 
 	sum := xxhash.Sum64String(id)
-	// We know the number of shards is a power of two so this
-	// is equivalent to a `%` operation on the length of shards.
-	idx := sum & uint64(len(c.shards)-1)
+	// We know the number of stripes is a power of two so this
+	// is equivalent to a `%` operation on the length of stripes.
+	idx := sum & uint64(len(c.stripes)-1)
 
-	return c.shards[idx]
+	return c.stripes[idx]
 }
 
 func (c *Client) putFreeConn(addr net.Addr, cn *conn) {
 	addrStr := addr.String()
 
-	s := c.pickShard(addrStr)
+	s := c.pickStripe(addrStr)
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -359,7 +366,7 @@ func (c *Client) putFreeConn(addr net.Addr, cn *conn) {
 func (c *Client) getFreeConn(addr net.Addr) (cn *conn, ok bool) {
 	addrStr := addr.String()
 
-	s := c.pickShard(addrStr)
+	s := c.pickStripe(addrStr)
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -431,10 +438,10 @@ func (c *Client) releaseIdleConnections() {
 		recentlyUsedThreshold = defaultRecentlyUsedConnsThreshold
 	}
 
-	for _, shard := range c.shards {
-		shard.mtx.Lock()
+	for _, stripe := range c.stripes {
+		stripe.mtx.Lock()
 
-		for addr, freeConnections := range shard.free {
+		for addr, freeConnections := range stripe.free {
 			numIdle := 0
 
 			// Count the number of idle connections. Since the least used connections are at the beginning
@@ -460,10 +467,10 @@ func (c *Client) releaseIdleConnections() {
 			for i := 0; i < numIdleToClose; i++ {
 				toClose = append(toClose, freeConnections[i].nc)
 			}
-			shard.free[addr] = shard.free[addr][numIdleToClose:]
+			stripe.free[addr] = stripe.free[addr][numIdleToClose:]
 		}
 
-		shard.mtx.Unlock()
+		stripe.mtx.Unlock()
 	}
 
 	for _, freeConn := range toClose {
@@ -528,8 +535,11 @@ func (c *Client) getConn(addr net.Addr) (*conn, error) {
 	return cn, nil
 }
 
-func (c *Client) onItem(item *Item, fn func(*Client, *bufio.ReadWriter, *Item) error) error {
-	addr, err := c.selector.PickServer(item.Key)
+func (c *Client) onItem(item *Item, shardKey string, fn func(*Client, *bufio.ReadWriter, *Item) error) error {
+	if !legalKey(item.Key) || !legalShardKey(shardKey) {
+		return ErrMalformedKey
+	}
+	addr, err := c.selector.PickServer(selectorKey(item.Key, shardKey))
 	if err != nil {
 		return err
 	}
@@ -552,7 +562,7 @@ func (c *Client) FlushAll() error {
 // memcache cache miss. The key must be at most 250 bytes in length.
 func (c *Client) Get(key string, opts ...Option) (item *Item, err error) {
 	options := newOptions(opts...)
-	err = c.withKeyAddr(key, func(addr net.Addr) error {
+	err = c.withKeyAddr(key, options.ShardKey, func(addr net.Addr) error {
 		return c.getFromAddr(context.Background(), addr, []string{key}, options, func(it *Item) { item = it })
 	})
 	if err == nil && item == nil {
@@ -566,17 +576,19 @@ func (c *Client) Get(key string, opts ...Option) (item *Item, err error) {
 // into the future at which time the item will expire. Zero means the item has
 // no expiration time. ErrCacheMiss is returned if the key is not in the cache.
 // The key must be at most 250 bytes in length.
-func (c *Client) Touch(key string, seconds int32) (err error) {
-	return c.withKeyAddr(key, func(addr net.Addr) error {
+func (c *Client) Touch(key string, seconds int32, opts ...Option) (err error) {
+	return c.withKeyAddr(key, shardKeyOf(opts), func(addr net.Addr) error {
 		return c.touchFromAddr(addr, []string{key}, seconds)
 	})
 }
 
-func (c *Client) withKeyAddr(key string, fn func(net.Addr) error) (err error) {
-	if !legalKey(key) {
+// withKeyAddr validates itemKey and shardKey, and calls fn with the address of
+// the server that handles the call.
+func (c *Client) withKeyAddr(itemKey, shardKey string, fn func(net.Addr) error) (err error) {
+	if !legalKey(itemKey) || !legalShardKey(shardKey) {
 		return ErrMalformedKey
 	}
-	addr, err := c.selector.PickServer(key)
+	addr, err := c.selector.PickServer(selectorKey(itemKey, shardKey))
 	if err != nil {
 		return err
 	}
@@ -592,8 +604,8 @@ func (c *Client) withAddrRw(addr net.Addr, fn func(*conn) error) (err error) {
 	return fn(cn)
 }
 
-func (c *Client) withKeyRw(key string, fn func(*conn) error) error {
-	return c.withKeyAddr(key, func(addr net.Addr) error {
+func (c *Client) withKeyRw(itemKey, shardKey string, fn func(*conn) error) error {
+	return c.withKeyAddr(itemKey, shardKey, func(addr net.Addr) error {
 		return c.withAddrRw(addr, fn)
 	})
 }
@@ -715,8 +727,68 @@ func (c *Client) GetMulti(ctx context.Context, keys []string, opts ...Option) (m
 		m[it.Key] = it
 	}
 
+	keyMap, err := c.keysByServer(keys, options.ShardKey)
+	if err != nil {
+		return nil, err
+	}
+
+	// A call that reaches one server needs no goroutine and no channel.
+	if len(keyMap) == 1 {
+		for addr, keys := range keyMap {
+			err = c.getFromAddr(ctx, addr, keys, options, addItemToMap)
+		}
+	} else {
+		ch := make(chan error, buffered)
+		for addr, keys := range keyMap {
+			go func(addr net.Addr, keys []string) {
+				ch <- c.getFromAddr(ctx, addr, keys, options, addItemToMap)
+			}(addr, keys)
+		}
+
+		for i := 0; i < len(keyMap); i++ {
+			ge := <-ch
+			if ge != nil {
+				err = ge
+			}
+		}
+	}
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("memcache GetMulti: %w", ctx.Err())
+	}
+	return m, err
+}
+
+// keysByServer groups keys by the server that serves them. It returns
+// ErrMalformedKey for an illegal item key or shard key, or the error of the
+// selector. For no keys it returns no group and picks no server.
+//
+// When shardKey is not empty, all keys form one group for the server of the
+// shard key. The group is the keys slice itself, not a copy.
+func (c *Client) keysByServer(itemKeys []string, shardKey string) (map[net.Addr][]string, error) {
+	if !legalShardKey(shardKey) {
+		return nil, ErrMalformedKey
+	}
+
 	keyMap := make(map[net.Addr][]string)
-	for _, key := range keys {
+
+	if shardKey != "" {
+		for _, key := range itemKeys {
+			if !legalKey(key) {
+				return nil, ErrMalformedKey
+			}
+		}
+		if len(itemKeys) == 0 {
+			return keyMap, nil
+		}
+		addr, err := c.selector.PickServer(shardKey)
+		if err != nil {
+			return nil, err
+		}
+		keyMap[addr] = itemKeys
+		return keyMap, nil
+	}
+
+	for _, key := range itemKeys {
 		if !legalKey(key) {
 			return nil, ErrMalformedKey
 		}
@@ -726,25 +798,7 @@ func (c *Client) GetMulti(ctx context.Context, keys []string, opts ...Option) (m
 		}
 		keyMap[addr] = append(keyMap[addr], key)
 	}
-
-	ch := make(chan error, buffered)
-	for addr, keys := range keyMap {
-		go func(addr net.Addr, keys []string) {
-			ch <- c.getFromAddr(ctx, addr, keys, options, addItemToMap)
-		}(addr, keys)
-	}
-
-	var err error
-	for i := 0; i < len(keyMap); i++ {
-		ge := <-ch
-		if ge != nil {
-			err = ge
-		}
-	}
-	if ctx.Err() != nil {
-		return nil, fmt.Errorf("memcache GetMulti: %w", ctx.Err())
-	}
-	return m, err
+	return keyMap, nil
 }
 
 // parseGetResponse reads a GET response from r and calls cb for each
@@ -829,8 +883,8 @@ func cut(s string, sep byte) (before, after string, found bool) {
 }
 
 // Set writes the given item, unconditionally.
-func (c *Client) Set(item *Item) error {
-	return c.onItem(item, (*Client).set)
+func (c *Client) Set(item *Item, opts ...Option) error {
+	return c.onItem(item, shardKeyOf(opts), (*Client).set)
 }
 
 func (c *Client) set(rw *bufio.ReadWriter, item *Item) error {
@@ -839,8 +893,8 @@ func (c *Client) set(rw *bufio.ReadWriter, item *Item) error {
 
 // Add writes the given item, if no value already exists for its
 // key. ErrNotStored is returned if that condition is not met.
-func (c *Client) Add(item *Item) error {
-	return c.onItem(item, (*Client).add)
+func (c *Client) Add(item *Item, opts ...Option) error {
+	return c.onItem(item, shardKeyOf(opts), (*Client).add)
 }
 
 func (c *Client) add(rw *bufio.ReadWriter, item *Item) error {
@@ -849,8 +903,8 @@ func (c *Client) add(rw *bufio.ReadWriter, item *Item) error {
 
 // Replace writes the given item, but only if the server *does*
 // already hold data for this key
-func (c *Client) Replace(item *Item) error {
-	return c.onItem(item, (*Client).replace)
+func (c *Client) Replace(item *Item, opts ...Option) error {
+	return c.onItem(item, shardKeyOf(opts), (*Client).replace)
 }
 
 func (c *Client) replace(rw *bufio.ReadWriter, item *Item) error {
@@ -864,8 +918,11 @@ func (c *Client) replace(rw *bufio.ReadWriter, item *Item) error {
 // is returned if the value was modified in between the
 // calls. ErrNotStored is returned if the value was evicted in between
 // the calls.
-func (c *Client) CompareAndSwap(item *Item) error {
-	return c.onItem(item, (*Client).cas)
+//
+// The item that Get returns does not hold the shard key. If a call stored the
+// item with a shard key, pass the same shard key to CompareAndSwap.
+func (c *Client) CompareAndSwap(item *Item, opts ...Option) error {
+	return c.onItem(item, shardKeyOf(opts), (*Client).cas)
 }
 
 func (c *Client) cas(rw *bufio.ReadWriter, item *Item) error {
@@ -957,15 +1014,15 @@ func writeExpectf(rw *bufio.ReadWriter, expect []byte, format string, args ...in
 
 // Delete deletes the item with the provided key. The error ErrCacheMiss is
 // returned if the item didn't already exist in the cache.
-func (c *Client) Delete(key string) error {
-	return c.withKeyRw(key, func(conn *conn) error {
+func (c *Client) Delete(key string, opts ...Option) error {
+	return c.withKeyRw(key, shardKeyOf(opts), func(conn *conn) error {
 		return writeExpectf(conn.rw, resultDeleted, "delete %s\r\n", key)
 	})
 }
 
 // DeleteAll deletes all items in the cache.
 func (c *Client) DeleteAll() error {
-	return c.withKeyRw("", func(conn *conn) error {
+	return c.withKeyRw("", "", func(conn *conn) error {
 		return writeExpectf(conn.rw, resultDeleted, "flush_all\r\n")
 	})
 }
@@ -981,8 +1038,8 @@ func (c *Client) Ping() error {
 // didn't exist in memcached the error is ErrCacheMiss. The value in
 // memcached must be an decimal number, or an error will be returned.
 // On 64-bit overflow, the new value wraps around.
-func (c *Client) Increment(key string, delta uint64) (newValue uint64, err error) {
-	return c.incrDecr("incr", key, delta)
+func (c *Client) Increment(key string, delta uint64, opts ...Option) (newValue uint64, err error) {
+	return c.incrDecr("incr", key, shardKeyOf(opts), delta)
 }
 
 // Decrement atomically decrements key by delta. The return value is
@@ -991,13 +1048,13 @@ func (c *Client) Increment(key string, delta uint64) (newValue uint64, err error
 // memcached must be an decimal number, or an error will be returned.
 // On underflow, the new value is capped at zero and does not wrap
 // around.
-func (c *Client) Decrement(key string, delta uint64) (newValue uint64, err error) {
-	return c.incrDecr("decr", key, delta)
+func (c *Client) Decrement(key string, delta uint64, opts ...Option) (newValue uint64, err error) {
+	return c.incrDecr("decr", key, shardKeyOf(opts), delta)
 }
 
-func (c *Client) incrDecr(verb, key string, delta uint64) (uint64, error) {
+func (c *Client) incrDecr(verb, key, shardKey string, delta uint64) (uint64, error) {
 	var val uint64
-	err := c.withKeyRw(key, func(conn *conn) error {
+	err := c.withKeyRw(key, shardKey, func(conn *conn) error {
 		rw := conn.rw
 		line, err := writeReadLine(rw, "%s %s %d\r\n", verb, key, delta)
 		if err != nil {

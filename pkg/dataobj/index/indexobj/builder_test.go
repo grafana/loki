@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -53,7 +54,7 @@ func TestBuilder(t *testing.T) {
 	}
 
 	t.Run("builds one section of each appended kind, all for the builder's tenant", func(t *testing.T) {
-		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 
 		for _, obs := range testPostings {
@@ -74,13 +75,13 @@ func TestBuilder(t *testing.T) {
 
 func TestNewBuilder(t *testing.T) {
 	t.Run("returns a builder bound to the tenant", func(t *testing.T) {
-		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 		require.Equal(t, testTenant, builder.Tenant())
 	})
 
 	t.Run("returns an error when the tenant is empty", func(t *testing.T) {
-		_, err := NewBuilder("", testBuilderConfig, nil, NewBuilderMetrics(nil))
+		_, err := NewBuilder("", testBuilderConfig, nil, NewBuilderMetrics(nil), nil)
 		require.ErrorContains(t, err, "tenant must not be empty")
 	})
 }
@@ -89,7 +90,7 @@ func TestBuilder_AppendIndexPointer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 
 	for i := range 300 {
@@ -121,7 +122,7 @@ func TestBuilder_AppendWatermark(t *testing.T) {
 
 	newBuilder := func(t *testing.T) *Builder {
 		t.Helper()
-		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		builder, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 		return builder
 	}
@@ -255,14 +256,14 @@ func TestBuilder_AppendWatermark(t *testing.T) {
 
 func TestBuilder_TimeRange(t *testing.T) {
 	t.Run("returns the builder's tenant and zero times when the builder is empty", func(t *testing.T) {
-		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 
 		require.Equal(t, dataobj.TimeRange{Tenant: testTenant}, b.TimeRange())
 	})
 
 	t.Run("returns the range of the postings when the builder holds postings", func(t *testing.T) {
-		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 
 		base := time.Unix(8000, 0).UTC()
@@ -283,7 +284,7 @@ func TestBuilder_TimeRange(t *testing.T) {
 	})
 
 	t.Run("returns zero times after Reset", func(t *testing.T) {
-		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 
 		b.ObserveLabelPosting(postings.LabelObservation{
@@ -337,7 +338,7 @@ func newBuilderWithSections(t *testing.T, store scratch.Store, n int) *Builder {
 
 	cfg := testBuilderConfig
 	cfg.TargetSectionSize = 1
-	builder, err := NewBuilder(testTenant, cfg, store, NewBuilderMetrics(nil))
+	builder, err := NewBuilder(testTenant, cfg, store, NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 
 	for i := range n {
@@ -355,7 +356,7 @@ func newBuilderWithSections(t *testing.T, store scratch.Store, n int) *Builder {
 // stop at the error, so Flush must hand back nothing when it fails.
 func TestBuilder_FlushReturnsNoCloserOnError(t *testing.T) {
 	t.Run("when the builder is empty", func(t *testing.T) {
-		builder, err := NewBuilder(testTenant, testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(nil))
+		builder, err := NewBuilder(testTenant, testBuilderConfig, scratch.NewMemory(), NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 
 		obj, closer, err := builder.Flush()
@@ -438,4 +439,87 @@ func TestBuilder_FlushResetsBuilder(t *testing.T) {
 			require.ErrorIs(t, err, ErrBuilderEmpty)
 		})
 	}
+}
+
+func TestBuilder_BloomDenyList(t *testing.T) {
+	denyObservedTimestamp := []string{"observed_timestamp"}
+
+	t.Run("writes a filter that matches every value for a denied column", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), denyObservedTimestamp)
+		require.NoError(t, err)
+
+		b.PrepareBloomColumn("/obj", 0, "observed_timestamp", 1000, 0)
+		for i, v := range []string{"1700000000000000001", "1700000000000000002"} {
+			require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "observed_timestamp", Value: v, StreamID: int64(i), Timestamp: time.Unix(1, 0)}))
+		}
+
+		row := bloomRowsByColumn(t, flushBuilderRows(t, b))["observed_timestamp"]
+		require.Equal(t, postings.PassAllBloomFilter(), row.BloomFilter)
+		require.True(t, bloomFilterMatches(t, row, "1700000000000000003"))
+		require.Equal(t, []byte{0b00000011}, row.StreamIDBitmap)
+	})
+
+	t.Run("keeps a pruning filter for a column that is not denied", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), denyObservedTimestamp)
+		require.NoError(t, err)
+
+		b.PrepareBloomColumn("/obj", 0, "trace_id", 100, 0)
+		require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "trace_id", Value: "abc", Timestamp: time.Unix(1, 0)}))
+
+		row := bloomRowsByColumn(t, flushBuilderRows(t, b))["trace_id"]
+		require.True(t, bloomFilterMatches(t, row, "abc"))
+		require.False(t, bloomFilterMatches(t, row, "def"))
+	})
+
+	t.Run("keeps a pruning filter for every column when the deny list is empty", func(t *testing.T) {
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), nil)
+		require.NoError(t, err)
+
+		b.PrepareBloomColumn("/obj", 0, "observed_timestamp", 100, 0)
+		require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{ObjectPath: "/obj", SectionIndex: 0, ColumnName: "observed_timestamp", Value: "1", Timestamp: time.Unix(1, 0)}))
+
+		row := bloomRowsByColumn(t, flushBuilderRows(t, b))["observed_timestamp"]
+		require.False(t, bloomFilterMatches(t, row, "2"))
+	})
+}
+
+// flushBuilderRows flushes b and returns the postings rows of its object.
+func flushBuilderRows(t *testing.T, b *Builder) []postings.Row {
+	t.Helper()
+	obj, closer, err := b.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+	return postingsRowsOf(t, obj.Sections())
+}
+
+// postingsRowsOf returns the rows of every postings section in sections.
+func postingsRowsOf(t *testing.T, sections dataobj.Sections) []postings.Row {
+	t.Helper()
+	var rows []postings.Row
+	for _, sec := range sections.Filter(postings.CheckSection) {
+		section, err := postings.Open(t.Context(), sec)
+		require.NoError(t, err)
+		rows = append(rows, readAllPostingsRows(t.Context(), t, section)...)
+	}
+	return rows
+}
+
+// bloomRowsByColumn returns the bloom rows by column name. It fails the test
+// for a row that is not a bloom row.
+func bloomRowsByColumn(t *testing.T, rows []postings.Row) map[string]postings.Row {
+	t.Helper()
+	byColumn := make(map[string]postings.Row)
+	for _, row := range rows {
+		require.Equal(t, postings.KindBloom, row.Kind)
+		byColumn[row.ColumnName] = row
+	}
+	return byColumn
+}
+
+// bloomFilterMatches reports whether the filter of row matches value.
+func bloomFilterMatches(t *testing.T, row postings.Row, value string) bool {
+	t.Helper()
+	var filter bloom.BloomFilter
+	require.NoError(t, filter.UnmarshalBinary(row.BloomFilter))
+	return filter.Test([]byte(value))
 }

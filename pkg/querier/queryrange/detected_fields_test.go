@@ -911,7 +911,7 @@ func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Strea
 			Timestamp: time.Unix(int64(i), 0),
 			Line:      line,
 		}
-		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
+		_, logfmtSuccess := logFmtParser.Process(0, logql_log.UnsafeBytes{UnsafeData: []byte(line)}, lblBuilder)
 		if logfmtSuccess {
 			entry.Parsed = logproto.FromLabelsToLabelAdapters(lblBuilder.LabelsResult().Parsed())
 		}
@@ -969,7 +969,7 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 			Line:               line,
 			StructuredMetadata: metadata,
 		}
-		_, logfmtSuccess := logFmtParser.Process(0, []byte(line), lblBuilder)
+		_, logfmtSuccess := logFmtParser.Process(0, logql_log.UnsafeBytes{UnsafeData: []byte(line)}, lblBuilder)
 		if logfmtSuccess {
 			entry.Parsed = logproto.FromLabelsToLabelAdapters(lblBuilder.LabelsResult().Parsed())
 		}

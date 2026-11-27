@@ -180,6 +180,30 @@ A cache item has these properties:
 A reader treats an item that fails a check as a miss, and the next write replaces it. A wrong or
 damaged cache costs time, and it cannot change the result of a query.
 
+### Where the items live
+
+A cache backend such as memcached can spread keys over several servers. Each group has its own key, so
+without help the groups of one object land on different servers. A lookup for several groups then reads
+from several servers, and it fails when one of them is slow or down.
+
+The prefetcher and the region loader give every cache call for an object the same shard key. A cache
+that spreads keys over servers picks the server from the shard key, and not from the key of the item.
+So all the items of an object sit on one server, and a lookup reads from one server. A cache that does
+not spread keys ignores the shard key.
+
+- **A hash of the path.** The memcached client checks a shard key like an item key: at most 250 bytes,
+  with no whitespace or control character. A path can break both rules, so the shard key is a hash of
+  the path. A collision is harmless, because the shard key only picks a server. The two objects then
+  share one.
+- **The same key for the store and the lookup.** A lookup does not find an item that a store wrote with
+  another shard key, because it asks another server. Every cache call of the prefetcher and of the
+  region loader passes the shard key.
+- **A server that is down.** It fails the lookups for the objects that it holds. Without a shard key,
+  it fails a part of most lookups.
+- **A rollout.** Items that an older querier stored sit on the servers that their own keys picked. A
+  lookup with the shard key misses them, so each object loads once more and fills the cache again. This
+  is the same as a restart of the cache.
+
 ## Metrics
 
 Two counters show where the metadata of a query comes from.

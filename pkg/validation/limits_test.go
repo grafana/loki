@@ -1256,6 +1256,30 @@ func TestDataObjCompaction_DefaultsFalse(t *testing.T) {
 	require.False(t, runLog)
 }
 
+func TestDataObjCompaction_MaxLogsRunSizeUncompressedBytes(t *testing.T) {
+	t.Run("returns 8TB by default", func(t *testing.T) {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+		ov, err := NewOverrides(defaults, nil)
+		require.NoError(t, err)
+		require.Equal(t, uint64(8<<40), ov.MaxLogsRunSizeUncompressedBytes("tenant-a"))
+	})
+
+	t.Run("returns the tenant override parsed from YAML in powers of 2 and the default for other tenants", func(t *testing.T) {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+		var tenant Limits
+		require.NoError(t, yaml.Unmarshal([]byte("dataobj_compaction_max_logs_run_size_uncompressed_bytes: 1TB"), &tenant))
+		ov, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{"tenant-a": &tenant}))
+		require.NoError(t, err)
+
+		require.Equal(t, uint64(1<<40), ov.MaxLogsRunSizeUncompressedBytes("tenant-a"))
+		require.Equal(t, uint64(8<<40), ov.MaxLogsRunSizeUncompressedBytes("tenant-b"))
+	})
+}
+
 func TestDataObjCompaction_IndexOnlyOverride(t *testing.T) {
 	var defaults Limits
 	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
@@ -1674,5 +1698,56 @@ func TestOverrides_ShardLayout(t *testing.T) {
 		ov, err := NewOverrides(newDefaults(), newMockTenantLimits(map[string]*Limits{"custom": &tenantLimits}))
 		require.NoError(t, err)
 		require.Equal(t, streams.DefaultShardLayout(), ov.DataObjShardLayout("custom"))
+	})
+}
+
+func TestOverrides_DataObjBloomDenyList(t *testing.T) {
+	newDefaults := func() Limits {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		return defaults
+	}
+	tenantWith := func(t *testing.T, yamlText string) *Limits {
+		t.Helper()
+		limits := newDefaults()
+		require.NoError(t, yaml.Unmarshal([]byte(yamlText), &limits))
+		return &limits
+	}
+
+	t.Run("denies observed_timestamp for a tenant without an override", func(t *testing.T) {
+		ov, err := NewOverrides(newDefaults(), nil)
+		require.NoError(t, err)
+		require.Equal(t, []string{"observed_timestamp"}, ov.DataObjBloomDenyList("any-tenant"))
+	})
+
+	t.Run("returns the global value for a tenant that does not set the field", func(t *testing.T) {
+		global := tenantWith(t, `dataobj_bloom_deny_list: "a,b"`)
+		other := *global
+		other.DataObjShardFactor = 8
+		ov, err := NewOverrides(*global, newMockTenantLimits(map[string]*Limits{"other": &other}))
+		require.NoError(t, err)
+		require.Equal(t, []string{"a", "b"}, ov.DataObjBloomDenyList("other"))
+	})
+
+	t.Run("returns the list of the tenant's own override instead of the global list", func(t *testing.T) {
+		custom := tenantWith(t, `dataobj_bloom_deny_list: "observed_timestamp,span_id"`)
+		ov, err := NewOverrides(newDefaults(), newMockTenantLimits(map[string]*Limits{"custom": custom}))
+		require.NoError(t, err)
+		require.Equal(t, []string{"observed_timestamp", "span_id"}, ov.DataObjBloomDenyList("custom"))
+		require.Equal(t, []string{"observed_timestamp"}, ov.DataObjBloomDenyList("other"))
+	})
+
+	t.Run("ignores the spaces around a name and skips empty names", func(t *testing.T) {
+		custom := tenantWith(t, `dataobj_bloom_deny_list: " observed_timestamp , span_id,,"`)
+		ov, err := NewOverrides(newDefaults(), newMockTenantLimits(map[string]*Limits{"custom": custom}))
+		require.NoError(t, err)
+		require.Equal(t, []string{"observed_timestamp", "span_id"}, ov.DataObjBloomDenyList("custom"))
+	})
+
+	t.Run("denies no column when the tenant sets an empty list", func(t *testing.T) {
+		custom := tenantWith(t, `dataobj_bloom_deny_list: ""`)
+		ov, err := NewOverrides(newDefaults(), newMockTenantLimits(map[string]*Limits{"custom": custom}))
+		require.NoError(t, err)
+		require.Empty(t, ov.DataObjBloomDenyList("custom"))
 	})
 }

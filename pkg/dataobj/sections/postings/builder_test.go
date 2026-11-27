@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -603,37 +605,71 @@ func TestCheckSection(t *testing.T) {
 	})
 }
 
-func TestReader_SmallBatchSize(t *testing.T) {
+func TestReader_Read(t *testing.T) {
 	b := NewBuilder(nil, 0, 0, 1<<20)
 	ts := time.Unix(0, 0)
 	for i := range 5 {
-		b.ObserveLabelPosting(LabelObservation{ColumnName: "col", LabelValue: fmt.Sprintf("val%d", i), Time: At(ts)})
+		b.ObserveLabelPosting(LabelObservation{ColumnName: "col", LabelValue: fmt.Sprintf("val%d", i), Time: At(ts), ShardBuckets: 8, ShardBucket: uint32(i)})
 	}
 
 	sections := flushAndOpenSections(t, b)
 	require.Len(t, sections, 1)
+	section := sections[0]
 
-	r := NewReader(ReaderOptions{
-		Columns:   sections[0].Columns(),
-		Allocator: memory.DefaultAllocator,
+	t.Run("reads every row in batches that do not exceed the batch size", func(t *testing.T) {
+		r := NewReader(ReaderOptions{
+			Columns:   section.Columns(),
+			Allocator: memory.DefaultAllocator,
+		})
+		require.NoError(t, r.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+		var totalRows int64
+		for {
+			batch, err := r.Read(t.Context(), 2)
+			if batch != nil {
+				require.LessOrEqual(t, batch.NumRows(), int64(2), "batch should not exceed batchSize")
+				totalRows += batch.NumRows()
+			}
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			require.NoError(t, err)
+		}
+		require.Equal(t, int64(5), totalRows, "should read all 5 rows across batches")
 	})
-	require.NoError(t, r.Open(context.Background()))
-	t.Cleanup(func() { _ = r.Close() })
 
-	// Read in batches of 2 and accumulate rows to verify streaming behavior.
-	var totalRows int64
-	for {
-		batch, err := r.Read(context.Background(), 2)
-		if batch != nil {
-			require.LessOrEqual(t, batch.NumRows(), int64(2), "batch should not exceed batchSize")
-			totalRows += batch.NumRows()
-		}
-		if errors.Is(err, io.EOF) {
-			break
-		}
+	t.Run("returns only the matching rows and the projected columns when a predicate reads a column outside Columns", func(t *testing.T) {
+		r := NewReader(ReaderOptions{
+			Columns: []*Column{sectionColumn(section, ColumnTypeLabelValue)},
+			Predicates: []Predicate{
+				EqualPredicate{Column: sectionColumn(section, ColumnTypeMaxShardBucket), Value: scalar.NewInt64Scalar(3)},
+			},
+		})
+		require.NoError(t, r.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+		batch, err := r.Read(t.Context(), 10)
 		require.NoError(t, err)
-	}
-	require.Equal(t, int64(5), totalRows, "should read all 5 rows across batches")
+		require.Equal(t, int64(1), batch.NumRows())
+		require.Equal(t, int64(1), batch.NumCols())
+		require.Equal(t, "val3", batch.Column(0).(*array.String).Value(0))
+	})
+
+	t.Run("leaves the columns of the section unchanged when Columns is a prefix of them and a predicate reads another column", func(t *testing.T) {
+		before := slices.Clone(section.Columns())
+
+		r := NewReader(ReaderOptions{
+			Columns: section.Columns()[:1],
+			Predicates: []Predicate{
+				EqualPredicate{Column: sectionColumn(section, ColumnTypeMaxShardBucket), Value: scalar.NewInt64Scalar(3)},
+			},
+		})
+		require.NoError(t, r.Open(t.Context()))
+		t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+		require.True(t, slices.Equal(before, section.Columns()), "Open changed the columns of the section")
+	})
 }
 
 // TestBuilder_ObserveLabelPosting verifies that multiple stream IDs for the

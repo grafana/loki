@@ -8,13 +8,12 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
-	"github.com/grafana/jsonparser"
-
 	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
 
+	"github.com/buger/jsonparser"
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -88,7 +87,7 @@ func NewJSONParser(captureJSONPath bool) *JSONParser {
 	}
 }
 
-func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (j *JSONParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	parserHints := lbs.ParserLabelHints()
 	if parserHints.NoLabels() {
 		return line, true
@@ -106,7 +105,7 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	// array. It clears the whole capacity, because entries past the length can point into the line.
 	defer func() { clear(j.prefixBuffer[:cap(j.prefixBuffer)]) }()
 
-	if err := jsonparser.ObjectEach(line, j.parseObject); err != nil {
+	if err := jsonparser.ObjectEach(line.UnsafeData, j.parseObject); err != nil {
 		if errors.Is(err, errFoundAllLabels) {
 			// Short-circuited
 			return line, true
@@ -364,7 +363,7 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 	}, nil
 }
 
-func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (r *RegexpParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	parserHints := lbs.ParserLabelHints()
 	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
@@ -374,7 +373,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		return line, false
 	}
 
-	for i, value := range r.regex.FindSubmatch(line) {
+	for i, value := range r.regex.FindSubmatch(line.UnsafeData) {
 		if name, ok := r.nameIndex[i]; ok {
 			key, shouldExtract := r.keys.get(unsafeGetBytes(name), parserHints, func() (string, bool) {
 				sanitized := sanitizeLabelKey(name)
@@ -431,7 +430,7 @@ func NewLogfmtParser(strict, keepEmpty bool) *LogfmtParser {
 	}
 }
 
-func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (l *LogfmtParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	parserHints := lbs.ParserLabelHints()
 	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
@@ -441,7 +440,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		return line, false
 	}
 
-	l.dec.Reset(line)
+	l.dec.Reset(line.UnsafeData)
 	// The decoder retains the line until the next Reset. Reset(nil) drops it, so the parser retains no
 	// reference to the line.
 	defer l.dec.Reset(nil)
@@ -537,7 +536,7 @@ func NewPatternParser(pn string) (*PatternParser, error) {
 	}, nil
 }
 
-func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (l *PatternParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	parserHints := lbs.ParserLabelHints()
 	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
@@ -546,7 +545,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	if !labelFilterHints.ShouldParseLine(line, lbs) {
 		return line, false
 	}
-	matches := l.matcher.Matches(line)
+	matches := l.matcher.Matches(line.UnsafeData)
 	// The matcher keeps the captures, which are sub-slices of the line. Reset drops them, so the parser
 	// retains no reference to the line.
 	defer l.matcher.Reset()
@@ -655,7 +654,7 @@ func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current stri
 	return false
 }
 
-func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (l *LogfmtExpressionParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	// If there are no expressions, extract common labels
 	// and add the suffix "_extracted"
 	if len(l.expressions) == 0 {
@@ -678,7 +677,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 		return false
 	}
 
-	l.dec.Reset(line)
+	l.dec.Reset(line.UnsafeData)
 	// The decoder retains the line until the next Reset. Reset(nil) drops it, so the parser retains no
 	// reference to the line.
 	defer l.dec.Reset(nil)
@@ -832,21 +831,21 @@ func JSONPathToStrings(paths []interface{}) []string {
 	return stringPaths
 }
 
-func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if len(line) == 0 || lbs.ParserLabelHints().NoLabels() {
+func (j *JSONExpressionParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
+	if len(line.UnsafeData) == 0 || lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 
 	// Check that the line starts correctly
 	// the parser will pass an error if other
 	// parts of the line are malformed
-	if !isValidJSONStart(line) {
+	if !isValidJSONStart(line.UnsafeData) {
 		lbs.SetErr(errJSON, nil)
 		return line, true
 	}
 
 	var matches int
-	jsonparser.EachKey(line, func(idx int, data []byte, typ jsonparser.ValueType, err error) {
+	jsonparser.EachKey(line.UnsafeData, func(idx int, data []byte, typ jsonparser.ValueType, err error) {
 		if err != nil {
 			lbs.SetErr(errJSON, err)
 			return
@@ -940,28 +939,28 @@ func (u *UnpackParser) Hints() StageHints {
 
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }
 
-func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if len(line) == 0 || lbs.ParserLabelHints().NoLabels() {
+func (u *UnpackParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
+	if len(line.UnsafeData) == 0 || lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 
 	// we only care about object and values.
-	if line[0] != '{' {
+	if line.UnsafeData[0] != '{' {
 		lbs.SetErr(errJSON, errUnexpectedJSONObject)
 		return line, true
 	}
 
 	u.lbsBuffer = u.lbsBuffer[:0]
-	entry, err := u.unpack(line, lbs)
+	entry, err := u.unpack(line.UnsafeData, lbs)
 	if err != nil {
 		if errors.Is(err, errLabelDoesNotMatch) {
-			return entry, false
+			return UnsafeBytes{UnsafeData: entry}, false
 		}
 		lbs.SetErr(errJSON, err)
 		return line, true
 	}
 
-	return entry, true
+	return UnsafeBytes{UnsafeData: entry}, true
 }
 
 func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) {

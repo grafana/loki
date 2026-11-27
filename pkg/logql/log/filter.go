@@ -63,6 +63,9 @@ type Matcher interface {
 
 // Filterer is a interface to filter log lines.
 type Filterer interface {
+	// Filter reports whether the line passes the filter. The line is only valid until Filter
+	// returns. The caller can reuse or overwrite its memory right after. So Filter must not retain
+	// the line, or any portion of it.
 	Filter(line []byte) bool
 	ToStage() Stage
 }
@@ -155,8 +158,8 @@ func (e existsFilter) Filter(line []byte) bool {
 }
 
 func (e existsFilter) ToStage() Stage {
-	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-		return line, e.Filter(line)
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+		return line, e.Filter(line.UnsafeData)
 	})
 }
 
@@ -175,8 +178,8 @@ func (n notFilter) Filter(line []byte) bool {
 }
 
 func (n notFilter) ToStage() Stage {
-	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-		return line, n.Filter(line)
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+		return line, n.Filter(line.UnsafeData)
 	})
 }
 
@@ -221,8 +224,8 @@ func (a andFilter) Filter(line []byte) bool {
 }
 
 func (a andFilter) ToStage() Stage {
-	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-		return line, a.Filter(line)
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+		return line, a.Filter(line.UnsafeData)
 	})
 }
 
@@ -300,8 +303,8 @@ func (a andFilters) Filter(line []byte) bool {
 }
 
 func (a andFilters) ToStage() Stage {
-	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-		return line, a.Filter(line)
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+		return line, a.Filter(line.UnsafeData)
 	}).withLineFilter(a)
 }
 
@@ -347,8 +350,8 @@ func (a orFilter) Filter(line []byte) bool {
 }
 
 func (a orFilter) ToStage() Stage {
-	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-		return line, a.Filter(line)
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+		return line, a.Filter(line.UnsafeData)
 	})
 }
 
@@ -382,8 +385,8 @@ func (r regexpFilter) Filter(line []byte) bool {
 }
 
 func (r regexpFilter) ToStage() Stage {
-	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-		return line, r.Filter(line)
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+		return line, r.Filter(line.UnsafeData)
 	})
 }
 
@@ -409,8 +412,8 @@ func (l equalFilter) Filter(line []byte) bool {
 }
 
 func (l equalFilter) ToStage() Stage {
-	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-		return line, l.Filter(line)
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+		return line, l.Filter(line.UnsafeData)
 	})
 }
 
@@ -538,8 +541,8 @@ func containsLower(line, substr []byte) bool {
 }
 
 func (l containsFilter) ToStage() Stage {
-	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-		return line, l.Filter(line)
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+		return line, l.Filter(line.UnsafeData)
 	}).withLineFilter(&l)
 }
 
@@ -588,8 +591,8 @@ func (f containsAllFilter) Filter(line []byte) bool {
 }
 
 func (f containsAllFilter) ToStage() Stage {
-	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-		return line, f.Filter(line)
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+		return line, f.Filter(line.UnsafeData)
 	}).withLineFilter(&f)
 }
 
@@ -879,7 +882,7 @@ func (f *patternFilter) Matches(test Checker) bool {
 }
 
 func (f *patternFilter) ToStage() Stage {
-	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-		return line, f.Filter(line)
+	return NewStageFunc(nil, lineFilterHints(), func(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+		return line, f.Filter(line.UnsafeData)
 	})
 }

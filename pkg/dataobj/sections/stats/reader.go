@@ -181,7 +181,7 @@ type Reader struct {
 	opts     ReaderOptions
 	schema   *arrow.Schema
 	ready    bool
-	inner    *columnar.ReaderAdapter
+	inner    *dataset.RowReader
 	alloc    *memoryv2.Allocator
 	readSpan trace.Span
 }
@@ -232,10 +232,16 @@ func (r *Reader) Open(ctx context.Context) error {
 	return nil
 }
 
-// Read reads up to batchSize rows from the section. At end of section returns
-// (nil, io.EOF). May return a non-nil batch with io.EOF — callers should
-// process the batch before checking the error. Returned batches must be
-// released by the caller after use.
+// Read reads up to batchSize rows from the section. Read returns an error if
+// batchSize is not positive.
+//
+// A batch that comes with a nil error has at least one row. A batch with fewer
+// than batchSize rows does not mean that the section ended. At the end of the
+// section, Read returns an empty batch and [io.EOF].
+//
+// A batch that comes with an error has no rows. Read never returns a nil batch
+// with [io.EOF]. It can return a nil batch with another error. The caller must
+// release every returned batch.
 func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
@@ -246,11 +252,12 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
 	}
 	defer r.alloc.Reclaim()
-	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
+	rb, readErr := r.inner.ReadRecordBatch(ctx, r.alloc, batchSize)
 	result, err := arrowconv.ToRecordBatch(rb, r.schema)
 	if err != nil {
 		return nil, fmt.Errorf("convert columnar.RecordBatch to arrow.RecordBatch: %w", err)
 	}
+
 	return result, readErr
 }
 
@@ -284,7 +291,7 @@ func (r *Reader) init(ctx context.Context) error {
 		StatsTracker:      r.opts.StatsTracker,
 	}
 	if r.inner == nil {
-		r.inner = columnar.NewReaderAdapter(innerOptions)
+		r.inner = dataset.NewRowReader(innerOptions)
 	} else {
 		r.inner.Reset(innerOptions)
 	}

@@ -51,7 +51,7 @@ func BenchmarkCalculator_Calculate(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := range b.N {
-		indexBuilder, err := indexobj.NewBuilder(benchTenant, benchCalculatorConfig, scratch.NewMemory(), indexobj.NewBuilderMetrics(nil))
+		indexBuilder, err := indexobj.NewBuilder(benchTenant, benchCalculatorConfig, scratch.NewMemory(), indexobj.NewBuilderMetrics(nil), nil)
 		require.NoError(b, err)
 
 		calc := NewCalculator(indexBuilder, NewCalculatorMetrics(nil))

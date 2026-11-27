@@ -263,7 +263,7 @@ func (b *Builder) Close() {
 }
 
 func (b *Builder) buildIndex(ctx context.Context) error {
-	indexBuilder, err := indexobj.NewBuilder(Tenant, b.builderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	indexBuilder, err := indexobj.NewBuilder(Tenant, b.builderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 	if err != nil {
 		return fmt.Errorf("creating logs builder: %w", err)
 	}

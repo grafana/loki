@@ -19,12 +19,21 @@ import (
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
 
+// TenantOverrides provides the per-tenant settings that the index tasks read.
+type TenantOverrides interface {
+	// DataObjBloomDenyList returns the names of the structured metadata
+	// columns of the tenant that get no bloom filter in the index.
+	DataObjBloomDenyList(tenant string) []string
+}
+
 type Config struct {
 	// ScratchStore holds the temporary data of compaction tasks. Optional; nil
 	// keeps the data in memory.
 	ScratchStore scratch.Store
 	// IndexobjCfg is the builder config for index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
+	// TenantOverrides provides the per-tenant settings of index objects.
+	TenantOverrides TenantOverrides
 	// LogsobjCfg is the builder config for log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
 	// BuilderMetrics is shared by logs object builders across worker tasks.
@@ -112,6 +121,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		getExternalInputs:  cfg.GetExternalInputs,
 		scratchStore:       cfg.ScratchStore,
 		indexobjCfg:        cfg.IndexobjCfg,
+		tenantOverrides:    cfg.TenantOverrides,
 		logsobjCfg:         cfg.LogsobjCfg,
 		builderMetrics:     cfg.BuilderMetrics,
 		indexMergeObserver: cfg.IndexMergeObserver,
@@ -142,10 +152,11 @@ type Context struct {
 
 	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 
-	scratchStore   scratch.Store
-	indexobjCfg    logsobj.BuilderBaseConfig
-	logsobjCfg     logsobj.BuilderBaseConfig
-	builderMetrics *logsobj.BuilderMetrics
+	scratchStore    scratch.Store
+	indexobjCfg     logsobj.BuilderBaseConfig
+	tenantOverrides TenantOverrides
+	logsobjCfg      logsobj.BuilderBaseConfig
+	builderMetrics  *logsobj.BuilderMetrics
 
 	indexMergeObserver IndexMergeObserver
 	logMergeObserver   LogMergeObserver

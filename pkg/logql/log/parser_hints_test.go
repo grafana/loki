@@ -323,7 +323,7 @@ func TestStreamSampleExtractor_Process(t *testing.T) {
 
 			sse := ex.ForStream(lbs)
 			for range 2 {
-				sample, ok := sse.Process(0, append([]byte{}, tt.line...), labels.EmptyLabels())
+				sample, ok := sse.Process(0, log.UnsafeBytes{UnsafeData: append([]byte{}, tt.line...)}, labels.EmptyLabels())
 				require.Equal(t, tt.expectOk, ok)
 
 				var lbsResString string
@@ -395,7 +395,7 @@ func TestStreamSampleExtractor_Process(t *testing.T) {
 
 			sse := ex.ForStream(tt.stream)
 			for range 2 {
-				sample, ok := sse.Process(0, append([]byte{}, tt.line...), tt.structuredMetadata)
+				sample, ok := sse.Process(0, log.UnsafeBytes{UnsafeData: append([]byte{}, tt.line...)}, tt.structuredMetadata)
 				require.True(t, ok)
 				require.Equal(t, 1.0, sample.Value)
 				require.Equal(t, tt.expectLbs, sample.Labels.String())
@@ -594,8 +594,8 @@ func TestNewLabelFilterHints_Boundary(t *testing.T) {
 		require.True(t, h.ShouldContinueParsingLine("bar", lb))
 
 		lb.Reset()
-		require.False(t, h.ShouldParseLine([]byte("foo=1 bar=nope"), lb))
-		require.True(t, h.ShouldParseLine([]byte("foo=1 bar=bazz"), lb))
+		require.False(t, h.ShouldParseLine(log.UnsafeBytes{UnsafeData: []byte("foo=1 bar=nope")}, lb))
+		require.True(t, h.ShouldParseLine(log.UnsafeBytes{UnsafeData: []byte("foo=1 bar=bazz")}, lb))
 	})
 }
 

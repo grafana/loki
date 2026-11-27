@@ -57,6 +57,10 @@ type WorkerParams struct {
 	// IndexobjCfg is the builder config for compacted index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
+	// TenantOverrides provides the per-tenant settings of compacted index
+	// objects.
+	TenantOverrides executor.TenantOverrides
+
 	// LogsobjCfg is the builder config for compacted log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
 
@@ -104,6 +108,10 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		return nil, errors.New("an advertise address must be provided")
 	}
 
+	if params.TenantOverrides == nil {
+		return nil, errors.New("tenant overrides must be provided")
+	}
+
 	listener := wire.NewHTTP2Listener(
 		params.AdvertiseAddr,
 		wire.WithHTTP2ListenerLogger(params.Logger),
@@ -128,10 +136,11 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 
 		NumThreads: params.Config.WorkerThreads,
 
-		ScratchStore:   params.ScratchStore,
-		IndexobjCfg:    params.IndexobjCfg,
-		LogsobjCfg:     params.LogsobjCfg,
-		BuilderMetrics: builderMetrics,
+		ScratchStore:    params.ScratchStore,
+		IndexobjCfg:     params.IndexobjCfg,
+		TenantOverrides: params.TenantOverrides,
+		LogsobjCfg:      params.LogsobjCfg,
+		BuilderMetrics:  builderMetrics,
 
 		IndexMergeObserver:   params.IndexMergeObserver,
 		NewLogMergeObserver:  params.NewLogMergeObserver,

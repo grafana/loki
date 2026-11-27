@@ -60,9 +60,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
-	github.com/grafana/dskit v0.0.0-20261118194849-a94746663b7a
-	github.com/grafana/gomemcache v0.0.0-20261112174412-3f2aa5dee9f7
-	github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34
+	github.com/grafana/dskit v0.0.0-20261126092325-91e4d6e9ad64
+	github.com/grafana/gomemcache v0.0.0-20261125152902-0d86d0d01144
 	github.com/grafana/loki/pkg/push v0.0.0-20261021195341-fdeb199c5b0a
 	github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4
@@ -428,3 +427,5 @@ replace github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v
 
 // See comment above for github.com/twmb/franz-go.
 replace github.com/twmb/franz-go/pkg/kmsg => github.com/twmb/franz-go/pkg/kmsg v1.15.0
+
+replace github.com/buger/jsonparser => github.com/grafana/jsonparser v0.0.0-20261127111657-0e8bf9e99bdb

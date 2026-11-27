@@ -42,6 +42,9 @@ func BoundsFromProto(pb logproto.FPBounds) FingerprintBounds {
 // ParseBoundsFromAddr parses a fingerprint bounds from a string
 func ParseBoundsFromAddr(s string) (FingerprintBounds, error) {
 	parts := strings.Split(s, "-")
+	if len(parts) != 2 {
+		return FingerprintBounds{}, fmt.Errorf("invalid fingerprint bounds %q: expected <min>-<max>", s)
+	}
 	return ParseBoundsFromParts(parts[0], parts[1])
 }
 

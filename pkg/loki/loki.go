@@ -910,7 +910,7 @@ func (t *Loki) setupModuleManager() error {
 		DataObjExplorer:          {Server},
 		DataObjBuilder:           {ScratchStore, Server, Overrides},
 		DataObjCompactionPlanner: {Server, Overrides},
-		DataObjCompactionWorker:  {ScratchStore, Server},
+		DataObjCompactionWorker:  {ScratchStore, Server, Overrides},
 		ScratchStore:             {},
 
 		LoglineIndexBuilder:             {LoglineBuilderPartitionRing, Server},

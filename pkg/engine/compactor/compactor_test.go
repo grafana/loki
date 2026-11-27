@@ -18,15 +18,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
-// fakeLimits reports per-tenant compaction phase enablement. newFakeLimits
-// enables index-only compaction for the listed tenants (log stays off). Use
-// setLog and setSweep to adjust a tenant at runtime. The zero value enables
-// nothing.
+// fakeLimits reports the per-tenant compaction phases and maximum log run
+// size. newFakeLimits enables index-only compaction for the listed tenants
+// (log stays off). Use setLog, setSweep and setMaxLogsRunUncompressedBytes to
+// adjust a tenant at runtime. The zero value enables nothing.
 type fakeLimits struct {
-	mu    sync.Mutex
-	index map[string]bool
-	log   map[string]bool
-	sweep map[string]bool
+	mu                          sync.Mutex
+	index                       map[string]bool
+	log                         map[string]bool
+	sweep                       map[string]bool
+	maxLogsRunUncompressedBytes map[string]uint64
 }
 
 func newFakeLimits(indexTenants ...string) *fakeLimits {
@@ -34,7 +35,19 @@ func newFakeLimits(indexTenants ...string) *fakeLimits {
 	for _, t := range indexTenants {
 		idx[t] = true
 	}
-	return &fakeLimits{index: idx, log: map[string]bool{}, sweep: map[string]bool{}}
+	return &fakeLimits{index: idx, log: map[string]bool{}, sweep: map[string]bool{}, maxLogsRunUncompressedBytes: map[string]uint64{}}
+}
+
+func (f *fakeLimits) MaxLogsRunSizeUncompressedBytes(userID string) uint64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.maxLogsRunUncompressedBytes[userID]
+}
+
+func (f *fakeLimits) setMaxLogsRunUncompressedBytes(userID string, size uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.maxLogsRunUncompressedBytes[userID] = size
 }
 
 func (f *fakeLimits) DeletionSweepEnabled(userID string) bool {
