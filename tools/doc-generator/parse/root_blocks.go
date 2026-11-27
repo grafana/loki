@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
+	"github.com/grafana/loki/v3/pkg/chunkbuilder"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -103,6 +104,11 @@ var (
 			Name:       "logline",
 			StructType: []reflect.Type{reflect.TypeFor[loglineconfig.Config]()},
 			Desc:       "The logline block configures experimental logline indexing and query filtering.",
+		},
+		{
+			Name:       "chunk_builder",
+			StructType: []reflect.Type{reflect.TypeFor[chunkbuilder.Config]()},
+			Desc:       "The chunk_builder block configures the experimental chunk-builder, which is under development. Each chunk-builder consumes one partition of a Kafka topic.",
 		},
 		{
 			Name:       "index_gateway",

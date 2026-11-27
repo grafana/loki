@@ -36,6 +36,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
+	"github.com/grafana/loki/v3/pkg/chunkbuilder"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
@@ -122,6 +123,7 @@ type Config struct {
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
 	Logline             loglineconfig.Config       `yaml:"logline,omitempty" category:"experimental"`
+	ChunkBuilder        chunkbuilder.Config        `yaml:"chunk_builder,omitempty" category:"experimental"`
 
 	IngestLimits               limits.Config                 `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend       limits_frontend.Config        `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
@@ -248,6 +250,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.IngestLimitsFrontendClient.RegisterFlags(f)
 	c.DataObj.RegisterFlags(f)
 	c.Logline.RegisterFlags(f)
+	c.ChunkBuilder.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -401,6 +404,12 @@ func (c *Config) Validate() error {
 	// A no-op unless logline query narrowing is enabled.
 	if err := c.Logline.ValidateQueryConfig(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid logline config"))
+	}
+	// The topic has no default, so validate only when the chunk-builder is enabled.
+	if c.ChunkBuilder.Enabled {
+		if err := c.ChunkBuilder.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid chunk_builder config"))
+		}
 	}
 	if err := c.Distributor.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
@@ -869,6 +878,9 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer, modules.UserInvisibleTargetableModule)
 	mm.RegisterModule(ScratchStore, t.initScratchStore, modules.UserInvisibleModule)
 
+	// Chunk-builder: keep the target invisible while it is experimental.
+	mm.RegisterModule(ChunkBuilder, t.initChunkBuilder, modules.UserInvisibleTargetableModule)
+
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
@@ -919,6 +931,8 @@ func (t *Loki) setupModuleManager() error {
 		LoglineCorrectness:              {Server},
 		LoglineScheduler:                {Server, Overrides},
 		LoglineCompactor:                {Server},
+
+		ChunkBuilder: {Server},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}

@@ -1479,6 +1479,10 @@ dataobj:
 # filtering.
 [logline: <logline>]
 
+# The chunk_builder block configures the experimental chunk-builder, which is
+# under development. Each chunk-builder consumes one partition of a Kafka topic.
+[chunk_builder: <chunk_builder>]
+
 ingest_limits:
   # Enable the ingest limits service.
   # CLI flag: -ingest-limits.enabled
@@ -2482,6 +2486,33 @@ embedded_cache:
   # The time to live for items in the cache before they get purged.
   # CLI flag: -<prefix>.embedded-cache.ttl
   [ttl: <duration> | default = 1h]
+```
+
+### chunk_builder
+
+The `chunk_builder` block configures the experimental chunk-builder, which is under development. Each chunk-builder consumes one partition of a Kafka topic.
+
+```yaml
+# Experimental: Enable the chunk-builder target. Each chunk-builder consumes one
+# partition of a Kafka topic. It is under development and does not build chunks
+# yet.
+# CLI flag: -chunk-builder.enabled
+[enabled: <boolean> | default = false]
+
+# The Kafka topic that the chunk-builder consumes. Required when the
+# chunk-builder is enabled.
+# CLI flag: -chunk-builder.topic
+[topic: <string> | default = ""]
+
+# The Kafka partition to consume. A negative value derives it from the ordinal
+# suffix of the instance hostname, so chunk-builder-3 consumes partition 3.
+# CLI flag: -chunk-builder.partition-id
+[partition_id: <int> | default = -1]
+
+# The Kafka consumer group whose committed offset the chunk-builder resumes
+# from.
+# CLI flag: -chunk-builder.consumer-group
+[consumer_group: <string> | default = "chunk-builder"]
 ```
 
 ### chunk_store_config
