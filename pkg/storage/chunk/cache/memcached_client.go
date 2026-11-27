@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"net"
 	"sort"
 	"strconv"
@@ -67,6 +68,9 @@ type memcachedClient struct {
 
 	cfg MemcachedClientConfig
 
+	// lookupIP resolves server hostnames when an IP family is configured.
+	lookupIP func(ctx context.Context, network, host string) ([]net.IP, error)
+
 	// DialTimeout specifies a custom dialer used to dial new connections to a server.
 	DialTimeout func(network, address string, timeout time.Duration) (net.Conn, error)
 }
@@ -81,6 +85,7 @@ type MemcachedClientConfig struct {
 	MaxItemSize    int           `yaml:"max_item_size"`
 	UpdateInterval time.Duration `yaml:"update_interval"`
 	ConsistentHash bool          `yaml:"consistent_hash"`
+	IPFamily       string        `yaml:"ip_family"`
 	CBFailures     uint          `yaml:"circuit_breaker_consecutive_failures"`
 	CBTimeout      time.Duration `yaml:"circuit_breaker_timeout"`  // reset error count after this long
 	CBInterval     time.Duration `yaml:"circuit_breaker_interval"` // remain closed for this long after CBFailures errors
@@ -101,6 +106,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on memcached requests.")
 	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, description+"Period with which to poll DNS for memcache servers.")
 	f.BoolVar(&cfg.ConsistentHash, prefix+"memcached.consistent-hash", true, description+"Use consistent hashing to distribute to memcache servers.")
+	f.StringVar(&cfg.IPFamily, prefix+"memcached.ip-family", "", description+"IP family used to resolve memcached server hostnames. Supported values: ipv4, ipv6. If empty, both A and AAAA records are looked up. Only hostnames that are not resolved yet are affected, for example the targets of dnssrvnoa+ or the hostname and service settings.")
 	f.UintVar(&cfg.CBFailures, prefix+"memcached.circuit-breaker-consecutive-failures", 10, description+"Trip circuit-breaker after this number of consecutive dial failures (if zero then circuit-breaker is disabled).")
 	f.DurationVar(&cfg.CBTimeout, prefix+"memcached.circuit-breaker-timeout", 10*time.Second, description+"Duration circuit-breaker remains open after tripping (if zero then 60 seconds is used).")
 	f.DurationVar(&cfg.CBInterval, prefix+"memcached.circuit-breaker-interval", 10*time.Second, description+"Reset circuit-breaker counts after this long (if zero then never reset).")
@@ -114,7 +120,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Registerer, logger log.Logger, metricsNamespace string) MemcachedClient {
 	var selector serverSelector
 	if cfg.ConsistentHash {
-		selector = jumphash.DefaultSelector("memcached")
+		selector = jumphash.NewSelector("memcached", net.ResolveUnixAddr, tcpResolverForFamily(cfg.IPFamily))
 	} else {
 		selector = &memcache.ServerList{}
 	}
@@ -157,6 +163,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		cbInterval:  cfg.CBInterval,
 		cbTimeout:   cfg.CBTimeout,
 		maxItemSize: cfg.MaxItemSize,
+		lookupIP:    net.DefaultResolver.LookupIP,
 		quit:        make(chan struct{}),
 
 		numServers: promauto.With(r).NewGauge(prometheus.GaugeOpts{
@@ -281,10 +288,10 @@ func (c *memcachedClient) updateLoop(updateInterval time.Duration) {
 func (c *memcachedClient) updateMemcacheServers() error {
 	var servers []string
 
-	if len(c.addresses) > 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
+	if len(c.addresses) > 0 {
 		if err := c.provider.Resolve(ctx, c.addresses); err != nil {
 			return err
 		}
@@ -296,6 +303,23 @@ func (c *memcachedClient) updateMemcacheServers() error {
 		}
 		for _, srv := range addrs {
 			servers = append(servers, net.JoinHostPort(srv.Target, strconv.Itoa(int(srv.Port))))
+		}
+	}
+
+	if c.cfg.IPFamily != "" {
+		if _, err := ipFamilyNetwork(c.cfg.IPFamily); err != nil {
+			return err
+		}
+		// The consistent hash selector sorts servers by name and resolves them
+		// with a family-specific resolver, so the names have to stay as they
+		// are. Replacing them with IPs would reorder the ring whenever a pod
+		// gets a new IP. The plain server list keeps the input order, so it's
+		// safe to resolve the names here.
+		if !c.cfg.ConsistentHash {
+			var err error
+			if servers, err = c.resolveServers(ctx, servers); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -319,4 +343,79 @@ func (c *memcachedClient) updateMemcacheServers() error {
 	sort.Strings(servers)
 	c.numServers.Set(float64(len(servers)))
 	return c.serverList.SetServers(servers...)
+}
+
+// ipFamilyNetwork returns the network name passed to the resolver for the
+// given IP family. An empty family means any family.
+func ipFamilyNetwork(family string) (string, error) {
+	switch family {
+	case "":
+		return "ip", nil
+	case "ipv4":
+		return "ip4", nil
+	case "ipv6":
+		return "ip6", nil
+	default:
+		return "", fmt.Errorf("unsupported memcached ip_family %q, supported values are ipv4 and ipv6", family)
+	}
+}
+
+// tcpResolverForFamily returns the TCP resolver the consistent hash selector
+// uses for the given IP family. "tcp4" and "tcp6" only look up A or AAAA
+// records respectively. IP literals are kept as they are, so one address of
+// the other family doesn't make the whole server list fail.
+func tcpResolverForFamily(family string) jumphash.TCPResolver {
+	network := ""
+	switch family {
+	case "ipv4":
+		network = "tcp4"
+	case "ipv6":
+		network = "tcp6"
+	default:
+		return net.ResolveTCPAddr
+	}
+	return func(_, address string) (*net.TCPAddr, error) {
+		if host, _, err := net.SplitHostPort(address); err == nil && net.ParseIP(host) != nil {
+			return net.ResolveTCPAddr("tcp", address)
+		}
+		return net.ResolveTCPAddr(network, address)
+	}
+}
+
+// resolveServers resolves server hostnames to addresses of the configured IP
+// family. The server selector would otherwise resolve them itself, which
+// always looks up both A and AAAA records. Unix socket paths and IP literals
+// are kept as they are.
+func (c *memcachedClient) resolveServers(ctx context.Context, servers []string) ([]string, error) {
+	network, err := ipFamilyNetwork(c.cfg.IPFamily)
+	if err != nil {
+		return nil, err
+	}
+
+	resolved := make([]string, 0, len(servers))
+	for _, server := range servers {
+		if strings.Contains(server, "/") {
+			resolved = append(resolved, server)
+			continue
+		}
+
+		host, port, err := net.SplitHostPort(server)
+		if err != nil {
+			return nil, err
+		}
+		if net.ParseIP(host) != nil {
+			resolved = append(resolved, server)
+			continue
+		}
+
+		ips, err := c.lookupIP(ctx, network, host)
+		if err != nil {
+			return nil, errors.Wrapf(err, "resolving memcached server %s", server)
+		}
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("no %s address found for memcached server %s", c.cfg.IPFamily, server)
+		}
+		resolved = append(resolved, net.JoinHostPort(ips[0].String(), port))
+	}
+	return resolved, nil
 }

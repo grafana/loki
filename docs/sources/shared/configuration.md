@@ -2383,6 +2383,13 @@ memcached_client:
   # CLI flag: -<prefix>.memcached.consistent-hash
   [consistent_hash: <boolean> | default = true]
 
+  # IP family used to resolve memcached server hostnames. Supported values:
+  # ipv4, ipv6. If empty, both A and AAAA records are looked up. Only hostnames
+  # that are not resolved yet are affected, for example the targets of
+  # dnssrvnoa+ or the hostname and service settings.
+  # CLI flag: -<prefix>.memcached.ip-family
+  [ip_family: <string> | default = ""]
+
   # Trip circuit-breaker after this number of consecutive dial failures (if zero
   # then circuit-breaker is disabled).
   # CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
