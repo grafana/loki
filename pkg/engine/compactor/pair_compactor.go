@@ -76,7 +76,7 @@ type pairCompactor struct {
 // settings of c. It reads the stats of index runs through cache.
 func (c *coordinator) newPairPlanner(cache *logSectionsCache) *pairPlanner {
 	return &pairPlanner{
-		logger:                      c.logger,
+		logger:                      c.pairLogger,
 		bucket:                      c.indexBucket,
 		metrics:                     c.metrics,
 		strategy:                    c.logMergePlanningStrategy,
@@ -93,7 +93,7 @@ func (c *coordinator) newPairPlanner(cache *logSectionsCache) *pairPlanner {
 func (c *coordinator) newPairCompactor(tenant string) *pairCompactor {
 	return &pairCompactor{
 		tenant:           tenant,
-		logger:           log.With(c.logger, "tenant", tenant, "planner", "pairs"),
+		logger:           log.With(c.pairLogger, "tenant", tenant),
 		planner:          c.newPairPlanner(newLogSectionsCache(tenant, c.metrics)),
 		bucket:           c.indexBucket,
 		publisher:        c.publisher,

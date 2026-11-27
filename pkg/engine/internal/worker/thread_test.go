@@ -1,8 +1,10 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -134,26 +136,51 @@ func TestThread_drainPipeline_RecordsPhasesOnFailure(t *testing.T) {
 	}
 }
 
-func TestThread_runJob_ReportsInvalidTask(t *testing.T) {
-	peers := newTestPeerPair(t)
-
-	job := &threadJob{
-		Context:   t.Context(),
-		Scheduler: peers.workerPeer,
-		Task: &workflow.Task{
-			ULID:     ulid.Make(),
-			Fragment: physical.FromGraph(dag.Graph[physical.Node]{}),
-		},
-		Sinks: make(map[ulid.ULID]*streamSink),
-		Close: func() {},
+func TestThread_runJob(t *testing.T) {
+	newJob := func(peers *testPeerPair, graph dag.Graph[physical.Node]) *threadJob {
+		return &threadJob{
+			Context:   t.Context(),
+			Scheduler: peers.workerPeer,
+			Task: &workflow.Task{
+				ULID:     ulid.Make(),
+				Fragment: physical.FromGraph(graph),
+			},
+			Sinks: make(map[ulid.ULID]*streamSink),
+			Close: func() {},
+		}
 	}
 
-	th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
-	th.runJob(t.Context(), job)
+	t.Run("reports a failed result for a task without a root node", func(t *testing.T) {
+		peers := newTestPeerPair(t)
 
-	outcome := peers.waitForTaskResult(t, 2*time.Second)
-	require.Equal(t, workflow.TaskOutcomeFailed, outcome)
-	require.Empty(t, peers.taskResults, "worker should emit exactly one task result")
+		th := &thread{Logger: log.NewNopLogger(), Metrics: newMetrics()}
+		th.runJob(t.Context(), newJob(peers, dag.Graph[physical.Node]{}))
+
+		outcome := peers.waitForTaskResult(t, 2*time.Second)
+		require.Equal(t, workflow.TaskOutcomeFailed, outcome)
+		require.Empty(t, peers.taskResults, "worker should emit exactly one task result")
+	})
+
+	t.Run("logs every task line with the task name and the component of the thread once", func(t *testing.T) {
+		peers := newTestPeerPair(t)
+		var graph dag.Graph[physical.Node]
+		graph.Add(&physical.DeletionSweep{NodeID: ulid.Make()})
+
+		var logs bytes.Buffer
+		logger := log.With(log.NewLogfmtLogger(log.NewSyncWriter(&logs)), "component", "compaction-worker")
+		th := &thread{Logger: logger, Metrics: newMetrics()}
+		th.runJob(t.Context(), newJob(peers, graph))
+		peers.waitForTaskResult(t, 2*time.Second)
+
+		lines := strings.Split(strings.TrimSpace(logs.String()), "\n")
+		require.NotEmpty(t, lines)
+		for _, line := range lines {
+			require.Equal(t, 1, strings.Count(line, "component="), line)
+			require.Contains(t, line, "component=compaction-worker", line)
+			require.Equal(t, 1, strings.Count(line, " task="), line)
+			require.Contains(t, line, " task=deletion-sweep", line)
+		}
+	})
 }
 
 func TestStreamSinkCloseIsIdempotent(t *testing.T) {

@@ -29,6 +29,7 @@ type WorkerParams struct {
 	DataBucket   objstore.Bucket
 	ScratchStore scratch.Store
 
+	// Logger must not carry a component key, because NewWorker sets it.
 	Logger     log.Logger
 	Registerer prometheus.Registerer
 
@@ -96,7 +97,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 	wm := newWorkerMetrics(registerer)
 
 	inner, err := engine.NewWorker(engine.WorkerParams{
-		Logger:       log.With(logger, "component", "dataobj-compaction-worker"),
+		Logger:       log.With(logger, "component", "compaction-worker"),
 		IndexBucket:  params.IndexBucket,
 		DataBucket:   params.DataBucket,
 		ScratchStore: params.ScratchStore,

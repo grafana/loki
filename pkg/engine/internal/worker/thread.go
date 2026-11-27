@@ -193,6 +193,12 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		slotOutcome = t.sendTaskResult(ctx, job, taskType, result, slotPhase, logger)
 		return
 	}
+	// A root without a task name gets no task key, because node_type on the
+	// "starting task" line identifies it.
+	if name, ok := physical.TaskName(root); ok {
+		logger = log.With(logger, "task", name)
+	}
+
 	defer pprof.SetGoroutineLabels(ctx)
 	ctx = pprof.WithLabels(ctx, pprof.Labels("node_type", root.Type().String()))
 	pprof.SetGoroutineLabels(ctx)

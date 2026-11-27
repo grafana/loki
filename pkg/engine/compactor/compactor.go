@@ -31,8 +31,10 @@ type PlannerParams struct {
 	DataBucket      objstore.BucketReader
 	MetastoreWriter *metastore.TableOfContentsWriter // required
 	Limits          Limits                           // required
-	Logger          log.Logger
-	Registerer      prometheus.Registerer
+	// Logger must not carry a component key, because each part of the
+	// planner sets its own.
+	Logger     log.Logger
+	Registerer prometheus.Registerer
 }
 
 // Planner is the dataobj-compaction-planner target service. It hosts an
@@ -74,7 +76,7 @@ func New(params PlannerParams) (*Planner, error) {
 
 	sched, err := newScheduler(
 		params.Config.Scheduler,
-		log.With(logger, "component", "dataobj-compaction-scheduler"),
+		log.With(logger, "component", "compaction-scheduler"),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction planner: construct scheduler: %w", err)
@@ -82,7 +84,7 @@ func New(params PlannerParams) (*Planner, error) {
 
 	coord, err := newCoordinator(
 		params.Config,
-		log.With(logger, "component", "dataobj-compaction-coordinator"),
+		logger,
 		params.IndexBucket,
 		params.DataBucket,
 		sched.inner,
@@ -96,7 +98,7 @@ func New(params PlannerParams) (*Planner, error) {
 
 	p := &Planner{
 		cfg:         params.Config,
-		logger:      logger,
+		logger:      log.With(logger, "component", "compaction-planner"),
 		scheduler:   sched,
 		coordinator: coord,
 	}

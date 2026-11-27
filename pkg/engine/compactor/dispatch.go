@@ -257,20 +257,13 @@ func (d *planDispatcher) runOne(ctx context.Context, tenant, actor string, plan 
 	return artifacts, nil
 }
 
-// rootActor returns the scheduler actor for a compaction plan, based on the
-// type of its root node. The scheduler uses the actor to queue tasks fairly,
-// so each kind of compaction task gets its own queue.
+// rootActor returns the scheduler actor for a compaction plan. The actor is
+// the task name of its root node. The scheduler uses the actor to queue tasks
+// fairly, so each kind of compaction task gets its own queue.
 func rootActor(root physical.Node) (string, error) {
-	switch root.(type) {
-	case *physical.IndexMerge:
-		return "index-merge", nil
-	case *physical.LogMerge:
-		return "log-merge", nil
-	case *physical.IndexFilter:
-		return "index-filter", nil
-	case *physical.DeletionSweep:
-		return "deletion-sweep", nil
-	default:
+	name, ok := physical.TaskName(root)
+	if !ok {
 		return "", fmt.Errorf("unsupported compaction plan root %T", root)
 	}
+	return name, nil
 }
