@@ -916,6 +916,7 @@ func newIntegrationCoordinatorWithIndexConfig(ctx context.Context, t *testing.T,
 	c := &coordinator{
 		cfg:             compactionCfg,
 		logger:          log.NewNopLogger(),
+		pairLogger:      log.NewNopLogger(),
 		indexBucket:     bucket,
 		indexDispatcher: newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.MaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		logDispatcher:   newPlanDispatcher(log.NewNopLogger(), run, compactionCfg.LogMaxRunningCompactionTasks, compactionCfg.TaskMaxRetries, compactionCfg.taskRetryBackoff(), metrics.taskAttemptsTotal),

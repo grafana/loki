@@ -2221,8 +2221,6 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
 	}
 
-	logger := log.With(util_log.Logger, "component", componentName)
-
 	store, err := t.getDataObjBucket(componentName)
 	if err != nil {
 		return nil, err
@@ -2239,7 +2237,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		indexBucket,
 		metastore.DefaultTocWriterBackoffConfig,
 		metastore.DefaultTocBuilderConfig,
-		logger,
+		log.With(util_log.Logger, "component", "window-scanner"),
 		metastore.NewTocWriterMetrics(reg),
 		indexobj.NewBuilderMetrics(reg),
 	)
@@ -2250,7 +2248,7 @@ func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
 		DataBucket:      store,
 		MetastoreWriter: tocWriter,
 		Limits:          t.Overrides,
-		Logger:          logger,
+		Logger:          util_log.Logger,
 		Registerer:      prometheus.DefaultRegisterer,
 	})
 	if err != nil {
@@ -2289,8 +2287,6 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		return nil, fmt.Errorf("invalid dataobj compaction config: %w", err)
 	}
 
-	logger := log.With(util_log.Logger, "component", "dataobj-compaction-worker")
-
 	store, err := t.getDataObjBucket("dataobj-compaction-worker")
 	if err != nil {
 		return nil, err
@@ -2312,7 +2308,7 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		IndexobjCfg:     t.Cfg.DataObj.Compaction.IndexobjBuilder,
 		TenantOverrides: t.Overrides,
 		LogsobjCfg:      t.Cfg.DataObj.Compaction.LogsobjBuilder,
-		Logger:          logger,
+		Logger:          util_log.Logger,
 		Registerer:      prometheus.DefaultRegisterer,
 	})
 	if err != nil {

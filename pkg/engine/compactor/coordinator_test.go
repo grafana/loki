@@ -253,6 +253,7 @@ func newTestCoordinator(t *testing.T, bucket objstore.Bucket, runner *fakeRunner
 	return &coordinator{
 		cfg:             cfg,
 		logger:          logger,
+		pairLogger:      logger,
 		indexBucket:     bucket,
 		indexDispatcher: newPlanDispatcher(logger, runner.run, 4, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		logDispatcher:   newPlanDispatcher(logger, runner.run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),

@@ -37,6 +37,9 @@ var errStalePlan = errors.New("source index no longer exists in ToC")
 type coordinator struct {
 	cfg    Config
 	logger log.Logger
+	// pairLogger is the logger of the coupled planner. It has its own
+	// component, so it does not derive from logger.
+	pairLogger log.Logger
 	// indexBucket is the index storage. It holds the ToCs and the index
 	// objects.
 	indexBucket objstore.Bucket
@@ -73,9 +76,12 @@ type coordinator struct {
 // *metastore.TableOfContentsWriter and a workflow.Runner. indexBucket is the
 // index storage. dataBucket is the root of the data object storage. Only the
 // deletion sweep uses dataBucket, so it may be nil if the sweep is disabled.
+//
+// baseLogger must not carry a component key. newCoordinator sets a different
+// component for the coordinator, the coupled planner, and the sweep scheduler.
 func newCoordinator(
 	cfg Config,
-	logger log.Logger,
+	baseLogger log.Logger,
 	indexBucket objstore.Bucket,
 	dataBucket objstore.BucketReader,
 	runner workflow.Runner,
@@ -87,6 +93,8 @@ func newCoordinator(
 	if err != nil {
 		return nil, fmt.Errorf("log merge planning strategy: %w", err)
 	}
+	logger := log.With(baseLogger, "component", "window-scanner")
+	pairLogger := log.With(baseLogger, "component", "pair-planner")
 	run := func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
 		return runPlan(ctx, logger, runner, opts, plan)
 	}
@@ -94,10 +102,11 @@ func newCoordinator(
 	c := &coordinator{
 		cfg:             cfg,
 		logger:          logger,
+		pairLogger:      pairLogger,
 		indexBucket:     indexBucket,
 		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
-		pairDispatcher:  newPlanDispatcher(logger, run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		pairDispatcher:  newPlanDispatcher(pairLogger, run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastoreWriter,
 			timeout: cfg.ToCConsolidateTimeout,
@@ -110,7 +119,7 @@ func newCoordinator(
 		logMergePlanningStrategy: logMergePlanningStrategy,
 	}
 	if cfg.DeletionSweep.Enabled {
-		c.sweeps = newSweepScheduler(cfg.DeletionSweep, log.With(logger, "component", "deletion-sweep"), dataBucket, limits, run, metrics.taskAttemptsTotal)
+		c.sweeps = newSweepScheduler(cfg.DeletionSweep, log.With(baseLogger, "component", "deletion-sweep-scheduler"), dataBucket, limits, run, metrics.taskAttemptsTotal)
 	}
 	return c, nil
 }
