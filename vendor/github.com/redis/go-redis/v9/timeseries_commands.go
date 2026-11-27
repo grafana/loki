@@ -19,10 +19,10 @@ type TimeseriesCmdable interface {
 	TSAlter(ctx context.Context, key string, options *TSAlterOptions) *StatusCmd
 	TSCreateRule(ctx context.Context, sourceKey string, destKey string, aggregator Aggregator, bucketDuration int) *StatusCmd
 	TSCreateRuleWithArgs(ctx context.Context, sourceKey string, destKey string, aggregator Aggregator, bucketDuration int, options *TSCreateRuleOptions) *StatusCmd
-	TSIncrBy(ctx context.Context, Key string, timestamp float64) *IntCmd
-	TSIncrByWithArgs(ctx context.Context, key string, timestamp float64, options *TSIncrDecrOptions) *IntCmd
-	TSDecrBy(ctx context.Context, Key string, timestamp float64) *IntCmd
-	TSDecrByWithArgs(ctx context.Context, key string, timestamp float64, options *TSIncrDecrOptions) *IntCmd
+	TSIncrBy(ctx context.Context, Key string, value float64) *IntCmd
+	TSIncrByWithArgs(ctx context.Context, key string, value float64, options *TSIncrDecrOptions) *IntCmd
+	TSDecrBy(ctx context.Context, Key string, value float64) *IntCmd
+	TSDecrByWithArgs(ctx context.Context, key string, value float64, options *TSIncrDecrOptions) *IntCmd
 	TSDel(ctx context.Context, Key string, fromTimestamp int, toTimestamp int) *IntCmd
 	TSDeleteRule(ctx context.Context, sourceKey string, destKey string) *StatusCmd
 	TSGet(ctx context.Context, key string) *TSTimestampValueCmd
@@ -96,7 +96,7 @@ type TSAlterOptions struct {
 }
 
 type TSCreateRuleOptions struct {
-	alignTimestamp int64
+	AlignTimestamp int64
 }
 
 type TSGetOptions struct {
@@ -314,7 +314,7 @@ type TSNRevRangeOptions struct {
 	Empty           bool
 }
 
-// TSAdd - Adds one or more observations to a t-digest sketch.
+// TSAdd - Adds a sample to a time-series key.
 // For more information - https://redis.io/commands/ts.add/
 func (c cmdable) TSAdd(ctx context.Context, key string, timestamp interface{}, value float64) *IntCmd {
 	args := []interface{}{"TS.ADD", key, timestamp, value}
@@ -323,7 +323,7 @@ func (c cmdable) TSAdd(ctx context.Context, key string, timestamp interface{}, v
 	return cmd
 }
 
-// TSAddWithArgs - Adds one or more observations to a t-digest sketch.
+// TSAddWithArgs - Adds a sample to a time-series key.
 // This function also allows for specifying additional options such as:
 // Retention, ChunkSize, Encoding, DuplicatePolicy and Labels.
 // For more information - https://redis.io/commands/ts.add/
@@ -343,14 +343,14 @@ func (c cmdable) TSAddWithArgs(ctx context.Context, key string, timestamp interf
 		if options.DuplicatePolicy != "" {
 			args = append(args, "DUPLICATE_POLICY", options.DuplicatePolicy)
 		}
+		if options.IgnoreMaxTimeDiff != 0 || options.IgnoreMaxValDiff != 0 {
+			args = append(args, "IGNORE", options.IgnoreMaxTimeDiff, options.IgnoreMaxValDiff)
+		}
 		if options.Labels != nil {
 			args = append(args, "LABELS")
 			for label, value := range options.Labels {
 				args = append(args, label, value)
 			}
-		}
-		if options.IgnoreMaxTimeDiff != 0 || options.IgnoreMaxValDiff != 0 {
-			args = append(args, "IGNORE", options.IgnoreMaxTimeDiff, options.IgnoreMaxValDiff)
 		}
 	}
 	cmd := NewIntCmd(ctx, args...)
@@ -387,14 +387,14 @@ func (c cmdable) TSCreateWithArgs(ctx context.Context, key string, options *TSOp
 		if options.DuplicatePolicy != "" {
 			args = append(args, "DUPLICATE_POLICY", options.DuplicatePolicy)
 		}
+		if options.IgnoreMaxTimeDiff != 0 || options.IgnoreMaxValDiff != 0 {
+			args = append(args, "IGNORE", options.IgnoreMaxTimeDiff, options.IgnoreMaxValDiff)
+		}
 		if options.Labels != nil {
 			args = append(args, "LABELS")
 			for label, value := range options.Labels {
 				args = append(args, label, value)
 			}
-		}
-		if options.IgnoreMaxTimeDiff != 0 || options.IgnoreMaxValDiff != 0 {
-			args = append(args, "IGNORE", options.IgnoreMaxTimeDiff, options.IgnoreMaxValDiff)
 		}
 	}
 	cmd := NewStatusCmd(ctx, args...)
@@ -404,7 +404,8 @@ func (c cmdable) TSCreateWithArgs(ctx context.Context, key string, options *TSOp
 
 // TSAlter - Alters an existing time-series key with additional options.
 // This function allows for specifying additional options such as:
-// Retention, ChunkSize and DuplicatePolicy.
+// Retention, ChunkSize, DuplicatePolicy, IgnoreMaxTimeDiff, IgnoreMaxValDiff
+// and Labels.
 // For more information - https://redis.io/commands/ts.alter/
 func (c cmdable) TSAlter(ctx context.Context, key string, options *TSAlterOptions) *StatusCmd {
 	args := []interface{}{"TS.ALTER", key}
@@ -418,14 +419,14 @@ func (c cmdable) TSAlter(ctx context.Context, key string, options *TSAlterOption
 		if options.DuplicatePolicy != "" {
 			args = append(args, "DUPLICATE_POLICY", options.DuplicatePolicy)
 		}
+		if options.IgnoreMaxTimeDiff != 0 || options.IgnoreMaxValDiff != 0 {
+			args = append(args, "IGNORE", options.IgnoreMaxTimeDiff, options.IgnoreMaxValDiff)
+		}
 		if options.Labels != nil {
 			args = append(args, "LABELS")
 			for label, value := range options.Labels {
 				args = append(args, label, value)
 			}
-		}
-		if options.IgnoreMaxTimeDiff != 0 || options.IgnoreMaxValDiff != 0 {
-			args = append(args, "IGNORE", options.IgnoreMaxTimeDiff, options.IgnoreMaxValDiff)
 		}
 	}
 	cmd := NewStatusCmd(ctx, args...)
@@ -444,13 +445,13 @@ func (c cmdable) TSCreateRule(ctx context.Context, sourceKey string, destKey str
 
 // TSCreateRuleWithArgs - Creates a compaction rule from sourceKey to destKey with additional option.
 // This function allows for specifying additional option such as:
-// alignTimestamp.
+// AlignTimestamp.
 // For more information - https://redis.io/commands/ts.createrule/
 func (c cmdable) TSCreateRuleWithArgs(ctx context.Context, sourceKey string, destKey string, aggregator Aggregator, bucketDuration int, options *TSCreateRuleOptions) *StatusCmd {
 	args := []interface{}{"TS.CREATERULE", sourceKey, destKey, "AGGREGATION", aggregator.String(), bucketDuration}
 	if options != nil {
-		if options.alignTimestamp != 0 {
-			args = append(args, options.alignTimestamp)
+		if options.AlignTimestamp != 0 {
+			args = append(args, options.AlignTimestamp)
 		}
 	}
 	cmd := NewStatusCmd(ctx, args...)
@@ -458,21 +459,21 @@ func (c cmdable) TSCreateRuleWithArgs(ctx context.Context, sourceKey string, des
 	return cmd
 }
 
-// TSIncrBy - Increments the value of a time-series key by the specified timestamp.
+// TSIncrBy - Increments the value of a time-series key by the specified value.
 // For more information - https://redis.io/commands/ts.incrby/
-func (c cmdable) TSIncrBy(ctx context.Context, Key string, timestamp float64) *IntCmd {
-	args := []interface{}{"TS.INCRBY", Key, timestamp}
+func (c cmdable) TSIncrBy(ctx context.Context, Key string, value float64) *IntCmd {
+	args := []interface{}{"TS.INCRBY", Key, value}
 	cmd := NewIntCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }
 
-// TSIncrByWithArgs - Increments the value of a time-series key by the specified timestamp with additional options.
+// TSIncrByWithArgs - Increments the value of a time-series key by the specified value with additional options.
 // This function allows for specifying additional options such as:
 // Timestamp, Retention, ChunkSize, Uncompressed and Labels.
 // For more information - https://redis.io/commands/ts.incrby/
-func (c cmdable) TSIncrByWithArgs(ctx context.Context, key string, timestamp float64, options *TSIncrDecrOptions) *IntCmd {
-	args := []interface{}{"TS.INCRBY", key, timestamp}
+func (c cmdable) TSIncrByWithArgs(ctx context.Context, key string, value float64, options *TSIncrDecrOptions) *IntCmd {
+	args := []interface{}{"TS.INCRBY", key, value}
 	if options != nil {
 		if options.Timestamp != 0 {
 			args = append(args, "TIMESTAMP", options.Timestamp)
@@ -489,14 +490,14 @@ func (c cmdable) TSIncrByWithArgs(ctx context.Context, key string, timestamp flo
 		if options.DuplicatePolicy != "" {
 			args = append(args, "DUPLICATE_POLICY", options.DuplicatePolicy)
 		}
+		if options.IgnoreMaxTimeDiff != 0 || options.IgnoreMaxValDiff != 0 {
+			args = append(args, "IGNORE", options.IgnoreMaxTimeDiff, options.IgnoreMaxValDiff)
+		}
 		if options.Labels != nil {
 			args = append(args, "LABELS")
 			for label, value := range options.Labels {
 				args = append(args, label, value)
 			}
-		}
-		if options.IgnoreMaxTimeDiff != 0 || options.IgnoreMaxValDiff != 0 {
-			args = append(args, "IGNORE", options.IgnoreMaxTimeDiff, options.IgnoreMaxValDiff)
 		}
 	}
 	cmd := NewIntCmd(ctx, args...)
@@ -504,21 +505,21 @@ func (c cmdable) TSIncrByWithArgs(ctx context.Context, key string, timestamp flo
 	return cmd
 }
 
-// TSDecrBy - Decrements the value of a time-series key by the specified timestamp.
+// TSDecrBy - Decrements the value of a time-series key by the specified value.
 // For more information - https://redis.io/commands/ts.decrby/
-func (c cmdable) TSDecrBy(ctx context.Context, Key string, timestamp float64) *IntCmd {
-	args := []interface{}{"TS.DECRBY", Key, timestamp}
+func (c cmdable) TSDecrBy(ctx context.Context, Key string, value float64) *IntCmd {
+	args := []interface{}{"TS.DECRBY", Key, value}
 	cmd := NewIntCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }
 
-// TSDecrByWithArgs - Decrements the value of a time-series key by the specified timestamp with additional options.
+// TSDecrByWithArgs - Decrements the value of a time-series key by the specified value with additional options.
 // This function allows for specifying additional options such as:
 // Timestamp, Retention, ChunkSize, Uncompressed and Labels.
 // For more information - https://redis.io/commands/ts.decrby/
-func (c cmdable) TSDecrByWithArgs(ctx context.Context, key string, timestamp float64, options *TSIncrDecrOptions) *IntCmd {
-	args := []interface{}{"TS.DECRBY", key, timestamp}
+func (c cmdable) TSDecrByWithArgs(ctx context.Context, key string, value float64, options *TSIncrDecrOptions) *IntCmd {
+	args := []interface{}{"TS.DECRBY", key, value}
 	if options != nil {
 		if options.Timestamp != 0 {
 			args = append(args, "TIMESTAMP", options.Timestamp)
@@ -535,14 +536,14 @@ func (c cmdable) TSDecrByWithArgs(ctx context.Context, key string, timestamp flo
 		if options.DuplicatePolicy != "" {
 			args = append(args, "DUPLICATE_POLICY", options.DuplicatePolicy)
 		}
+		if options.IgnoreMaxTimeDiff != 0 || options.IgnoreMaxValDiff != 0 {
+			args = append(args, "IGNORE", options.IgnoreMaxTimeDiff, options.IgnoreMaxValDiff)
+		}
 		if options.Labels != nil {
 			args = append(args, "LABELS")
 			for label, value := range options.Labels {
 				args = append(args, label, value)
 			}
-		}
-		if options.IgnoreMaxTimeDiff != 0 || options.IgnoreMaxValDiff != 0 {
-			args = append(args, "IGNORE", options.IgnoreMaxTimeDiff, options.IgnoreMaxValDiff)
 		}
 	}
 	cmd := NewIntCmd(ctx, args...)
@@ -705,6 +706,8 @@ func (c cmdable) TSInfoWithArgs(ctx context.Context, key string, options *TSInfo
 // TSMAdd - Adds multiple samples to multiple time-series keys.
 // It accepts a slice of 'ktv' slices, each containing exactly three elements: key, timestamp, and value.
 // This struct must be provided for this command to work.
+// On a per-item error, Err() returns the first error and the failed items are 0
+// in Val(); use Do() to get per-item errors.
 // For more information - https://redis.io/commands/ts.madd/
 func (c cmdable) TSMAdd(ctx context.Context, ktvSlices [][]interface{}) *IntSliceCmd {
 	args := []interface{}{"TS.MADD"}

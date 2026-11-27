@@ -5,7 +5,9 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -23,6 +25,16 @@ var (
 	_ Scripter = (*Ring)(nil)
 	_ Scripter = (*ClusterClient)(nil)
 )
+
+// ErrScriptDigestMismatch is returned by Script.Load when SCRIPT LOAD answers
+// with a digest that differs from the SHA-1 computed by NewScript. The local
+// digest is kept so EVALSHA stays pinned to this script's source.
+var ErrScriptDigestMismatch = errors.New("redis: SCRIPT LOAD returned a digest that does not match the client-computed SHA-1")
+
+// errNoScriptDigest reports that a successful SCRIPT LOAD carries no digest,
+// which means the command is still queued and has not been executed. It only
+// steers ensureHash's callers to the EVAL fallback, so it never reaches them.
+var errNoScriptDigest = errors.New("redis: SCRIPT LOAD has not returned a digest yet")
 
 type Script struct {
 	src       string
@@ -60,11 +72,27 @@ func (s *Script) Hash() string {
 
 func (s *Script) Load(ctx context.Context, c Scripter) *StringCmd {
 	cmd := c.ScriptLoad(ctx, s.src)
-	if err := cmd.Err(); err == nil {
-		s.mu.Lock()
-		s.hash = cmd.Val()
-		s.mu.Unlock()
+	if err := cmd.Err(); err != nil {
+		return cmd
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.serverSHA {
+		// s.hash is SHA-1(s.src) computed in NewScript, and SCRIPT LOAD returns
+		// that same digest. A different value is a protocol violation; keeping
+		// the local one means EVALSHA stays pinned to this script instead of
+		// running whatever the server holds under the returned digest.
+		// Val is empty while the command is still queued in a pipeline.
+		// Redis treats digests case-insensitively, so compare that way too.
+		if v := cmd.Val(); v != "" && !strings.EqualFold(v, s.hash) {
+			cmd.SetErr(fmt.Errorf("%w: got %q, want %q", ErrScriptDigestMismatch, v, s.hash))
+		}
+		return cmd
+	}
+
+	s.hash = cmd.Val()
 	return cmd
 }
 
@@ -120,7 +148,17 @@ func (s *Script) ensureHash(ctx context.Context, c Scripter) error {
 		s.mu.Unlock()
 		return err
 	}
-	s.hash = cmd.Val()
+	hash := cmd.Val()
+	if hash == "" {
+		// No digest yet: the load is only queued, as in a pipeline (a buffered
+		// command answers Err() == nil and Val() == "" until Exec). Redis never
+		// returns an empty digest, so caching this value would make every later
+		// EVALSHA carry "". Reporting it lets the callers fall back to EVAL with
+		// the source, which the same pipeline can execute.
+		s.mu.Unlock()
+		return errNoScriptDigest
+	}
+	s.hash = hash
 	s.mu.Unlock()
 	return nil
 }

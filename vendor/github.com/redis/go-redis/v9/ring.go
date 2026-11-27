@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9/auth"
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/hashtag"
+	"github.com/redis/go-redis/v9/internal/otel"
 	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/proto"
 )
@@ -78,6 +79,8 @@ type RingOptions struct {
 	Protocol int
 	Username string
 	Password string
+	// AuthEmptyPassword: see Options.AuthEmptyPassword.
+	AuthEmptyPassword bool
 	// CredentialsProvider allows the username and password to be updated
 	// before reconnecting. It should return the current username and password.
 	CredentialsProvider func() (username string, password string)
@@ -124,14 +127,15 @@ type RingOptions struct {
 	// PoolFIFO uses FIFO mode for each node connection pool GET/PUT (default LIFO).
 	PoolFIFO bool
 
-	PoolSize              int
-	PoolTimeout           time.Duration
-	MinIdleConns          int
-	MaxIdleConns          int
-	MaxActiveConns        int
-	ConnMaxIdleTime       time.Duration
-	ConnMaxLifetime       time.Duration
-	ConnMaxLifetimeJitter time.Duration
+	PoolSize                    int
+	PoolTimeout                 time.Duration
+	MinIdleConns                int
+	MaxIdleConns                int
+	MaxActiveConns              int
+	ConnMaxIdleTime             time.Duration
+	ConnMaxLifetime             time.Duration
+	ConnMaxLifetimeJitter       time.Duration
+	ConnMaxLifetimeReapInterval time.Duration
 
 	// ReadBufferSize is the size of the bufio.Reader buffer for each connection.
 	// Larger buffers can improve performance for commands that return large responses.
@@ -147,14 +151,15 @@ type RingOptions struct {
 	// default: 32KiB (32768 bytes)
 	WriteBufferSize int
 
-	// PipelineReadBufferSize, PipelineWriteBufferSize and PipelinePoolSize
-	// configure the separate connection pool used for pipelining on each shard,
-	// with its own (typically larger) buffers. See the same-named fields on
-	// Options for details. Each shard client (a NewClient) creates this pool by
+	// PipelineReadBufferSize, PipelineWriteBufferSize, PipelinePoolSize and
+	// PipelineMinIdleConns configure the separate connection pool used for
+	// pipelining on each shard, with its own (typically larger) buffers. See the
+	// same-named fields on Options for details. Each shard client (a NewClient) creates this pool by
 	// default; set PipelinePoolSize < 0 to opt out (pipelines run on the main pool).
 	PipelineReadBufferSize  int
 	PipelineWriteBufferSize int
 	PipelinePoolSize        int
+	PipelineMinIdleConns    int
 
 	TLSConfig *tls.Config
 	Limiter   Limiter
@@ -176,6 +181,11 @@ type RingOptions struct {
 	// flag is a no-op. It is kept for backwards compatibility and will be removed
 	// in a future release.
 	UnstableResp3 bool
+
+	// OTelRecorder records this client's metrics instead of the global recorder
+	// installed by SetOTelRecorder. Every shard client and its pools are bound to it
+	// for their whole life. nil records to the global recorder.
+	OTelRecorder OTelRecorder
 }
 
 func (opt *RingOptions) init() {
@@ -197,10 +207,11 @@ func (opt *RingOptions) init() {
 		opt.NewConsistentHash = newRendezvous
 	}
 
-	switch opt.MaxRetries {
-	case -1:
+	// < 0, not == -1: the retry loop runs while attempt <= MaxRetries, so a
+	// value below -1 would skip the first attempt and report success.
+	if opt.MaxRetries < 0 {
 		opt.MaxRetries = 0
-	case 0:
+	} else if opt.MaxRetries == 0 {
 		opt.MaxRetries = 3
 	}
 	switch opt.MinRetryBackoff {
@@ -226,13 +237,15 @@ func (opt *RingOptions) init() {
 
 func (opt *RingOptions) clientOptions() *Options {
 	return &Options{
-		ClientName: opt.ClientName,
-		Dialer:     opt.Dialer,
-		OnConnect:  opt.OnConnect,
+		ClientName:   opt.ClientName,
+		Dialer:       opt.Dialer,
+		OnConnect:    opt.OnConnect,
+		OTelRecorder: opt.OTelRecorder,
 
 		Protocol:                     opt.Protocol,
 		Username:                     opt.Username,
 		Password:                     opt.Password,
+		AuthEmptyPassword:            opt.AuthEmptyPassword,
 		CredentialsProvider:          opt.CredentialsProvider,
 		CredentialsProviderContext:   opt.CredentialsProviderContext,
 		StreamingCredentialsProvider: opt.StreamingCredentialsProvider,
@@ -248,21 +261,23 @@ func (opt *RingOptions) clientOptions() *Options {
 		WriteTimeout:          opt.WriteTimeout,
 		ContextTimeoutEnabled: opt.ContextTimeoutEnabled,
 
-		PoolFIFO:              opt.PoolFIFO,
-		PoolSize:              opt.PoolSize,
-		PoolTimeout:           opt.PoolTimeout,
-		MinIdleConns:          opt.MinIdleConns,
-		MaxIdleConns:          opt.MaxIdleConns,
-		MaxActiveConns:        opt.MaxActiveConns,
-		ConnMaxIdleTime:       opt.ConnMaxIdleTime,
-		ConnMaxLifetime:       opt.ConnMaxLifetime,
-		ConnMaxLifetimeJitter: opt.ConnMaxLifetimeJitter,
-		ReadBufferSize:        opt.ReadBufferSize,
-		WriteBufferSize:       opt.WriteBufferSize,
+		PoolFIFO:                    opt.PoolFIFO,
+		PoolSize:                    opt.PoolSize,
+		PoolTimeout:                 opt.PoolTimeout,
+		MinIdleConns:                opt.MinIdleConns,
+		MaxIdleConns:                opt.MaxIdleConns,
+		MaxActiveConns:              opt.MaxActiveConns,
+		ConnMaxIdleTime:             opt.ConnMaxIdleTime,
+		ConnMaxLifetime:             opt.ConnMaxLifetime,
+		ConnMaxLifetimeJitter:       opt.ConnMaxLifetimeJitter,
+		ConnMaxLifetimeReapInterval: opt.ConnMaxLifetimeReapInterval,
+		ReadBufferSize:              opt.ReadBufferSize,
+		WriteBufferSize:             opt.WriteBufferSize,
 
 		PipelineReadBufferSize:  opt.PipelineReadBufferSize,
 		PipelineWriteBufferSize: opt.PipelineWriteBufferSize,
 		PipelinePoolSize:        opt.PipelinePoolSize,
+		PipelineMinIdleConns:    opt.PipelineMinIdleConns,
 
 		TLSConfig: opt.TLSConfig,
 		Limiter:   opt.Limiter,
@@ -378,10 +393,10 @@ func (c *ringSharding) SetAddrs(addrs map[string]string) {
 	c.setAddrsMu.Lock()
 	defer c.setAddrsMu.Unlock()
 
-	cleanup := func(shards map[string]*ringShard) {
-		for addr, shard := range shards {
+	cleanup := func(shards []*ringShard) {
+		for _, shard := range shards {
 			if err := shard.Client.Close(); err != nil {
-				internal.Logger.Printf(context.Background(), "shard.Close %s failed: %s", addr, err)
+				internal.Logger.Printf(context.Background(), "shard.Close %s failed: %s", shard.addr, err)
 			}
 		}
 	}
@@ -412,25 +427,26 @@ func (c *ringSharding) SetAddrs(addrs map[string]string) {
 
 func (c *ringSharding) newRingShards(
 	addrs map[string]string, existing *ringShards, onNewNode []func(rdb *Client),
-) (shards *ringShards, created, unused map[string]*ringShard) {
+) (shards *ringShards, created, unused []*ringShard) {
 	shards = &ringShards{m: make(map[string]*ringShard, len(addrs))}
-	created = make(map[string]*ringShard) // indexed by addr
-	unused = make(map[string]*ringShard)  // indexed by addr
 
+	// Several shard names may share one address, so keep every existing
+	// shard per address instead of only the last one.
+	reusable := make(map[string][]*ringShard) // indexed by addr
 	if existing != nil {
 		for _, shard := range existing.list {
-			unused[shard.addr] = shard
+			reusable[shard.addr] = append(reusable[shard.addr], shard)
 		}
 	}
 
 	for name, addr := range addrs {
-		if shard, ok := unused[addr]; ok {
-			shards.m[name] = shard
-			delete(unused, addr)
+		if list := reusable[addr]; len(list) > 0 {
+			shards.m[name] = list[len(list)-1]
+			reusable[addr] = list[:len(list)-1]
 		} else {
 			shard := newRingShard(c.opt, addr)
 			shards.m[name] = shard
-			created[addr] = shard
+			created = append(created, shard)
 
 			for _, fn := range onNewNode {
 				fn(shard.Client)
@@ -440,6 +456,9 @@ func (c *ringSharding) newRingShards(
 
 	for _, shard := range shards.m {
 		shards.list = append(shards.list, shard)
+	}
+	for _, list := range reusable {
+		unused = append(unused, list...)
 	}
 
 	return
@@ -617,6 +636,7 @@ type Ring struct {
 	hooksMixin
 
 	opt               *RingOptions
+	rec               otel.Recorder // see clientRecorder; shard clients carry their own
 	sharding          *ringSharding
 	cmdsInfoCache     *cmdsInfoCache
 	heartbeatCancelFn context.CancelFunc
@@ -632,6 +652,7 @@ func NewRing(opt *RingOptions) *Ring {
 	// through them to shard construction, and reusing one caller-owned
 	// RingOptions across several rings must not make the rings share (or
 	// clobber each other's) registry.
+	customFactory := opt.NewClient != nil
 	optCopy := *opt
 	opt = &optCopy
 	opt.init()
@@ -643,12 +664,14 @@ func NewRing(opt *RingOptions) *Ring {
 
 	ring := Ring{
 		opt:               opt,
+		rec:               scopedRecorder(opt.OTelRecorder),
 		sharding:          newRingSharding(opt),
 		heartbeatCancelFn: hbCancel,
 	}
 
 	ring.cmdsInfoCache = newCmdsInfoCache(ring.cmdsInfo)
 	ring.cmdable = ring.Process
+	ring.captureCacheIntent = customFactory
 
 	ring.initHooks(hooks{
 		process: ring.process,
@@ -729,43 +752,62 @@ func (c *Ring) Len() int {
 	return c.sharding.Len()
 }
 
+// failedPubSub returns a PubSub that surfaces err on every operation instead of
+// panicking at construction (issue #3761).
+func (c *Ring) failedPubSub(err error) *PubSub {
+	if err == nil {
+		err = fmt.Errorf("redis: pubsub failed")
+	}
+	internal.Logger.Printf(context.Background(), "redis: ring pubsub creation failed: %s", err)
+	pubsub := &PubSub{
+		opt:       c.opt.clientOptions(),
+		rec:       c.rec,
+		stickyErr: err,
+	}
+	pubsub.init()
+	return pubsub
+}
+
 // Subscribe subscribes the client to the specified channels.
+// If channels is empty or shard lookup fails (e.g. empty ring), it returns
+// a PubSub with a sticky error rather than panicking.
 func (c *Ring) Subscribe(ctx context.Context, channels ...string) *PubSub {
 	if len(channels) == 0 {
-		panic("at least one channel is required")
+		return c.failedPubSub(fmt.Errorf("redis: at least one channel is required"))
 	}
 
 	shard, err := c.sharding.GetByKey(channels[0])
 	if err != nil {
-		// TODO: return PubSub with sticky error
-		panic(err)
+		return c.failedPubSub(err)
 	}
 	return shard.Client.Subscribe(ctx, channels...)
 }
 
 // PSubscribe subscribes the client to the given patterns.
+// If channels is empty or shard lookup fails (e.g. empty ring), it returns
+// a PubSub with a sticky error rather than panicking.
 func (c *Ring) PSubscribe(ctx context.Context, channels ...string) *PubSub {
 	if len(channels) == 0 {
-		panic("at least one channel is required")
+		return c.failedPubSub(fmt.Errorf("redis: at least one channel is required"))
 	}
 
 	shard, err := c.sharding.GetByKey(channels[0])
 	if err != nil {
-		// TODO: return PubSub with sticky error
-		panic(err)
+		return c.failedPubSub(err)
 	}
 	return shard.Client.PSubscribe(ctx, channels...)
 }
 
 // SSubscribe Subscribes the client to the specified shard channels.
+// If channels is empty or shard lookup fails (e.g. empty ring), it returns
+// a PubSub with a sticky error rather than panicking.
 func (c *Ring) SSubscribe(ctx context.Context, channels ...string) *PubSub {
 	if len(channels) == 0 {
-		panic("at least one channel is required")
+		return c.failedPubSub(fmt.Errorf("redis: at least one channel is required"))
 	}
 	shard, err := c.sharding.GetByKey(channels[0])
 	if err != nil {
-		// TODO: return PubSub with sticky error
-		panic(err)
+		return c.failedPubSub(err)
 	}
 	return shard.Client.SSubscribe(ctx, channels...)
 }
@@ -846,6 +888,9 @@ func (c *Ring) cmdShard(cmd Cmder) (*ringShard, error) {
 	// the warm-cache branch in cmdFirstKeyPosWithInfo is reachable for Ring,
 	// mirroring how ClusterClient.cmdInfo works. For now pass nil
 	pos := cmdFirstKeyPosWithInfo(cmd, nil)
+	if pos < 0 {
+		return nil, fmt.Errorf("redis: cannot determine the routing key for command %s", cmd.Name())
+	}
 	if pos == 0 {
 		return c.sharding.Random()
 	}
@@ -855,6 +900,7 @@ func (c *Ring) cmdShard(cmd Cmder) (*ringShard, error) {
 
 func (c *Ring) process(ctx context.Context, cmd Cmder) error {
 	var lastErr error
+	var exhaustedAddrs map[string]error
 	for attempt := 0; attempt <= c.opt.MaxRetries; attempt++ {
 		if attempt > 0 {
 			if err := internal.Sleep(ctx, c.retryBackoff(attempt)); err != nil {
@@ -867,9 +913,23 @@ func (c *Ring) process(ctx context.Context, cmd Cmder) error {
 			return err
 		}
 
-		lastErr = shard.Client.Process(ctx, cmd)
+		if exhaustedErr, ok := exhaustedAddrs[shard.addr]; ok {
+			// A rebalance may select another shard on the next attempt.
+			// Do not re-dial this exhausted endpoint, but keep the retry
+			// budget available for a healthy shard.
+			lastErr = exhaustedErr
+			continue
+		}
+		attemptCtx, exhausted := shard.Client.captureFixedDialExhaustion(ctx)
+		lastErr = shard.Client.Process(attemptCtx, cmd)
 		if lastErr == nil || !shouldRetry(lastErr, cmd.readTimeout() == nil) || cmd.NoRetry() {
 			return lastErr
+		}
+		if exhausted != nil && exhausted.Load() {
+			if exhaustedAddrs == nil {
+				exhaustedAddrs = make(map[string]error)
+			}
+			exhaustedAddrs[shard.addr] = lastErr
 		}
 	}
 	return lastErr
@@ -941,7 +1001,17 @@ func (c *Ring) generalProcessPipeline(
 	cmdsMap := make(map[string][]Cmder)
 
 	for _, cmd := range cmds {
-		hash := cmd.stringArg(cmdFirstKeyPosWithInfo(cmd, nil))
+		pos := cmdFirstKeyPosWithInfo(cmd, nil)
+		if pos < 0 {
+			err := fmt.Errorf("redis: cannot determine the routing key for command %s", cmd.Name())
+			cmd.SetErr(err)
+			if tx {
+				setCmdsErr(cmds, err)
+				return err
+			}
+			continue
+		}
+		hash := cmd.stringArg(pos)
 		if hash != "" {
 			hash = c.sharding.Hash(hash)
 		}

@@ -1,6 +1,9 @@
 package redis
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 type ClusterCmdable interface {
 	ClusterMyShardID(ctx context.Context) *StringCmd
@@ -8,6 +11,8 @@ type ClusterCmdable interface {
 	ClusterSlots(ctx context.Context) *ClusterSlotsCmd
 	ClusterShards(ctx context.Context) *ClusterShardsCmd
 	ClusterLinks(ctx context.Context) *ClusterLinksCmd
+	ClusterSlotStats(ctx context.Context, startSlot, endSlot int) *ClusterSlotStatsCmd
+	ClusterSlotStatsOrderBy(ctx context.Context, a *ClusterSlotStatsOrderByArgs) *ClusterSlotStatsCmd
 	ClusterNodes(ctx context.Context) *StringCmd
 	ClusterMeet(ctx context.Context, host, port string) *StatusCmd
 	ClusterForget(ctx context.Context, nodeID string) *StatusCmd
@@ -61,6 +66,56 @@ func (c cmdable) ClusterLinks(ctx context.Context) *ClusterLinksCmd {
 	cmd := NewClusterLinksCmd(ctx, "cluster", "links")
 	_ = c(ctx, cmd)
 	return cmd
+}
+
+// ClusterSlotStats returns the usage statistics of the slots in the inclusive
+// range [startSlot, endSlot], ordered by slot. A node reports only the slots it
+// owns, so a ClusterClient asks every master and merges the replies. In a
+// pipeline the command is still sent to one node and returns only the slots
+// of that node.
+//
+// Only KeyCount is reported unless the server runs with
+// cluster-slot-stats-enabled yes. Requires Redis 8.2 or newer.
+func (c cmdable) ClusterSlotStats(ctx context.Context, startSlot, endSlot int) *ClusterSlotStatsCmd {
+	cmd := NewClusterSlotStatsCmd(ctx, "cluster", "slot-stats", "slotsrange", startSlot, endSlot)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// ClusterSlotStatsOrderByArgs are the options of CLUSTER SLOT-STATS ORDERBY.
+type ClusterSlotStatsOrderByArgs struct {
+	// Metric to order by: "key-count", "memory-bytes", "cpu-usec",
+	// "network-bytes-in" or "network-bytes-out".
+	Metric string
+	// Limit is the maximum number of slots to return. Zero returns all of them.
+	Limit int
+	// Asc orders from the lowest value. The default is from the highest.
+	Asc bool
+}
+
+// ClusterSlotStatsOrderBy returns the usage statistics of the slots ordered by
+// a metric; slots with the same value are ordered by slot. A node reports only
+// the slots it owns, so a ClusterClient asks every master, merges the replies
+// and applies the order and the limit again. In a pipeline the command is
+// still sent to one node and returns only the slots of that node.
+//
+// Only KeyCount is reported unless the server runs with
+// cluster-slot-stats-enabled yes. Requires Redis 8.2 or newer.
+func (c cmdable) ClusterSlotStatsOrderBy(ctx context.Context, a *ClusterSlotStatsOrderByArgs) *ClusterSlotStatsCmd {
+	cmd := NewClusterSlotStatsCmd(ctx, clusterSlotStatsOrderByArgs(a)...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func clusterSlotStatsOrderByArgs(a *ClusterSlotStatsOrderByArgs) []interface{} {
+	args := []interface{}{"cluster", "slot-stats", "orderby", a.Metric}
+	if a.Limit != 0 {
+		args = append(args, "limit", a.Limit)
+	}
+	if a.Asc {
+		args = append(args, "asc")
+	}
+	return args
 }
 
 func (c cmdable) ClusterNodes(ctx context.Context) *StringCmd {
@@ -141,11 +196,30 @@ func (c cmdable) ClusterDelSlots(ctx context.Context, slots ...int) *StatusCmd {
 	return cmd
 }
 
-func (c cmdable) ClusterDelSlotsRange(ctx context.Context, min, max int) *StatusCmd {
+// slotsRange expands the inclusive range [min, max] into the slot list the
+// CLUSTER ADDSLOTS/DELSLOTS commands take. A range whose length comes out
+// negative or overflows would panic in make(), so it is reported as an error.
+func slotsRange(min, max int) ([]int, error) {
+	if max < min {
+		return nil, fmt.Errorf("redis: invalid slot range %d..%d: max is below min", min, max)
+	}
 	size := max - min + 1
+	if size <= 0 {
+		return nil, fmt.Errorf("redis: invalid slot range %d..%d: range is too large", min, max)
+	}
 	slots := make([]int, size)
-	for i := 0; i < size; i++ {
+	for i := range slots {
 		slots[i] = min + i
+	}
+	return slots, nil
+}
+
+func (c cmdable) ClusterDelSlotsRange(ctx context.Context, min, max int) *StatusCmd {
+	slots, err := slotsRange(min, max)
+	if err != nil {
+		cmd := NewStatusCmd(ctx)
+		cmd.SetErr(err)
+		return cmd
 	}
 	return c.ClusterDelSlots(ctx, slots...)
 }
@@ -184,10 +258,11 @@ func (c cmdable) ClusterAddSlots(ctx context.Context, slots ...int) *StatusCmd {
 }
 
 func (c cmdable) ClusterAddSlotsRange(ctx context.Context, min, max int) *StatusCmd {
-	size := max - min + 1
-	slots := make([]int, size)
-	for i := 0; i < size; i++ {
-		slots[i] = min + i
+	slots, err := slotsRange(min, max)
+	if err != nil {
+		cmd := NewStatusCmd(ctx)
+		cmd.SetErr(err)
+		return cmd
 	}
 	return c.ClusterAddSlots(ctx, slots...)
 }

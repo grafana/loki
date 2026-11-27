@@ -132,6 +132,11 @@ func (c cmdable) HMGet(ctx context.Context, key string, fields ...string) *Slice
 //
 //   - HSet(ctx, "myhash", map[string]interface{}{"key1": "value1", "key2": "value2"})
 //
+//   - HSet(ctx, "myhash", map[string]string{"key1": "value1", "key2": "value2"})
+//
+//   - HSet(ctx, "myhash", map[string]int{"counter1": 10, "counter2": 20})
+//     Other map[string]T forms (int64, float64, bool, …) are flattened the same way.
+//
 //     Playing struct With "redis" tag.
 //     type MyHash struct { Key1 string `redis:"key1"`; Key2 int `redis:"key2"` }
 //
@@ -380,9 +385,9 @@ func (c cmdable) HExpireAtWithArgs(ctx context.Context, key string, tm time.Time
 // HPExpireAt - Sets the expiration time for specified fields in a hash to a UNIX timestamp in milliseconds.
 // Similar to HExpireAt but for timestamps in milliseconds. It accepts the same parameters and adjusts the UNIX time to milliseconds.
 // Available since Redis 7.4 CE.
-// For more information refer to [HExpireAt Documentation].
+// For more information refer to [HPExpireAt Documentation].
 //
-// [HExpireAt Documentation]: https://redis.io/commands/hexpireat/
+// [HPExpireAt Documentation]: https://redis.io/commands/hpexpireat/
 func (c cmdable) HPExpireAt(ctx context.Context, key string, tm time.Time, fields ...string) *IntSliceCmd {
 	args := []interface{}{"HPEXPIREAT", key, tm.UnixMilli(), "FIELDS", len(fields)}
 
@@ -460,10 +465,10 @@ func (c cmdable) HExpireTime(ctx context.Context, key string, fields ...string) 
 // Similar to HExpireTime, adjusted for timestamps in milliseconds. It requires the same parameters.
 // Provides the expiration timestamp for each field in milliseconds.
 // Available since Redis 7.4 CE.
-// For more information refer to [HExpireTime Documentation].
+// For more information refer to [HPExpireTime Documentation].
 //
-// [HExpireTime Documentation]: https://redis.io/commands/hexpiretime/
-// For more information - https://redis.io/commands/hexpiretime/
+// [HPExpireTime Documentation]: https://redis.io/commands/hpexpiretime/
+// For more information - https://redis.io/commands/hpexpiretime/
 func (c cmdable) HPExpireTime(ctx context.Context, key string, fields ...string) *IntSliceCmd {
 	args := []interface{}{"HPEXPIRETIME", key, "FIELDS", len(fields)}
 
@@ -549,6 +554,9 @@ type HGetEXOptions struct {
 }
 
 func (c cmdable) HGetEXWithArgs(ctx context.Context, key string, options *HGetEXOptions, fields ...string) *StringSliceCmd {
+	if options == nil {
+		options = &HGetEXOptions{}
+	}
 	args := []interface{}{"HGETEX", key}
 	if options.ExpirationType != "" {
 		args = append(args, string(options.ExpirationType))
@@ -602,6 +610,9 @@ func (c cmdable) HSetEX(ctx context.Context, key string, fieldsAndValues ...stri
 }
 
 func (c cmdable) HSetEXWithArgs(ctx context.Context, key string, options *HSetEXOptions, fieldsAndValues ...string) *IntCmd {
+	if options == nil {
+		options = &HSetEXOptions{}
+	}
 	args := []interface{}{"HSETEX", key}
 	if options.Condition != "" {
 		args = append(args, string(options.Condition))

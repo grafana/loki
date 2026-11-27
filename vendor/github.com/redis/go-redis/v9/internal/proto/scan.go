@@ -58,7 +58,7 @@ func Scan(b []byte, v any) error {
 		*v = n
 		return nil
 	case *uint:
-		n, err := util.ParseUint(b, 10, 64)
+		n, err := util.ParseUint(b, 10, 0)
 		if err != nil {
 			return err
 		}

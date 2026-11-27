@@ -6,7 +6,7 @@ package redis
 // connection has a throughput ceiling — measured at roughly 920k ops/s on a
 // 14-core client against a local server, for both this client and rueidis. Past
 // that the engine does not saturate, it degrades, because callers queue behind
-// a wire that is already busy. Raising NumShards above 1 under FullDuplex runs
+// a wire that is already busy. Raising FullDuplexPipes above 1 runs
 // several engines on the same client, each holding its own connection, which is
 // the only way past that ceiling.
 //
@@ -30,13 +30,13 @@ package redis
 // on different engines. Cluster sharding never meets this case because Redis
 // Cluster rejects multi-key commands across slots (CROSSSLOT); a standalone
 // server accepts them. Callers that chain such commands should await the
-// first future before submitting the dependent one, or keep NumShards at 1.
+// first future before submitting the dependent one, or keep FullDuplexPipes at 1.
 //
 // Keyless commands are not ordered against anything either: they round-robin.
 // That includes commands that change state for every key (FLUSHDB, FLUSHALL,
 // SWAPDB, SCRIPT FLUSH, FUNCTION FLUSH/RESTORE), so `FlushDB()` followed by
 // `Get(k)` can run the GET first. The same rule applies: await the first
-// future, or keep NumShards at 1.
+// future, or keep FullDuplexPipes at 1.
 //
 // Keys are read with stringArg, the same conversion Ring and the cluster slot
 // hash use, so all three route the same key the same way. It differs from the
@@ -50,8 +50,8 @@ package redis
 //
 // This is an opt-in: before this change, NumShards>1 never ran more than one
 // full-duplex engine, so every existing caller keeps the single ordered stream
-// and only a caller that raises NumShards on a full-duplex autopipeliner
-// accepts per-first-key order.
+// and only a caller that raises the pipe count (FullDuplexPipes, or NumShards as
+// spelled in 9.23.0) on a full-duplex autopipeliner accepts per-first-key order.
 //
 // The cost of that choice is measurable and worth stating: pinning a caller to
 // one engine means an unlucky key waits behind that engine's queue while
@@ -66,20 +66,27 @@ import (
 	"hash/fnv"
 )
 
-// fdShardCount reports how many full-duplex engines to run.
+// fdPipeCount reports how many full-duplex engines (pipes) to run.
 //
-// 0 and 1 both mean a single engine, which is the default and leaves the
-// single-engine path untouched. Sizing is deliberately NOT automatic yet: the
+// FullDuplexPipes is the option; NumShards>1 is honored as its 9.23.0 spelling
+// when FullDuplexPipes is 0 (Validate rejects the two disagreeing). 0 and 1 both
+// mean a single engine, which is the default and leaves the single-engine path
+// untouched. Sizing is deliberately NOT automatic yet: the
 // optimum tracks caller count (roughly one wire per 256-512 callers), and a
 // fixed count above 1 costs low-concurrency callers real throughput — eight
 // engines measured ~30% behind one at 8 callers, because a handful of callers
 // cannot fill eight queues and every batch fragments. Until the count can be
 // derived from observed load, it stays the caller's explicit decision.
-func fdShardCount(cfg *AutoPipelineOptions) int {
-	if !cfg.FullDuplex || cfg.NumShards <= 1 {
+func fdPipeCount(cfg *AutoPipelineOptions) int {
+	switch {
+	case !cfg.FullDuplex:
 		return 1
+	case cfg.FullDuplexPipes > 0:
+		return cfg.FullDuplexPipes
+	case cfg.NumShards > 1:
+		return cfg.NumShards
 	}
-	return cfg.NumShards
+	return 1
 }
 
 // fdFor picks the engine that will carry one command.

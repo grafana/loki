@@ -77,8 +77,8 @@ git push origin release/vX.Y.Z
 Then on GitHub:
 
 - [ ] Open a PR from `release/vX.Y.Z` into `master`.
-- [ ] Wait for all required CI checks (build, golangci-lint, spellcheck,
-      doctests, e2e where applicable) to pass.
+- [ ] Wait for all required CI checks (build, golangci-lint, doctests,
+      e2e where applicable) to pass.
 - [ ] Get at least one maintainer approval.
 - [ ] Merge the PR (use a merge commit — the tag will point at the merge SHA).
 

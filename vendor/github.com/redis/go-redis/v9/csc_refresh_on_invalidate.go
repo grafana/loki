@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -309,14 +310,18 @@ func cscRefreshTargetBytes(t cscRefreshTarget) int {
 // cscRefreshChunkEnd returns the exclusive end index of the next refresh round
 // trip starting at `start`: at most cscRefreshBatchMax targets, request bytes
 // (cache key sans prefix = wire form) within writeBudget, and expected reply
-// bytes (valBytes of the evicted values) within cscRefreshReplyBudgetBytes. The
+// bytes (valBytes of the evicted values) within cscRefreshReplyBudgetBytes.
+// Nonzero preludeBytes includes the CACHING prefix and its expected ACK. The
 // first target always goes, so a single oversized key or value cannot stall the
 // loop. Pure; unit-tested like fdBatchEnd.
-func cscRefreshChunkEnd(targets []cscRefreshTarget, start, prefixLen, writeBudget int) int {
+func cscRefreshChunkEnd(targets []cscRefreshTarget, start, prefixLen, writeBudget, preludeBytes int) int {
 	end, reqBytes, replyBytes := start, 0, 0
 	for end < len(targets) && end-start < cscRefreshBatchMax {
-		w := len(targets[end].cacheKey) - prefixLen
+		w := len(targets[end].cacheKey) - prefixLen + preludeBytes
 		r := targets[end].valBytes
+		if preludeBytes > 0 {
+			r += len("+OK\r\n")
+		}
 		if end > start && (reqBytes+w > writeBudget || replyBytes+r > cscRefreshReplyBudgetBytes) {
 			break
 		}
@@ -617,7 +622,7 @@ func (c *baseClient) runCSCRefresher(h *cscRevalidateHandle, lc *LocalCache, q *
 			// progress. Boundary logic extracted pure (cscRefreshChunkEnd) and
 			// unit-tested.
 			writeBudget := cscMissWriteBatchBytes(c.opt)
-			prefixLen := len(c.cscKeyPrefix)
+			prefixLen := cscEntryKeyPrefixLen(c.cscKeyPrefix, c.metadataView().cscFingerprint)
 			for start := 0; start < len(targets); {
 				// Abort this (always non-stopping — see the stopping check above) flush
 				// if Close begins while it's still running: continuing to give each
@@ -633,7 +638,11 @@ func (c *baseClient) runCSCRefresher(h *cscRevalidateHandle, lc *LocalCache, q *
 					return
 				default:
 				}
-				end := cscRefreshChunkEnd(targets, start, prefixLen, writeBudget)
+				preludeBytes := 0
+				if c.cscPolicy.mode == TrackingModeOptIn {
+					preludeBytes = len(cscYesWire)
+				}
+				end := cscRefreshChunkEnd(targets, start, prefixLen, writeBudget, preludeBytes)
 				// Per-chunk deadline: each round trip gets its own cscRefreshBatchTimeout,
 				// so aggregate latency across chunks cannot expire the later chunks (#3989).
 				rctx, rcancel := context.WithTimeout(context.Background(), cscRefreshBatchTimeout)
@@ -748,7 +757,8 @@ func (c *baseClient) stopCSCRefresher() {
 // RespAttr ('|'), so a first-byte error check would treat an attributed error as
 // cacheable and publish it as a false success (bumping Refreshed; the next reader
 // would then have to evict and refetch). A nil reply IS cacheable (a negative
-// lookup, or a since-deleted key caching as missing); an empty reply never is.
+// lookup, or a since-deleted key caching as missing) for standalone; Cluster's
+// publication filter rejects it. An empty wire reply never is cacheable.
 // Extracted pure so the classification is unit-tested (like cscRefreshChunkEnd).
 func cscRefreshReplyCacheable(raw []byte) bool {
 	return len(raw) > 0 && isCacheableReplyResult(classifyCachedReply(raw))
@@ -764,13 +774,15 @@ func cscRefreshReplyCacheable(raw []byte) bool {
 // StaleTimeout. (Measured elsewhere in this work: that mistake cost 30x and 8500x
 // throughput in the intra-batch rewrites.)
 func (c *baseClient) refreshInvalidatedBatch(ctx context.Context, targets []cscRefreshTarget) (int, error) {
-	prefix := c.cscKeyPrefix
-	if prefix == "" {
+	if c.cscKeyPrefix == "" {
 		return 0, nil
 	}
 	if a := c.cscActive; a != nil && !a.Load() {
 		return 0, nil
 	}
+
+	view := c.metadataView()
+	prefix := cscEntryKey(c.cscKeyPrefix, view.cscFingerprint, "")
 
 	// Reserve before touching the network, so only keys this batch owns are sent.
 	// A declined reservation means a reader is already fetching it — leave it to
@@ -790,6 +802,11 @@ func (c *baseClient) refreshInvalidatedBatch(ctx context.Context, targets []cscR
 		}
 	}()
 	for _, t := range targets {
+		// A refresh may outlive the metadata that made this command eligible.
+		// Shared caches may also contain entries from another client's view.
+		if !strings.HasPrefix(t.cacheKey, prefix) {
+			continue
+		}
 		token, shouldFetch := c.csc.Reserve(t.cacheKey, t.redisKeys)
 		// token==0 with shouldFetch==true is Reserve's "fetch uncached" signal
 		// (oversized entry / over-capacity / lost race), not an owned reservation.
@@ -814,6 +831,13 @@ func (c *baseClient) refreshInvalidatedBatch(ctx context.Context, targets []cscR
 	// miss-coalescer.
 	err := c.withConn(ctx, func(ctx context.Context, cn *pool.Conn) error {
 		connID := cn.GetID()
+		if !c.autopipelineCSCActive() || c.cscConnInitGen(connID) == 0 {
+			return nil
+		}
+		flag := byte(0)
+		if c.cscPolicy.mode == TrackingModeOptIn {
+			flag = 'Y'
+		}
 		// Coverage generation captured BEFORE the reads: if this conn loses
 		// tracking mid-batch, every reply is discarded rather than published, the
 		// same discipline fulfillCached and revalidateBatch use.
@@ -839,14 +863,21 @@ func (c *baseClient) refreshInvalidatedBatch(ctx context.Context, targets []cscR
 		}
 		if err := cn.WithWriter(ctx, writeTimeout, func(wr *proto.Writer) error {
 			for i := range kept {
+				if err := writeCSCPrefix(wr, flag); err != nil {
+					return err
+				}
 				// The cache key is the namespaced RESP encoding of the command that
-				// produced the entry; strip the namespace and it is already wire form.
+				// produced the entry; strip the namespace and metadata fingerprint
+				// to recover the wire form.
 				if _, err := wr.Write([]byte(kept[i].cacheKey[len(prefix):])); err != nil {
 					return err
 				}
 			}
 			return nil
 		}); err != nil {
+			if flag != 0 {
+				_ = cn.Close()
+			}
 			return err
 		}
 
@@ -862,6 +893,15 @@ func (c *baseClient) refreshInvalidatedBatch(ctx context.Context, targets []cscR
 		}
 		return cn.WithReader(ctx, readTimeout, func(rd *proto.Reader) error {
 			for i := range kept {
+				trackingOK := true
+				if flag != 0 {
+					var err error
+					trackingOK, err = c.readCSCAck(ctx, cn, rd)
+					if err != nil {
+						_ = cn.Close()
+						return err
+					}
+				}
 				// Invalidation pushes share this connection with replies, so drain
 				// them first or a push frame would be read as a value and cached.
 				// Use the nonblocking Close adapter (like the miss-coalescer and
@@ -896,10 +936,11 @@ func (c *baseClient) refreshInvalidatedBatch(ctx context.Context, targets []cscR
 					// release cancels every reservation still outstanding.
 					return err
 				}
-				if !cscRefreshReplyCacheable(raw) {
+				if !trackingOK || !cscRefreshReplyCacheable(raw) {
+					c.cscEvictOnRedirect(kept[i].redisKeys, classifyCachedReply(raw))
 					// Not cacheable (WRONGTYPE after a type change, NOPERM, ...). A nil
-					// reply is NOT an error: a negative lookup is cacheable, and a key
-					// that has since been deleted should cache as missing. See
+					// reply is NOT an error: standalone can cache negative lookups;
+					// Cluster filters these later in fulfillCached. See
 					// cscRefreshReplyCacheable: it classifies the FULL frame, so a RESP3
 					// attribute-prefixed error is not mis-read as cacheable.
 					c.csc.Cancel(kept[i].cacheKey, kept[i].token)
@@ -921,7 +962,7 @@ func (c *baseClient) refreshInvalidatedBatch(ctx context.Context, targets []cscR
 				if lc, ok := c.csc.(*LocalCache); ok {
 					lc.stageRefreshAccess(kept[i].cacheKey, kept[i].token, kept[i].accessNs, kept[i].read)
 				}
-				if c.fulfillCached(kept[i].cacheKey, kept[i].token, fc) {
+				if c.fulfillCached(kept[i].cacheKey, kept[i].token, fc, view) {
 					published++
 				}
 				// fulfillCached cancels on its own failure paths, so the token is

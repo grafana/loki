@@ -82,11 +82,9 @@ func GetAddr(addr string) string {
 		return ""
 	}
 
-	if strings.IndexByte(addr, '.') != -1 {
-		return addr
-	}
-
-	if addr[0] == '[' {
+	// Only a bare IPv6 host needs brackets. A dot does not rule one out:
+	// "::ffff:10.0.0.1" is IPv6 too.
+	if addr[0] == '[' || strings.IndexByte(addr[:ind], ':') == -1 {
 		return addr
 	}
 	return net.JoinHostPort(addr[:ind], addr[ind+1:])

@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -47,7 +48,22 @@ func AppendArg(b []byte, v interface{}) []byte {
 		return append(b, "false"...)
 	case time.Time:
 		return v.AppendFormat(b, time.RFC3339Nano)
+	case *time.Time:
+		if v == nil {
+			return append(b, "<nil>"...)
+		}
+		return v.AppendFormat(b, time.RFC3339Nano)
 	default:
+		// proto.Writer sends a pointer to a basic type by value, so print the
+		// value, not the address.
+		if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && !rv.IsNil() {
+			// PkgPath is empty only for the predeclared types.
+			e := rv.Elem()
+			if e.Type().PkgPath() == "" &&
+				(e.Kind() == reflect.String || (e.Kind() >= reflect.Bool && e.Kind() <= reflect.Float64)) {
+				return AppendArg(b, e.Interface())
+			}
+		}
 		return append(b, fmt.Sprint(v)...)
 	}
 }

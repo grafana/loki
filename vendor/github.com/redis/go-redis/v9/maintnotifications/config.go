@@ -221,7 +221,7 @@ func (c *Config) ApplyDefaultsWithPoolSize(poolSize int) *Config {
 // This ensures that partially configured structs get sensible defaults for missing fields.
 func (c *Config) ApplyDefaultsWithPoolConfig(poolSize int, maxActiveConns int) *Config {
 	if c == nil {
-		return DefaultConfig().ApplyDefaultsWithPoolSize(poolSize)
+		return DefaultConfig().ApplyDefaultsWithPoolConfig(poolSize, maxActiveConns)
 	}
 
 	defaults := DefaultConfig()

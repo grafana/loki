@@ -2,10 +2,14 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/redis/go-redis/v9/internal/proto"
 )
+
+var errCMSInvalidCellSize = errors.New("redis: invalid cell size (must be 1, 2, 4 or 8)")
 
 type ProbabilisticCmdable interface {
 	BFAdd(ctx context.Context, key string, element interface{}) *BoolCmd
@@ -30,6 +34,7 @@ type ProbabilisticCmdable interface {
 
 	CFAdd(ctx context.Context, key string, element interface{}) *BoolCmd
 	CFAddNX(ctx context.Context, key string, element interface{}) *BoolCmd
+	CFCompact(ctx context.Context, key string) *StatusCmd
 	CFCount(ctx context.Context, key string, element interface{}) *IntCmd
 	CFDel(ctx context.Context, key string, element interface{}) *BoolCmd
 	CFExists(ctx context.Context, key string, element interface{}) *BoolCmd
@@ -48,7 +53,9 @@ type ProbabilisticCmdable interface {
 	CMSIncrBy(ctx context.Context, key string, elements ...interface{}) *IntSliceCmd
 	CMSInfo(ctx context.Context, key string) *CMSInfoCmd
 	CMSInitByDim(ctx context.Context, key string, width, height int64) *StatusCmd
+	CMSInitByDimCellSize(ctx context.Context, key string, width, depth, cellSize int64) *StatusCmd
 	CMSInitByProb(ctx context.Context, key string, errorRate, probability float64) *StatusCmd
+	CMSInitByProbCellSize(ctx context.Context, key string, errorRate, probability float64, cellSize int64) *StatusCmd
 	CMSMerge(ctx context.Context, destKey string, sourceKeys ...string) *StatusCmd
 	CMSMergeWithWeight(ctx context.Context, destKey string, sourceKeys map[string]int64) *StatusCmd
 	CMSQuery(ctx context.Context, key string, elements ...interface{}) *IntSliceCmd
@@ -262,8 +269,9 @@ func (cmd *ScanDumpCmd) readReply(rd *proto.Reader) (err error) {
 		if err != nil {
 			return err
 		}
+		// CF.SCANDUMP ends the dump with a null chunk.
 		data, err := rd.ReadString()
-		if err != nil {
+		if err != nil && err != Nil {
 			return err
 		}
 		cmd.val.Data = data
@@ -362,9 +370,11 @@ func (cmd *BFInfoCmd) readReply(rd *proto.Reader) (err error) {
 			return fmt.Errorf("redis: BLOOM.INFO unexpected key %s", key)
 		}
 
-		// Read the integer and assign to the field via pointer dereferencing
+		// Read the integer and assign to the field via pointer dereferencing.
+		// A non-scaling filter reports a null expansion rate, which is left
+		// as zero.
 		val, err := rd.ReadInt()
-		if err != nil {
+		if err != nil && err != Nil {
 			return err
 		}
 		*fieldPtr = val
@@ -382,7 +392,8 @@ func (cmd *BFInfoCmd) readReply(rd *proto.Reader) (err error) {
 			return err
 		}
 		if key, ok := cmd.args[2].(string); ok && n == 1 {
-			if err := readAndAssignValue(key, false); err != nil {
+			// The server matches the option case-insensitively.
+			if err := readAndAssignValue(strings.ToUpper(key), false); err != nil {
 				return err
 			}
 		} else {
@@ -478,7 +489,7 @@ func (c cmdable) BFInsert(ctx context.Context, key string, options *BFInsertOpti
 		}
 	}
 	args = append(args, "ITEMS")
-	args = append(args, elements...)
+	args = appendElements(args, elements)
 
 	cmd := NewBoolSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
@@ -490,7 +501,7 @@ func (c cmdable) BFInsert(ctx context.Context, key string, options *BFInsertOpti
 // For more information - https://redis.io/commands/bf.madd/
 func (c cmdable) BFMAdd(ctx context.Context, key string, elements ...interface{}) *BoolSliceCmd {
 	args := []interface{}{"BF.MADD", key}
-	args = append(args, elements...)
+	args = appendElements(args, elements)
 	cmd := NewBoolSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
@@ -501,7 +512,7 @@ func (c cmdable) BFMAdd(ctx context.Context, key string, elements ...interface{}
 // For more information - https://redis.io/commands/bf.mexists/
 func (c cmdable) BFMExists(ctx context.Context, key string, elements ...interface{}) *BoolSliceCmd {
 	args := []interface{}{"BF.MEXISTS", key}
-	args = append(args, elements...)
+	args = appendElements(args, elements)
 
 	cmd := NewBoolSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
@@ -549,18 +560,22 @@ func (c cmdable) CFReserveMaxIterations(ctx context.Context, key string, capacit
 }
 
 // CFReserveWithArgs creates an empty Cuckoo filter with the specified options.
-// This function allows for specifying additional options such as bucket size and maximum number of iterations.
+// This function allows for specifying additional options such as bucket size,
+// maximum number of iterations and expansion rate.
 // For more information - https://redis.io/commands/cf.reserve/
 func (c cmdable) CFReserveWithArgs(ctx context.Context, key string, options *CFReserveOptions) *StatusCmd {
-	args := []interface{}{"CF.RESERVE", key, options.Capacity}
-	if options.BucketSize != 0 {
-		args = append(args, "BUCKETSIZE", options.BucketSize)
-	}
-	if options.MaxIterations != 0 {
-		args = append(args, "MAXITERATIONS", options.MaxIterations)
-	}
-	if options.Expansion != 0 {
-		args = append(args, "EXPANSION", options.Expansion)
+	args := []interface{}{"CF.RESERVE", key}
+	if options != nil {
+		args = append(args, options.Capacity)
+		if options.BucketSize != 0 {
+			args = append(args, "BUCKETSIZE", options.BucketSize)
+		}
+		if options.MaxIterations != 0 {
+			args = append(args, "MAXITERATIONS", options.MaxIterations)
+		}
+		if options.Expansion != 0 {
+			args = append(args, "EXPANSION", options.Expansion)
+		}
 	}
 	cmd := NewStatusCmd(ctx, args...)
 	_ = c(ctx, cmd)
@@ -592,6 +607,17 @@ func (c cmdable) CFAddNX(ctx context.Context, key string, element interface{}) *
 func (c cmdable) CFCount(ctx context.Context, key string, element interface{}) *IntCmd {
 	args := []interface{}{"CF.COUNT", key, element}
 	cmd := NewIntCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// CFCompact compacts a Cuckoo filter: it moves items into earlier sub-filters
+// and frees the sub-filters left empty. CF.DEL compacts automatically but stops
+// at the first sub-filter it cannot empty; CF.COMPACT tries all of them.
+// cmd: CF.COMPACT key
+func (c cmdable) CFCompact(ctx context.Context, key string) *StatusCmd {
+	args := []interface{}{"CF.COMPACT", key}
+	cmd := NewStatusCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -741,7 +767,8 @@ func (c cmdable) CFInfo(ctx context.Context, key string) *CFInfoCmd {
 }
 
 // CFInsert inserts elements into a Cuckoo filter.
-// This function also allows for specifying additional options such as capacity, error rate, expansion rate, and non-scaling behavior.
+// This function also allows for specifying additional options such as capacity
+// and whether the filter must not be created when it does not exist.
 // Returns an array of booleans indicating whether each element was added to the filter or not.
 // For more information - https://redis.io/commands/cf.insert/
 func (c cmdable) CFInsert(ctx context.Context, key string, options *CFInsertOptions, elements ...interface{}) *BoolSliceCmd {
@@ -755,7 +782,7 @@ func (c cmdable) CFInsert(ctx context.Context, key string, options *CFInsertOpti
 
 // CFInsertNX inserts elements into a Cuckoo filter only if they do not already exist in the filter.
 // This function also allows for specifying additional options such as:
-// capacity, error rate, expansion rate, and non-scaling behavior.
+// capacity and whether the filter must not be created when it does not exist.
 // Returns an array of integers indicating whether each element was added to the filter or not.
 // For more information - https://redis.io/commands/cf.insertnx/
 func (c cmdable) CFInsertNX(ctx context.Context, key string, options *CFInsertOptions, elements ...interface{}) *IntSliceCmd {
@@ -777,7 +804,7 @@ func (c cmdable) getCfInsertWithArgs(args []interface{}, options *CFInsertOption
 		}
 	}
 	args = append(args, "ITEMS")
-	args = append(args, elements...)
+	args = appendElements(args, elements)
 
 	return args
 }
@@ -787,7 +814,7 @@ func (c cmdable) getCfInsertWithArgs(args []interface{}, options *CFInsertOption
 // For more information - https://redis.io/commands/cf.mexists/
 func (c cmdable) CFMExists(ctx context.Context, key string, elements ...interface{}) *BoolSliceCmd {
 	args := []interface{}{"CF.MEXISTS", key}
-	args = append(args, elements...)
+	args = appendElements(args, elements)
 	cmd := NewBoolSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
@@ -799,6 +826,8 @@ func (c cmdable) CFMExists(ctx context.Context, key string, elements ...interfac
 
 // CMSIncrBy increments the count of one or more items in a Count-Min Sketch filter.
 // Returns an array of integers representing the updated count of each item.
+// On a per-item error, Err() returns the first error and the failed items are 0
+// in Val(); use Do() to get per-item errors.
 // For more information - https://redis.io/commands/cms.incrby/
 func (c cmdable) CMSIncrBy(ctx context.Context, key string, elements ...interface{}) *IntSliceCmd {
 	args := make([]interface{}, 2, 2+len(elements))
@@ -912,8 +941,21 @@ func (c cmdable) CMSInfo(ctx context.Context, key string) *CMSInfoCmd {
 // CMSInitByDim creates an empty Count-Min Sketch filter with the specified dimensions.
 // For more information - https://redis.io/commands/cms.initbydim/
 func (c cmdable) CMSInitByDim(ctx context.Context, key string, width, depth int64) *StatusCmd {
-	args := []interface{}{"CMS.INITBYDIM", key, width, depth}
+	args := []any{"CMS.INITBYDIM", key, width, depth}
 	cmd := NewStatusCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// CMSInitByDimCellSize creates an empty Count-Min Sketch filter with the specified dimensions and number of bytes per cell (valid cell sizes: 1,2,4,8).
+// For more information - https://redis.io/commands/cms.initbydim/
+func (c cmdable) CMSInitByDimCellSize(ctx context.Context, key string, width, depth, cellSize int64) *StatusCmd {
+	args := []any{"CMS.INITBYDIM", key, width, depth, "CELL_SIZE", cellSize}
+	cmd := NewStatusCmd(ctx, args...)
+	if !isValidCMSCellSize(cellSize) {
+		cmd.SetErr(errCMSInvalidCellSize)
+		return cmd
+	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -921,15 +963,36 @@ func (c cmdable) CMSInitByDim(ctx context.Context, key string, width, depth int6
 // CMSInitByProb creates an empty Count-Min Sketch filter with the specified error rate and probability.
 // For more information - https://redis.io/commands/cms.initbyprob/
 func (c cmdable) CMSInitByProb(ctx context.Context, key string, errorRate, probability float64) *StatusCmd {
-	args := []interface{}{"CMS.INITBYPROB", key, errorRate, probability}
+	args := []any{"CMS.INITBYPROB", key, errorRate, probability}
 	cmd := NewStatusCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
 }
 
+// CMSInitByProbCellSize creates an empty Count-Min Sketch filter with the specified error rate, probability and number of bytes per cell (valid cell sizes: 1,2,4,8).
+// For more information - https://redis.io/commands/cms.initbyprob/
+func (c cmdable) CMSInitByProbCellSize(ctx context.Context, key string, errorRate, probability float64, cellSize int64) *StatusCmd {
+	args := []any{"CMS.INITBYPROB", key, errorRate, probability, "CELL_SIZE", cellSize}
+	cmd := NewStatusCmd(ctx, args...)
+	if !isValidCMSCellSize(cellSize) {
+		cmd.SetErr(errCMSInvalidCellSize)
+		return cmd
+	}
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func isValidCMSCellSize(cellSize int64) bool {
+	switch cellSize {
+	case 1, 2, 4, 8:
+		return true
+	}
+	return false
+}
+
 // CMSMerge merges multiple Count-Min Sketch filters into a single filter.
-// The destination filter must not exist and will be created with the dimensions of the first source filter.
-// The number of items in each source filter must be equal.
+// The destination filter must already be initialized and all filters must have
+// the same width and depth. The filters do not need to contain the same number of items.
 // Returns OK on success or an error if the filters could not be merged.
 // For more information - https://redis.io/commands/cms.merge/
 func (c cmdable) CMSMerge(ctx context.Context, destKey string, sourceKeys ...string) *StatusCmd {
@@ -943,8 +1006,8 @@ func (c cmdable) CMSMerge(ctx context.Context, destKey string, sourceKeys ...str
 }
 
 // CMSMergeWithWeight merges multiple Count-Min Sketch filters into a single filter with weights for each source filter.
-// The destination filter must not exist and will be created with the dimensions of the first source filter.
-// The number of items in each source filter must be equal.
+// The destination filter must already be initialized and all filters must have
+// the same width and depth. The filters do not need to contain the same number of items.
 // Returns OK on success or an error if the filters could not be merged.
 // For more information - https://redis.io/commands/cms.merge/
 func (c cmdable) CMSMergeWithWeight(ctx context.Context, destKey string, sourceKeys map[string]int64) *StatusCmd {
@@ -976,7 +1039,7 @@ func (c cmdable) CMSMergeWithWeight(ctx context.Context, destKey string, sourceK
 // For more information - https://redis.io/commands/cms.query/
 func (c cmdable) CMSQuery(ctx context.Context, key string, elements ...interface{}) *IntSliceCmd {
 	args := []interface{}{"CMS.QUERY", key}
-	args = append(args, elements...)
+	args = appendElements(args, elements)
 	cmd := NewIntSliceCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd

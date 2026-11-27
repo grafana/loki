@@ -1,6 +1,9 @@
 package redis
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // SetCmdable is an interface for Redis set commands.
 // Sets are unordered collections of unique strings.
@@ -27,6 +30,23 @@ type SetCmdable interface {
 	SUnion(ctx context.Context, keys ...string) *StringSliceCmd
 	SUnionCard(ctx context.Context, opts *SUnionCardOptions, keys ...string) *IntCmd
 	SUnionStore(ctx context.Context, destination string, keys ...string) *IntCmd
+
+	// Member expiration, since Redis 8.12.
+	SExpire(ctx context.Context, key string, expiration time.Duration, members ...string) *IntSliceCmd
+	SExpireWithArgs(ctx context.Context, key string, expiration time.Duration, condition SExpireCondition, members ...string) *IntSliceCmd
+	SPExpire(ctx context.Context, key string, expiration time.Duration, members ...string) *IntSliceCmd
+	SPExpireWithArgs(ctx context.Context, key string, expiration time.Duration, condition SExpireCondition, members ...string) *IntSliceCmd
+	SExpireAt(ctx context.Context, key string, tm time.Time, members ...string) *IntSliceCmd
+	SExpireAtWithArgs(ctx context.Context, key string, tm time.Time, condition SExpireCondition, members ...string) *IntSliceCmd
+	SPExpireAt(ctx context.Context, key string, tm time.Time, members ...string) *IntSliceCmd
+	SPExpireAtWithArgs(ctx context.Context, key string, tm time.Time, condition SExpireCondition, members ...string) *IntSliceCmd
+	STTL(ctx context.Context, key string, members ...string) *IntSliceCmd
+	SPTTL(ctx context.Context, key string, members ...string) *IntSliceCmd
+	SExpireTime(ctx context.Context, key string, members ...string) *IntSliceCmd
+	SPExpireTime(ctx context.Context, key string, members ...string) *IntSliceCmd
+	SPersist(ctx context.Context, key string, members ...string) *IntSliceCmd
+	SAddEX(ctx context.Context, key string, members ...string) *IntCmd
+	SAddEXWithArgs(ctx context.Context, key string, options *SAddEXOptions, members ...string) *IntCmd
 }
 
 // SUnionCardOptions are the options for SUnionCard.
@@ -45,7 +65,7 @@ type SDiffCardOptions struct {
 //
 // For more information about the command please refer to [SADD].
 //
-// [SADD]: (https://redis.io/docs/latest/commands/sadd/)
+// [SADD]: https://redis.io/docs/latest/commands/sadd/
 func (c cmdable) SAdd(ctx context.Context, key string, members ...interface{}) *IntCmd {
 	args := make([]interface{}, 2, 2+len(members))
 	args[0] = "sadd"
@@ -61,7 +81,7 @@ func (c cmdable) SAdd(ctx context.Context, key string, members ...interface{}) *
 //
 // For more information about the command please refer to [SCARD].
 //
-// [SCARD]: (https://redis.io/docs/latest/commands/scard/)
+// [SCARD]: https://redis.io/docs/latest/commands/scard/
 func (c cmdable) SCard(ctx context.Context, key string) *IntCmd {
 	cmd := NewIntCmd(ctx, "scard", key)
 	_ = c(ctx, cmd)
@@ -74,7 +94,7 @@ func (c cmdable) SCard(ctx context.Context, key string) *IntCmd {
 //
 // For more information about the command please refer to [SDIFF].
 //
-// [SDIFF]: (https://redis.io/docs/latest/commands/sdiff/)
+// [SDIFF]: https://redis.io/docs/latest/commands/sdiff/
 func (c cmdable) SDiff(ctx context.Context, keys ...string) *StringSliceCmd {
 	args := make([]interface{}, 1+len(keys))
 	args[0] = "sdiff"
@@ -92,7 +112,7 @@ func (c cmdable) SDiff(ctx context.Context, keys ...string) *StringSliceCmd {
 //
 // For more information about the command please refer to [SDIFFSTORE].
 //
-// [SDIFFSTORE]: (https://redis.io/docs/latest/commands/sdiffstore/)
+// [SDIFFSTORE]: https://redis.io/docs/latest/commands/sdiffstore/
 func (c cmdable) SDiffStore(ctx context.Context, destination string, keys ...string) *IntCmd {
 	args := make([]interface{}, 2+len(keys))
 	args[0] = "sdiffstore"
@@ -110,7 +130,7 @@ func (c cmdable) SDiffStore(ctx context.Context, destination string, keys ...str
 //
 // For more information about the command please refer to [SDIFFCARD].
 //
-// [SDIFFCARD]: (https://redis.io/docs/latest/commands/sdiffcard/)
+// [SDIFFCARD]: https://redis.io/docs/latest/commands/sdiffcard/
 func (c cmdable) SDiffCard(ctx context.Context, opts *SDiffCardOptions, keys ...string) *IntCmd {
 	if opts == nil {
 		opts = &SDiffCardOptions{}
@@ -135,7 +155,7 @@ func (c cmdable) SDiffCard(ctx context.Context, opts *SDiffCardOptions, keys ...
 //
 // For more information about the command please refer to [SINTER].
 //
-// [SINTER]: (https://redis.io/docs/latest/commands/sinter/)
+// [SINTER]: https://redis.io/docs/latest/commands/sinter/
 func (c cmdable) SInter(ctx context.Context, keys ...string) *StringSliceCmd {
 	args := make([]interface{}, 1+len(keys))
 	args[0] = "sinter"
@@ -156,7 +176,7 @@ func (c cmdable) SInter(ctx context.Context, keys ...string) *StringSliceCmd {
 //
 // For more information about the command please refer to [SINTERCARD].
 //
-// [SINTERCARD]: (https://redis.io/docs/latest/commands/sintercard/)
+// [SINTERCARD]: https://redis.io/docs/latest/commands/sintercard/
 func (c cmdable) SInterCard(ctx context.Context, limit int64, keys ...string) *IntCmd {
 	numKeys := len(keys)
 	args := make([]interface{}, 4+numKeys)
@@ -182,7 +202,7 @@ func (c cmdable) SInterCard(ctx context.Context, limit int64, keys ...string) *I
 //
 // For more information about the command please refer to [SINTERSTORE].
 //
-// [SINTERSTORE]: (https://redis.io/docs/latest/commands/sinterstore/)
+// [SINTERSTORE]: https://redis.io/docs/latest/commands/sinterstore/
 func (c cmdable) SInterStore(ctx context.Context, destination string, keys ...string) *IntCmd {
 	args := make([]interface{}, 2+len(keys))
 	args[0] = "sinterstore"
@@ -201,7 +221,7 @@ func (c cmdable) SInterStore(ctx context.Context, destination string, keys ...st
 //
 // For more information about the command please refer to [SISMEMBER].
 //
-// [SISMEMBER]: (https://redis.io/docs/latest/commands/sismember/)
+// [SISMEMBER]: https://redis.io/docs/latest/commands/sismember/
 func (c cmdable) SIsMember(ctx context.Context, key string, member interface{}) *BoolCmd {
 	cmd := NewBoolCmd(ctx, "sismember", key, member)
 	_ = c(ctx, cmd)
@@ -214,7 +234,7 @@ func (c cmdable) SIsMember(ctx context.Context, key string, member interface{}) 
 //
 // For more information about the command please refer to [SMISMEMBER].
 //
-// [SMISMEMBER]: (https://redis.io/docs/latest/commands/smismember/)
+// [SMISMEMBER]: https://redis.io/docs/latest/commands/smismember/
 func (c cmdable) SMIsMember(ctx context.Context, key string, members ...interface{}) *BoolSliceCmd {
 	args := make([]interface{}, 2, 2+len(members))
 	args[0] = "smismember"
@@ -230,7 +250,7 @@ func (c cmdable) SMIsMember(ctx context.Context, key string, members ...interfac
 //
 // For more information about the command please refer to [SMEMBERS].
 //
-// [SMEMBERS]: (https://redis.io/docs/latest/commands/smembers/)
+// [SMEMBERS]: https://redis.io/docs/latest/commands/smembers/
 func (c cmdable) SMembers(ctx context.Context, key string) *StringSliceCmd {
 	cmd := NewStringSliceCmd(ctx, "smembers", key)
 	_ = c(ctx, cmd)
@@ -242,7 +262,7 @@ func (c cmdable) SMembers(ctx context.Context, key string) *StringSliceCmd {
 //
 // For more information about the command please refer to [SMEMBERS].
 //
-// [SMEMBERS]: (https://redis.io/docs/latest/commands/smembers/)
+// [SMEMBERS]: https://redis.io/docs/latest/commands/smembers/
 func (c cmdable) SMembersMap(ctx context.Context, key string) *StringStructMapCmd {
 	cmd := NewStringStructMapCmd(ctx, "smembers", key)
 	_ = c(ctx, cmd)
@@ -255,7 +275,7 @@ func (c cmdable) SMembersMap(ctx context.Context, key string) *StringStructMapCm
 //
 // For more information about the command please refer to [SMOVE].
 //
-// [SMOVE]: (https://redis.io/docs/latest/commands/smove/)
+// [SMOVE]: https://redis.io/docs/latest/commands/smove/
 func (c cmdable) SMove(ctx context.Context, source, destination string, member interface{}) *BoolCmd {
 	cmd := NewBoolCmd(ctx, "smove", source, destination, member)
 	_ = c(ctx, cmd)
@@ -267,7 +287,7 @@ func (c cmdable) SMove(ctx context.Context, source, destination string, member i
 //
 // For more information about the command please refer to [SPOP].
 //
-// [SPOP]: (https://redis.io/docs/latest/commands/spop/)
+// [SPOP]: https://redis.io/docs/latest/commands/spop/
 func (c cmdable) SPop(ctx context.Context, key string) *StringCmd {
 	cmd := NewStringCmd(ctx, "spop", key)
 	_ = c(ctx, cmd)
@@ -279,7 +299,7 @@ func (c cmdable) SPop(ctx context.Context, key string) *StringCmd {
 //
 // For more information about the command please refer to [SPOP].
 //
-// [SPOP]: (https://redis.io/docs/latest/commands/spop/)
+// [SPOP]: https://redis.io/docs/latest/commands/spop/
 func (c cmdable) SPopN(ctx context.Context, key string, count int64) *StringSliceCmd {
 	cmd := NewStringSliceCmd(ctx, "spop", key, count)
 	_ = c(ctx, cmd)
@@ -291,7 +311,7 @@ func (c cmdable) SPopN(ctx context.Context, key string, count int64) *StringSlic
 //
 // For more information about the command please refer to [SRANDMEMBER].
 //
-// [SRANDMEMBER]: (https://redis.io/docs/latest/commands/srandmember/)
+// [SRANDMEMBER]: https://redis.io/docs/latest/commands/srandmember/
 func (c cmdable) SRandMember(ctx context.Context, key string) *StringCmd {
 	cmd := NewStringCmd(ctx, "srandmember", key)
 	_ = c(ctx, cmd)
@@ -305,7 +325,7 @@ func (c cmdable) SRandMember(ctx context.Context, key string) *StringCmd {
 //
 // For more information about the command please refer to [SRANDMEMBER].
 //
-// [SRANDMEMBER]: (https://redis.io/docs/latest/commands/srandmember/)
+// [SRANDMEMBER]: https://redis.io/docs/latest/commands/srandmember/
 func (c cmdable) SRandMemberN(ctx context.Context, key string, count int64) *StringSliceCmd {
 	cmd := NewStringSliceCmd(ctx, "srandmember", key, count)
 	_ = c(ctx, cmd)
@@ -318,7 +338,7 @@ func (c cmdable) SRandMemberN(ctx context.Context, key string, count int64) *Str
 //
 // For more information about the command please refer to [SREM].
 //
-// [SREM]: (https://redis.io/docs/latest/commands/srem/)
+// [SREM]: https://redis.io/docs/latest/commands/srem/
 func (c cmdable) SRem(ctx context.Context, key string, members ...interface{}) *IntCmd {
 	args := make([]interface{}, 2, 2+len(members))
 	args[0] = "srem"
@@ -334,7 +354,7 @@ func (c cmdable) SRem(ctx context.Context, key string, members ...interface{}) *
 //
 // For more information about the command please refer to [SUNION].
 //
-// [SUNION]: (https://redis.io/docs/latest/commands/sunion/)
+// [SUNION]: https://redis.io/docs/latest/commands/sunion/
 func (c cmdable) SUnion(ctx context.Context, keys ...string) *StringSliceCmd {
 	args := make([]interface{}, 1+len(keys))
 	args[0] = "sunion"
@@ -352,7 +372,7 @@ func (c cmdable) SUnion(ctx context.Context, keys ...string) *StringSliceCmd {
 //
 // For more information about the command please refer to [SUNIONSTORE].
 //
-// [SUNIONSTORE]: (https://redis.io/docs/latest/commands/sunionstore/)
+// [SUNIONSTORE]: https://redis.io/docs/latest/commands/sunionstore/
 func (c cmdable) SUnionStore(ctx context.Context, destination string, keys ...string) *IntCmd {
 	args := make([]interface{}, 2+len(keys))
 	args[0] = "sunionstore"
@@ -370,7 +390,7 @@ func (c cmdable) SUnionStore(ctx context.Context, destination string, keys ...st
 //
 // For more information about the command please refer to [SUNIONCARD].
 //
-// [SUNIONCARD]: (https://redis.io/docs/latest/commands/sunioncard/)
+// [SUNIONCARD]: https://redis.io/docs/latest/commands/sunioncard/
 func (c cmdable) SUnionCard(ctx context.Context, opts *SUnionCardOptions, keys ...string) *IntCmd {
 	if opts == nil {
 		opts = &SUnionCardOptions{}
@@ -402,7 +422,7 @@ func (c cmdable) SUnionCard(ctx context.Context, opts *SUnionCardOptions, keys .
 //
 // For more information about the command please refer to [SSCAN].
 //
-// [SSCAN]: (https://redis.io/docs/latest/commands/sscan/)
+// [SSCAN]: https://redis.io/docs/latest/commands/sscan/
 func (c cmdable) SScan(ctx context.Context, key string, cursor uint64, match string, count int64) *ScanCmd {
 	args := []interface{}{"sscan", key, cursor}
 	if match != "" {
@@ -412,6 +432,203 @@ func (c cmdable) SScan(ctx context.Context, key string, cursor uint64, match str
 		args = append(args, "count", count)
 	}
 	cmd := NewScanCmd(ctx, c, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// Result codes in the reply of the member expiration commands.
+const (
+	SMemberNotFound      int64 = -2 // member or key does not exist
+	SMemberNoExpiration  int64 = -1 // member exists without an expiration
+	SExpireConditionFail int64 = 0  // condition flag not met
+	SExpireUpdated       int64 = 1  // expiration set, updated or removed
+	SExpireDeleted       int64 = 2  // expiration in the past, member deleted
+)
+
+// SExpireCondition is the condition of SEXPIRE and its variants. The zero
+// value sets no condition.
+type SExpireCondition string
+
+const (
+	SExpireNX SExpireCondition = "NX" // only members with no expiration
+	SExpireXX SExpireCondition = "XX" // only members with an expiration
+	SExpireGT SExpireCondition = "GT" // only if the new expiration is greater
+	SExpireLT SExpireCondition = "LT" // only if the new expiration is less
+)
+
+type SAddEXCondition string
+
+const (
+	SAddEXMNX SAddEXCondition = "MNX" // Only add if none of the members exist.
+	SAddEXMXX SAddEXCondition = "MXX" // Only add if all the members exist.
+)
+
+type SAddEXExpirationType string
+
+const (
+	SAddEXExpirationEX      SAddEXExpirationType = "EX"
+	SAddEXExpirationPX      SAddEXExpirationType = "PX"
+	SAddEXExpirationEXAT    SAddEXExpirationType = "EXAT"
+	SAddEXExpirationPXAT    SAddEXExpirationType = "PXAT"
+	SAddEXExpirationKEEPTTL SAddEXExpirationType = "KEEPTTL"
+)
+
+// SAddEXOptions are the options of SAddEXWithArgs.
+// ExpirationVal is in the unit of ExpirationType; unused for KEEPTTL.
+type SAddEXOptions struct {
+	Condition      SAddEXCondition
+	ExpirationType SAddEXExpirationType
+	ExpirationVal  int64
+}
+
+func sMembersArgs(args []interface{}, members []string) []interface{} {
+	args = append(args, "MEMBERS", len(members))
+	for _, m := range members {
+		args = append(args, m)
+	}
+	return args
+}
+
+func (c cmdable) sExpire(ctx context.Context, name, key string, t int64, condition SExpireCondition, members []string) *IntSliceCmd {
+	args := make([]interface{}, 3, 6+len(members))
+	args[0], args[1], args[2] = name, key, t
+	if condition != "" {
+		args = append(args, string(condition))
+	}
+	cmd := NewIntSliceCmd(ctx, sMembersArgs(args, members)...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) sMembersCmd(ctx context.Context, name, key string, members []string) *IntSliceCmd {
+	args := make([]interface{}, 2, 4+len(members))
+	args[0], args[1] = name, key
+	cmd := NewIntSliceCmd(ctx, sMembersArgs(args, members)...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// SExpire sets the expiration of set members in seconds.
+// Available since Redis 8.12. See [SEXPIRE].
+//
+// [SEXPIRE]: https://redis.io/commands/sexpire/
+func (c cmdable) SExpire(ctx context.Context, key string, expiration time.Duration, members ...string) *IntSliceCmd {
+	return c.sExpire(ctx, "sexpire", key, formatSec(ctx, expiration), "", members)
+}
+
+// SExpireWithArgs is SExpire with a condition flag (NX, XX, GT, LT).
+func (c cmdable) SExpireWithArgs(ctx context.Context, key string, expiration time.Duration, condition SExpireCondition, members ...string) *IntSliceCmd {
+	return c.sExpire(ctx, "sexpire", key, formatSec(ctx, expiration), condition, members)
+}
+
+// SPExpire sets the expiration of set members in milliseconds.
+// Available since Redis 8.12. See [SPEXPIRE].
+//
+// [SPEXPIRE]: https://redis.io/commands/spexpire/
+func (c cmdable) SPExpire(ctx context.Context, key string, expiration time.Duration, members ...string) *IntSliceCmd {
+	return c.sExpire(ctx, "spexpire", key, formatMs(ctx, expiration), "", members)
+}
+
+// SPExpireWithArgs is SPExpire with a condition flag (NX, XX, GT, LT).
+func (c cmdable) SPExpireWithArgs(ctx context.Context, key string, expiration time.Duration, condition SExpireCondition, members ...string) *IntSliceCmd {
+	return c.sExpire(ctx, "spexpire", key, formatMs(ctx, expiration), condition, members)
+}
+
+// SExpireAt sets the expiration of set members to a Unix time in seconds.
+// Available since Redis 8.12. See [SEXPIREAT].
+//
+// [SEXPIREAT]: https://redis.io/commands/sexpireat/
+func (c cmdable) SExpireAt(ctx context.Context, key string, tm time.Time, members ...string) *IntSliceCmd {
+	return c.sExpire(ctx, "sexpireat", key, tm.Unix(), "", members)
+}
+
+// SExpireAtWithArgs is SExpireAt with a condition flag (NX, XX, GT, LT).
+func (c cmdable) SExpireAtWithArgs(ctx context.Context, key string, tm time.Time, condition SExpireCondition, members ...string) *IntSliceCmd {
+	return c.sExpire(ctx, "sexpireat", key, tm.Unix(), condition, members)
+}
+
+// SPExpireAt sets the expiration of set members to a Unix time in milliseconds.
+// Available since Redis 8.12. See [SPEXPIREAT].
+//
+// [SPEXPIREAT]: https://redis.io/commands/spexpireat/
+func (c cmdable) SPExpireAt(ctx context.Context, key string, tm time.Time, members ...string) *IntSliceCmd {
+	return c.sExpire(ctx, "spexpireat", key, tm.UnixMilli(), "", members)
+}
+
+// SPExpireAtWithArgs is SPExpireAt with a condition flag (NX, XX, GT, LT).
+func (c cmdable) SPExpireAtWithArgs(ctx context.Context, key string, tm time.Time, condition SExpireCondition, members ...string) *IntSliceCmd {
+	return c.sExpire(ctx, "spexpireat", key, tm.UnixMilli(), condition, members)
+}
+
+// STTL returns the time to live of set members in seconds, rounded up.
+// One result code per member: -2 missing, -1 no expiration.
+// Available since Redis 8.12. See [STTL].
+//
+// [STTL]: https://redis.io/commands/sttl/
+func (c cmdable) STTL(ctx context.Context, key string, members ...string) *IntSliceCmd {
+	return c.sMembersCmd(ctx, "sttl", key, members)
+}
+
+// SPTTL returns the exact time to live of set members in milliseconds.
+// Available since Redis 8.12. See [SPTTL].
+//
+// [SPTTL]: https://redis.io/commands/spttl/
+func (c cmdable) SPTTL(ctx context.Context, key string, members ...string) *IntSliceCmd {
+	return c.sMembersCmd(ctx, "spttl", key, members)
+}
+
+// SExpireTime returns the expiration of set members as a Unix time in seconds.
+// Available since Redis 8.12. See [SEXPIRETIME].
+//
+// [SEXPIRETIME]: https://redis.io/commands/sexpiretime/
+func (c cmdable) SExpireTime(ctx context.Context, key string, members ...string) *IntSliceCmd {
+	return c.sMembersCmd(ctx, "sexpiretime", key, members)
+}
+
+// SPExpireTime returns the expiration of set members as a Unix time in milliseconds.
+// Available since Redis 8.12. See [SPEXPIRETIME].
+//
+// [SPEXPIRETIME]: https://redis.io/commands/spexpiretime/
+func (c cmdable) SPExpireTime(ctx context.Context, key string, members ...string) *IntSliceCmd {
+	return c.sMembersCmd(ctx, "spexpiretime", key, members)
+}
+
+// SPersist removes the expiration of set members.
+// Available since Redis 8.12. See [SPERSIST].
+//
+// [SPERSIST]: https://redis.io/commands/spersist/
+func (c cmdable) SPersist(ctx context.Context, key string, members ...string) *IntSliceCmd {
+	return c.sMembersCmd(ctx, "spersist", key, members)
+}
+
+// SAddEX adds members without an expiration, as SADD does, and drops the
+// expiration of members that already exist.
+// Available since Redis 8.12. See [SADDEX].
+//
+// [SADDEX]: https://redis.io/commands/saddex/
+func (c cmdable) SAddEX(ctx context.Context, key string, members ...string) *IntCmd {
+	return c.SAddEXWithArgs(ctx, key, &SAddEXOptions{}, members...)
+}
+
+// SAddEXWithArgs adds members with a condition (MNX, MXX) and an expiration
+// (EX, PX, EXAT, PXAT or KEEPTTL). The reply is 1 if at least one member was
+// added, updated or deleted, 0 otherwise. A time in the past deletes the
+// members; 1 does not mean the members exist.
+func (c cmdable) SAddEXWithArgs(ctx context.Context, key string, options *SAddEXOptions, members ...string) *IntCmd {
+	args := make([]interface{}, 2, 6+len(members))
+	args[0], args[1] = "saddex", key
+	if options != nil {
+		if options.Condition != "" {
+			args = append(args, string(options.Condition))
+		}
+		if options.ExpirationType != "" {
+			args = append(args, string(options.ExpirationType))
+			if options.ExpirationType != SAddEXExpirationKEEPTTL {
+				args = append(args, options.ExpirationVal)
+			}
+		}
+	}
+	cmd := NewIntCmd(ctx, sMembersArgs(args, members)...)
 	_ = c(ctx, cmd)
 	return cmd
 }

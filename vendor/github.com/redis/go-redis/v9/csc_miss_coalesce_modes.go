@@ -458,6 +458,13 @@ func (mc *cscMissCoalescer) runFullDuplexSession() (stopped, backoff bool) {
 			// session whose write is within WriteTimeout (#3989). batchBudget is exactly the
 			// batch's write+read bound; relaxation still raises it further via EffectiveReadTimeout.
 			rerr := cn.WithReader(sctx, mc.batchBudget(), func(rd *proto.Reader) error {
+				if req.flag != 0 {
+					ok, err := c.readCSCAck(sctx, cn, rd)
+					if err != nil {
+						return err
+					}
+					req.noStore = !ok
+				}
 				// Push handling with the nonblocking Close adapter: this reader
 				// is part of mc.wg, so a custom push handler calling Close() on
 				// the raw client would self-deadlock (Close waits on mc.wg while

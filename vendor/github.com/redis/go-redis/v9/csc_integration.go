@@ -3,10 +3,14 @@ package redis
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"reflect"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,11 +22,12 @@ import (
 	"github.com/redis/go-redis/v9/push"
 )
 
-// cscRegisterCleanups arranges for a client dropped without Close to stop its
-// background CSC drainer. The drainer's exit path revokes its pool's cache
-// coverage; the runtime cleanup itself stays non-blocking and never captures
-// *Client, so the wrapper remains collectible.
+// cscRegisterCleanups stops metadata and CSC workers when a client is collected
+// without Close. The non-blocking cleanups do not capture *Client.
 func cscRegisterCleanups(c *Client) {
+	if s := c.baseClient.cmdMeta; s != nil {
+		runtime.AddCleanup(c, func(s *commandMetadataStore) { s.signalStop() }, s)
+	}
 	h := c.baseClient.cscDrainHandle
 	if h == nil {
 		return
@@ -103,6 +108,19 @@ func cscRegisterCleanups(c *Client) {
 	}, h)
 }
 
+// A bypass applies only to this execution (a redirect or pipeline fallback),
+// never to the cache or its connection tracking lifetime.
+type cscBypassKey struct{}
+
+func cscBypass(ctx context.Context) context.Context {
+	return context.WithValue(ctx, cscBypassKey{}, true)
+}
+
+func cscIsBypassed(ctx context.Context) bool {
+	bypass, _ := ctx.Value(cscBypassKey{}).(bool)
+	return bypass
+}
+
 // ClientSideCacheConfig configures the built-in client-side cache. Pass a
 // non-nil value to Options.ClientSideCacheConfig to enable caching on a RESP3
 // client.
@@ -125,21 +143,35 @@ func cscNamespacePrefix(db int, username string) string {
 		strconv.Itoa(len(username)) + ":" + username + cscNamespaceSep
 }
 
+// tlsClientCertID fingerprints the leaf certificates a TLS config can present
+// as the client identity, or returns "" when it presents none.
+func tlsClientCertID(cfg *tls.Config) string {
+	h := sha256.New()
+	n := 0
+	for _, cert := range cfg.Certificates {
+		if len(cert.Certificate) == 0 {
+			continue
+		}
+		h.Write(cert.Certificate[0])
+		n++
+	}
+	if n == 0 {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 func cscNamespacedKey(prefix, key string) string {
 	return prefix + key
 }
 
-// cscMissKeys returns the namespaced redis keys in args [lo, hi] for Reserve.
-// processCached has already checked the span with cscKeySpan and
-// cscKeysRenderable.
-//
-// This is called on the MISS path only. It used to run before the cache-hit
-// check, which meant a hit -- the 94-99% case -- allocated a raw key slice,
-// this slice, and one string per key, then discarded all three.
-func cscMissKeys(cmd Cmder, keyPrefix string, lo, hi int) []string {
-	ns := make([]string, 0, hi-lo+1)
-	for i := lo; i <= hi; i++ {
-		ns = append(ns, cscNamespacedKey(keyPrefix, cmd.stringArg(i)))
+// cscMissKeys builds only the namespaced keys needed by Reserve, after a miss.
+// processCached has already validated the metadata layout and every key type.
+func cscMissKeys(cmd Cmder, keyPrefix string, first, step, count int) []string {
+	ns := make([]string, count)
+	for i, pos := 0, first; i < count; i, pos = i+1, pos+step {
+		key, _ := keyArg(cmd, pos)
+		ns[i] = cscNamespacedKey(keyPrefix, key)
 	}
 	return ns
 }
@@ -512,10 +544,10 @@ func (h *invalidateHandler) HandlePushNotification(
 // their own locks, not h.mu, so there is no lock-order cycle.
 func (h *invalidateHandler) fullFlush(cache Cache) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
 	if sameCache(h.cache, cache) && h.batcher != nil {
 		h.batcher.drop()
 	}
+	defer h.mu.RUnlock()
 	cache.Flush()
 }
 
@@ -676,7 +708,31 @@ func (c *baseClient) attachCSC(ctx context.Context, cache Cache) {
 			"redis: client-side caching is disabled with credential providers")
 		return
 	}
-	c.cscKeyPrefix = cscNamespacePrefix(c.opt.DB, c.opt.Username)
+	// Namespace by ACL identity. A Username that sends no AUTH (empty
+	// Password, AuthEmptyPassword unset) runs as the default user, or as a
+	// TLS-certificate user, so it gets its own namespace per Username: apart
+	// from the AUTH-ed user and from other certificates. ACL usernames cannot
+	// contain spaces, so "noauth <name>" never matches a real user.
+	username := c.opt.Username
+	sendAuth := c.opt.sendAuth(c.opt.Username, c.opt.Password)
+	if username != "" && !sendAuth {
+		username = "noauth " + username
+	}
+	// Without AUTH, a server with tls-auth-clients-user authenticates the
+	// connection as the user named by the client certificate, so the
+	// certificate is part of the ACL identity. A GetClientCertificate callback
+	// can present a different certificate per handshake, like a provider.
+	if !sendAuth && c.opt.TLSConfig != nil {
+		if c.opt.TLSConfig.GetClientCertificate != nil {
+			internal.Logger.Printf(ctx,
+				"redis: client-side caching is disabled with TLSConfig.GetClientCertificate")
+			return
+		}
+		if id := tlsClientCertID(c.opt.TLSConfig); id != "" {
+			username += " cert " + id
+		}
+	}
+	c.cscKeyPrefix = cscNamespacePrefix(c.opt.DB, username)
 	switch c.opt.ClientSideCacheStrategy {
 	case CSCStrategySharedTracking:
 		c.attachSharedTrackingCSC(ctx, cache)
@@ -717,6 +773,9 @@ func (c *baseClient) attachSharedTrackingCSC(ctx context.Context, cache Cache) {
 	// first invalidation rather than a zero default.
 	if ih := lookupInvalidateHandler(c.pushProcessor); ih != nil {
 		ih.setInvalBatchWindow(c.opt.ClientSideCacheInvalidationBatchWindow)
+	}
+	if c.cmdMeta == nil {
+		c.staticCmdMeta = defaultCommandMetadataView()
 	}
 	c.csc = cache
 	c.registerConnEvictHook(cache, reg)
@@ -930,6 +989,7 @@ func (c *baseClient) newStickyConnPool() *pool.StickyConnPool {
 // released: a handoff queued at Put can re-init the socket (bumping the
 // generation) before fulfillCached runs.
 type cscFetchCapture struct {
+	noStore bool
 	raw     []byte
 	connID  uint64
 	initGen uint64
@@ -969,6 +1029,8 @@ var errClientTrackingWithCSC = errors.New(
 	"redis: CLIENT TRACKING is not allowed when client-side caching is enabled",
 )
 
+var errClientCachingWithCSC = errors.New("redis: CLIENT CACHING is not allowed when client-side caching is enabled")
+
 // errSelectWithCSC rejects runtime SELECT on clients with built-in CSC. Cache
 // keys use Options.DB, while SELECT mutates only the chosen pool connection.
 var errSelectWithCSC = errors.New(
@@ -999,6 +1061,12 @@ var errSubscribeWithCSC = errors.New(
 	"redis: SUBSCRIBE is not allowed on pooled connections when client-side caching is enabled",
 )
 
+// errUnverifiableCommandWithCSC rejects raw tokens whose wire bytes cannot be
+// verified, preventing connection-state commands from bypassing CSC guards.
+var errUnverifiableCommandWithCSC = errors.New(
+	"redis: command token cannot be verified safely when client-side caching is enabled",
+)
+
 // cscCommandError rejects commands that can make a pooled connection's state
 // diverge from the assumptions used by CSC.
 func (c *baseClient) cscCommandError(cmd Cmder) error {
@@ -1007,18 +1075,37 @@ func (c *baseClient) cscCommandError(cmd Cmder) error {
 	if !c.cscTrackingRequested() || c.allowClientTracking {
 		return nil
 	}
+	name, nameOK := cscCommandToken(cmd, 0)
+	if !nameOK {
+		return errUnverifiableCommandWithCSC
+	}
+	if strings.EqualFold(name, "client") {
+		if len(cmd.Args()) == 1 {
+			// Let the server report the missing subcommand.
+			return nil
+		}
+		subcommand, ok := cscCommandToken(cmd, 1)
+		if !ok {
+			return errUnverifiableCommandWithCSC
+		}
+		if strings.EqualFold(subcommand, "caching") {
+			return errClientCachingWithCSC
+		}
+		if strings.EqualFold(subcommand, "tracking") {
+			return errClientTrackingWithCSC
+		}
+		return nil
+	}
 	switch {
-	case isClientTrackingCmd(cmd):
-		return errClientTrackingWithCSC
-	case isSelectCmd(cmd):
+	case strings.EqualFold(name, "select"):
 		return errSelectWithCSC
-	case isAuthCmd(cmd):
+	case strings.EqualFold(name, "auth"):
 		return errAuthWithCSC
-	case isProtocolChangingHelloCmd(cmd):
+	case strings.EqualFold(name, "hello") && len(cmd.Args()) > 1:
 		return errHelloWithCSC
-	case isResetCmd(cmd):
+	case strings.EqualFold(name, "reset"):
 		return errResetWithCSC
-	case isSubscribeCmd(cmd):
+	case isSubscribeName(name):
 		return errSubscribeWithCSC
 	default:
 		return nil
@@ -1495,8 +1582,9 @@ func classifyCachedReply(raw []byte) error {
 }
 
 // isCacheableReplyResult reports whether a fully read Redis reply can be
-// cached. redis.Nil is a normal negative lookup, not a transport/protocol
-// failure; tracking will invalidate it if the key is later created.
+// considered for caching. redis.Nil is a normal negative lookup, not a
+// transport/protocol failure. Cluster publication additionally requires a reply
+// that establishes key existence; standalone retains negative caching.
 func isCacheableReplyResult(err error) bool {
 	return err == nil || err == Nil
 }
@@ -1520,9 +1608,16 @@ const cscDrainProbeReadCap = 50 * time.Microsecond
 // redialing) a connection per tick indefinitely.
 const cscDrainCustomErrCap = 8
 
+// cscEntryKey embeds the metadata fingerprint in the cache-entry key so
+// entries cached under different eligibility decisions never mix. The
+// Redis-key invalidation index stays fingerprint-free, so invalidations reach
+// every generation.
+func cscEntryKey(keyPrefix, fingerprint, rawKey string) string {
+	return keyPrefix + fingerprint + cscNamespaceSep + rawKey
+}
+
 // processCached runs the Get-Reserve-Fulfill lifecycle for a cacheable command.
-// The caller (process) first makes sure that CSC is active and that cmd is
-// eligible.
+// Eligibility and key extraction use the captured metadata view.
 //
 // startAttempt is the number of attempts already spent before this call. It is
 // not zero only on the full-duplex divert (retryOnNormalConn) of a cacheable
@@ -1533,7 +1628,10 @@ const cscDrainCustomErrCap = 8
 // attempt and returns before the retry loop, so startAttempt does not affect its
 // retry BUDGET — but it still seeds the reported attempt COUNT (see below) so a
 // diverted hit reports the FD attempt it already spent, not zero.
-func (c *baseClient) processCached(ctx context.Context, cmd Cmder, state *processState, startAttempt int) error {
+func (c *baseClient) processCached(
+	ctx context.Context, cmd Cmder, state *processState,
+	view *commandMetadataView, meta cscCommandMeta, startAttempt int,
+) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -1557,37 +1655,48 @@ func (c *baseClient) processCached(ctx context.Context, cmd Cmder, state *proces
 	// the namespace already in it, in one allocation, so the prefix has to be
 	// known first.
 	keyPrefix := c.cscKeyPrefix
+	if c.opt.cscPresenceOnly && (cscIsBypassed(ctx) || clusterCSCCommandPolicy(cmd.Name()) == clusterCSCReplyBypass) {
+		return c.processWithRetry(ctx, cmd, nil, state, startAttempt)
+	}
 	if keyPrefix == "" {
 		// A successfully attached client always has a namespace. Fail closed if
 		// an incomplete custom baseClient reaches this path.
 		return c.processWithRetry(ctx, cmd, nil, state, startAttempt)
 	}
-	// Check the key arguments BEFORE building the cache key. Building it
-	// encodes every argument, which calls MarshalBinary on a marshaler key; an
-	// uncacheable command would then marshal its key twice, once here and once
-	// for the request. The check allocates nothing.
-	keyLo, keyHi, ok := cscKeySpan(cmd)
-	if !ok || !cscKeysRenderable(cmd, keyLo, keyHi) {
-		// Without a key list we cannot react to invalidations for this
-		// command, so it must not be cached.
+	// Validate keys without rendering them before encoding the cache key.
+	// In particular, unsupported marshalers must not be evaluated here.
+	first, step, count := cscRedisKeyLayout(meta, cmd)
+	if count == 0 {
 		return c.processWithRetry(ctx, cmd, nil, state, startAttempt)
 	}
-	key, ok := buildCacheKeyNS(cmd, keyPrefix)
+	for i, pos := 0, first; i < count; i, pos = i+1, pos+step {
+		if !keyArgOK(cmd, pos) {
+			return c.processWithRetry(ctx, cmd, nil, state, startAttempt)
+		}
+	}
+	key, ok := cscRenderEntryKey(keyPrefix, view.cscFingerprint, cmd)
 	if !ok {
 		return c.processWithRetry(ctx, cmd, nil, state, startAttempt)
 	}
 
-	// The key strings are deliberately NOT built here. Only Reserve needs
-	// them, and Reserve is on the miss path -- so at a 94-99% hit rate this
-	// used to allocate a key slice, a namespaced slice and one string per key
-	// on every read and discard all of it. By object count that was ~18% of
-	// everything the client allocated. They are built in cscMissKeys below,
-	// after the hit check.
+	noLookup := cmd.cacheState().has(cscNoLookup)
+	if noLookup {
+		// A redirected attempt must reach the destination. Retire an old target
+		// reservation/value so this network fetch can reserve and publish anew.
+		c.csc.DeleteByCacheKey(key)
+	}
 
-	// Serve hits straight from the cache.
-	if data, ok := c.cscGet(ctx, key); ok {
+	// Serve hits straight from the cache. A hit is served only while the
+	// captured view's DECISIONS are still current (fingerprint compare, not
+	// pointer identity: a refresh that changed nothing must not suppress
+	// hits); after a decision change the entry belongs to a retired
+	// generation.
+	if data, ok := c.cscGetForAttempt(ctx, noLookup, key); ok {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if c.metadataView().cscFingerprint != view.cscFingerprint {
+			return c.processWithRetry(ctx, cmd, nil, state, startAttempt)
 		}
 		if err := applyCachedReply(cmd, data); isCacheableReplyResult(err) {
 			return err
@@ -1604,15 +1713,17 @@ func (c *baseClient) processCached(ctx context.Context, cmd Cmder, state *proces
 	// refreshes); only the early-flush latency is client-local.
 	c.cscRefreshQueue.signalDemand(key)
 
-	// Miss path: now the key list is actually needed.
-	nsRedisKeys := cscMissKeys(cmd, keyPrefix, keyLo, keyHi)
-
+	// Only misses need the Redis keys for invalidation bookkeeping.
+	nsRedisKeys := cscMissKeys(cmd, keyPrefix, first, step, count)
 	token, shouldFetch := c.csc.Reserve(key, nsRedisKeys)
 	if !shouldFetch {
 		// Another goroutine is fetching; Get below waits until it completes.
-		if data, ok := c.cscGet(ctx, key); ok {
+		if data, ok := c.cscGetForAttempt(ctx, noLookup, key); ok {
 			if err := ctx.Err(); err != nil {
 				return err
+			}
+			if c.metadataView().cscFingerprint != view.cscFingerprint {
+				return c.processWithRetry(ctx, cmd, nil, state, startAttempt)
 			}
 			if err := applyCachedReply(cmd, data); isCacheableReplyResult(err) {
 				return err
@@ -1625,11 +1736,13 @@ func (c *baseClient) processCached(ctx context.Context, cmd Cmder, state *proces
 		token, shouldFetch = c.csc.Reserve(key, nsRedisKeys)
 	}
 
+	shouldFetch = c.cscReservationAdmitted(token, shouldFetch)
+
 	// Reader-miss coalescing: hand the reserved miss to the batcher (no-op when
 	// off). Load the pointer ONCE: a concurrent Close swaps it to nil, and a
 	// second load after the nil-check would call fetch on a nil receiver.
 	if mc := c.cscMissCoalescer.Load(); shouldFetch && mc != nil {
-		served, err := mc.fetch(ctx, cmd, key, token)
+		served, err := mc.fetch(ctx, cmd, key, token, view, nsRedisKeys)
 		// Re-run on the normal path when the coalescer bailed (errCSCRetryUncached)
 		// or hit a session or transport failure (tagged cscSessionError by
 		// settleErr). Then a coalesced miss gets the same MaxRetries and backoff as
@@ -1689,7 +1802,7 @@ func (c *baseClient) processCached(ctx context.Context, cmd Cmder, state *proces
 						cause = sessErr.err
 					}
 					cmd.SetErr(cause)
-					recordCommandError(ctx, cause, served, startAttempt-1)
+					c.recordCommandError(ctx, cause, served, startAttempt-1)
 					return cause
 				}
 			}
@@ -1702,9 +1815,12 @@ func (c *baseClient) processCached(ctx context.Context, cmd Cmder, state *proces
 				// one hot key into a pool stampede mid-recovery — defeating the
 				// coalescing this path exists for. Same shape (and 2x-RTT churn
 				// tradeoff) as the first-Reserve loser path above.
-				if data, ok := c.cscGet(ctx, key); ok {
+				if data, ok := c.cscGetForAttempt(ctx, noLookup, key); ok {
 					if err := ctx.Err(); err != nil {
 						return err
+					}
+					if c.metadataView().cscFingerprint != view.cscFingerprint {
+						return c.processWithRetry(ctx, cmd, nil, state, startAttempt)
 					}
 					if err := applyCachedReply(cmd, data); isCacheableReplyResult(err) {
 						return err
@@ -1729,6 +1845,8 @@ func (c *baseClient) processCached(ctx context.Context, cmd Cmder, state *proces
 		}
 	}
 
+	shouldFetch = c.cscReservationAdmitted(token, shouldFetch)
+
 	// With shouldFetch still false, this caller lost the reservation twice and
 	// reads the server directly, uncached. That read can return a newer value
 	// than a fetch another caller reserved earlier and is still running. That
@@ -1752,16 +1870,31 @@ func (c *baseClient) processCached(ctx context.Context, cmd Cmder, state *proces
 	}
 
 	err := c.processWithRetry(ctx, cmd, capture, state, startAttempt)
+	c.cscEvictOnRedirect(nsRedisKeys, err)
 
 	if shouldFetch {
 		capture = nil // disarm the deferred Cancel
 		if isCacheableReplyResult(err) {
-			c.fulfillCached(key, token, &fc)
+			c.fulfillCached(key, token, &fc, view)
 		} else {
 			c.csc.Cancel(key, token)
 		}
 	}
 	return err
+}
+
+// A redirect invalidates the known dependencies of this fetch, not the whole
+// node cache or the connection's tracking coverage. Unknown keys are left to
+// server invalidations; this path never reconstructs command key layouts.
+func (c *baseClient) cscEvictOnRedirect(redisKeys []string, err error) {
+	if !c.opt.cscPresenceOnly || err == nil || c.csc == nil {
+		return
+	}
+	if moved, ask, _ := isMovedError(err); moved || ask {
+		for _, key := range redisKeys {
+			c.csc.DeleteByRedisKey(key)
+		}
+	}
 }
 
 // fulfillCached stores a fetched value, attributing it to its serving conn when
@@ -1772,8 +1905,25 @@ func (c *baseClient) processCached(ctx context.Context, cmd Cmder, state *proces
 // the hook's init-generation changes, so a reply whose invalidation coverage
 // was already lost never becomes visible and never wakes waiters with stale
 // data.
-func (c *baseClient) fulfillCached(key string, token uint64, fc *cscFetchCapture) bool {
+func (c *baseClient) fulfillCached(key string, token uint64, fc *cscFetchCapture, view *commandMetadataView) bool {
+	if fc.noStore {
+		c.csc.Cancel(key, token)
+		return false
+	}
+	if c.opt.cscPresenceOnly && !c.clusterCSCReplyCacheable(key, fc.raw, view) {
+		c.csc.Cancel(key, token)
+		return false
+	}
 	if active := c.cscActive; active != nil && !active.Load() {
+		c.csc.Cancel(key, token)
+		return false
+	}
+	// A decision change retired this fetch's generation mid-flight: cancel so
+	// waiters re-decide under the current view. Best-effort (a publish can
+	// still race a swap landing after this check): a leaked entry sits under
+	// the retired fingerprint, unreachable for new lookups, still deleted by
+	// invalidations, reclaimed by eviction.
+	if c.metadataView().cscFingerprint != view.cscFingerprint {
 		c.csc.Cancel(key, token)
 		return false
 	}
@@ -1794,4 +1944,21 @@ func (c *baseClient) fulfillCached(key string, token uint64, fc *cscFetchCapture
 		return true
 	}
 	return c.csc.FulfillOwned(key, token, 0, fc.raw)
+}
+
+// A MOVED attempt must fetch on the destination, while still allowing publication.
+func (c *baseClient) cscGetForAttempt(ctx context.Context, noLookup bool, key string) ([]byte, bool) {
+	if noLookup {
+		return nil, false
+	}
+	return c.cscGet(ctx, key)
+}
+
+// Only the built-in implementation defines zero as declined admission. Custom
+// Cache tokens are opaque and may legitimately be zero.
+func (c *baseClient) cscReservationAdmitted(token uint64, fetch bool) bool {
+	if _, builtin := c.csc.(*LocalCache); builtin && token == 0 {
+		return false
+	}
+	return fetch
 }

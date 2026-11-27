@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/proto"
 )
 
@@ -40,13 +41,17 @@ type Tx struct {
 }
 
 func (c *Client) newTx() *Tx {
+	dialPool, _ := c.connPool.(*pool.ConnPool)
 	tx := Tx{
 		baseClient: baseClient{
-			opt:           c.cloneOpt(), // Clone options under optLock to avoid race with initConn
-			connPool:      c.baseClient.newStickyConnPool(),
-			hooksMixin:    c.hooksMixin.clone(),
-			pushProcessor: c.pushProcessor, // Copy push processor from parent client
-			onClose:       &onCloseHooks{},
+			fixedDialEndpoint:  c.fixedDialEndpoint,
+			dialExhaustionPool: dialPool,
+			opt:                c.cloneOpt(), // Clone options under optLock to avoid race with initConn
+			rec:                c.rec,
+			connPool:           c.baseClient.newStickyConnPool(),
+			hooksMixin:         c.hooksMixin.clone(),
+			pushProcessor:      c.pushProcessor, // Copy push processor from parent client
+			onClose:            &onCloseHooks{},
 			// Share the HIMPORT fieldset registry: the sticky pool borrows
 			// connections from the parent client's pool, so fieldsets
 			// prepared on them stay valid after the connections are
@@ -57,8 +62,16 @@ func (c *Client) newTx() *Tx {
 			// evict from the parent cache.
 			cscPoolHook: c.cscPoolHook,
 			cscActive:   c.cscActive,
+			cscPolicy:   c.cscPolicy,
+			// Carry the parent's streaming-credentials manager so initConn can
+			// create a credentials listener when Watch initializes a fresh
+			// connection (issue #4154).
+			streamingCredentialsManager: c.streamingCredentialsManager,
 		},
 	}
+	// Tx reads are uncached but still OPTOUT-prefix when trackable; share the
+	// parent's CommandMetadata overrides for custom read-only keyed commands.
+	c.baseClient.shareCommandMetadata(&tx.baseClient)
 	tx.init()
 	return &tx
 }
@@ -77,7 +90,8 @@ func (c *Tx) init() {
 
 func (c *Tx) Process(ctx context.Context, cmd Cmder) error {
 	err := c.processHook(ctx, cmd)
-	cmd.SetErr(err)
+	// Same as Client.Process: keep the serving-endpoint wrapper off cmd.Err().
+	cmd.SetErr(unwrapServingEndpoint(err))
 	return err
 }
 
@@ -89,7 +103,9 @@ func (c *Client) Watch(ctx context.Context, fn func(*Tx) error, keys ...string) 
 	tx := c.newTx()
 	defer tx.Close(ctx)
 	if len(keys) > 0 {
-		if err := tx.Watch(ctx, keys...).Err(); err != nil {
+		// Return the Process error, not cmd.Err(): it keeps the serving
+		// endpoint that ClusterClient.Watch needs for a hostless redirect.
+		if _, err := tx.watch(ctx, keys...); err != nil {
 			return err
 		}
 	}
@@ -103,7 +119,17 @@ func (c *Tx) Close(ctx context.Context) error {
 	// WATCH/.../EXEC paths leave nothing to release and avoid the extra round
 	// trip.
 	if c.watchArmed {
-		_ = c.Unwatch(ctx).Err()
+		// Cleanup must not inherit the caller's cache intent.
+		_ = c.Unwatch(cscUnmarkedContext(ctx)).Err()
+		if c.watchArmed {
+			// A refused or queued UNWATCH is a complete reply, but does not
+			// prove that the connection is safe for another borrower. Remove
+			// the pinned connection without replaying cleanup or changing the
+			// callback's error. Get cannot dial here: WATCH already pinned it.
+			if cn, err := c.connPool.Get(ctx); err == nil {
+				c.connPool.Remove(ctx, cn, errors.New("redis: UNWATCH did not clear transaction state"))
+			}
+		}
 	}
 	return c.baseClient.Close()
 }
@@ -111,19 +137,26 @@ func (c *Tx) Close(ctx context.Context) error {
 // Watch marks the keys to be watched for conditional execution
 // of a transaction.
 func (c *Tx) Watch(ctx context.Context, keys ...string) *StatusCmd {
+	cmd, _ := c.watch(ctx, keys...)
+	return cmd
+}
+
+// watch is Watch that also returns the Process error, which (unlike cmd.Err())
+// keeps the serving-endpoint wrapper.
+func (c *Tx) watch(ctx context.Context, keys ...string) (*StatusCmd, error) {
 	args := make([]interface{}, 1+len(keys))
 	args[0] = "watch"
 	for i, key := range keys {
 		args[1+i] = key
 	}
 	cmd := NewStatusCmd(ctx, args...)
-	_ = c.Process(ctx, cmd)
+	err := c.Process(ctx, cmd)
 	// A successful WATCH leaves keys watched on the connection that Close must
 	// later release with UNWATCH.
 	if cmd.Err() == nil {
 		c.watchArmed = true
 	}
-	return cmd
+	return cmd, err
 }
 
 // Unwatch flushes all the previously watched keys for a transaction.
@@ -136,7 +169,7 @@ func (c *Tx) Unwatch(ctx context.Context, keys ...string) *StatusCmd {
 	cmd := NewStatusCmd(ctx, args...)
 	_ = c.Process(ctx, cmd)
 	// The watched keys have been released, so Close need not UNWATCH again.
-	if cmd.Err() == nil {
+	if cmd.Err() == nil && cmd.Val() == "OK" {
 		c.watchArmed = false
 	}
 	return cmd

@@ -61,6 +61,16 @@ type SortedSetCmdable interface {
 	ZDiffWithScores(ctx context.Context, keys ...string) *ZSliceCmd
 	ZDiffStore(ctx context.Context, destination string, keys ...string) *IntCmd
 	ZScan(ctx context.Context, key string, cursor uint64, match string, count int64) *ScanCmd
+
+	// Atomic moves between sorted sets, since Redis 8.12.
+	ZMove(ctx context.Context, source, destination, end string) *ZSliceCmd
+	ZMoveCount(ctx context.Context, source, destination, end string, count int64) *ZSliceCmd
+	ZMoveByScore(ctx context.Context, source, destination, min, max string) *ZSliceCmd
+	ZMoveByScoreCount(ctx context.Context, source, destination, min, max string, count int64) *ZSliceCmd
+	BZMove(ctx context.Context, source, destination, end string, timeout time.Duration) *ZSliceCmd
+	BZMoveCount(ctx context.Context, source, destination, end string, timeout time.Duration, count int64) *ZSliceCmd
+	ZMoveMember(ctx context.Context, source, destination string, members ...string) *ZSliceCmd
+	ZMoveMemberWithArgs(ctx context.Context, source, destination string, condition ZMoveMemberCondition, members ...string) *ZSliceCmd
 }
 
 // BZPopMax Redis `BZPOPMAX key [key ...] timeout` command.
@@ -817,4 +827,114 @@ func (z ZStore) appendArgs(args []interface{}) []interface{} {
 		args = append(args, "aggregate", z.Aggregate)
 	}
 	return args
+}
+
+// ZMoveMemberCondition is the destination condition of ZMOVEMEMBER. The zero
+// value sets no condition: the source score overwrites the destination score.
+type ZMoveMemberCondition string
+
+const (
+	ZMoveMemberNX ZMoveMemberCondition = "NX" // move only members the destination does not have
+	ZMoveMemberXX ZMoveMemberCondition = "XX" // move only members the destination already has
+)
+
+// ZMove atomically moves one member from the "MIN" or "MAX" end of source to
+// destination, keeping its score. Both keys must be in one cluster slot.
+// It returns the moved [member, score] pairs, or redis.Nil when nothing moved.
+// Available since Redis 8.12.
+//
+// cmd: ZMOVE source destination MIN|MAX
+func (c cmdable) ZMove(ctx context.Context, source, destination, end string) *ZSliceCmd {
+	return c.zMove(ctx, []interface{}{"zmove", source, destination, end}, false, 0)
+}
+
+// ZMoveCount is ZMove with COUNT: it moves up to count members from the end.
+//
+// cmd: ZMOVE source destination MIN|MAX COUNT count
+func (c cmdable) ZMoveCount(ctx context.Context, source, destination, end string, count int64) *ZSliceCmd {
+	return c.zMove(ctx, []interface{}{"zmove", source, destination, end}, true, count)
+}
+
+// ZMoveByScore moves every member of source with a score in [min, max] to
+// destination, lowest score first. The bounds are as in ZRANGEBYSCORE: "(" for
+// exclusive, "-inf" and "+inf". A large range moves in one command; use
+// ZMoveByScoreCount to bound it.
+//
+// cmd: ZMOVE source destination BYSCORE min max
+func (c cmdable) ZMoveByScore(ctx context.Context, source, destination, min, max string) *ZSliceCmd {
+	return c.zMove(ctx, []interface{}{"zmove", source, destination, "byscore", min, max}, false, 0)
+}
+
+// ZMoveByScoreCount is ZMoveByScore with COUNT: it moves up to count members,
+// the lowest scores of the range.
+//
+// cmd: ZMOVE source destination BYSCORE min max COUNT count
+func (c cmdable) ZMoveByScoreCount(ctx context.Context, source, destination, min, max string, count int64) *ZSliceCmd {
+	return c.zMove(ctx, []interface{}{"zmove", source, destination, "byscore", min, max}, true, count)
+}
+
+// BZMove is the blocking form of ZMove. When source is empty it waits up to
+// timeout for a member; 0 waits without limit. The timeout keeps its fraction
+// of a second. It returns redis.Nil on timeout.
+//
+// cmd: BZMOVE source destination MIN|MAX timeout
+func (c cmdable) BZMove(ctx context.Context, source, destination, end string, timeout time.Duration) *ZSliceCmd {
+	return c.bzMove(ctx, source, destination, end, timeout, false, 0)
+}
+
+// BZMoveCount is BZMove with COUNT. It wakes on the first member and moves up
+// to count members; it does not wait for a full batch.
+//
+// cmd: BZMOVE source destination MIN|MAX timeout COUNT count
+func (c cmdable) BZMoveCount(ctx context.Context, source, destination, end string, timeout time.Duration, count int64) *ZSliceCmd {
+	return c.bzMove(ctx, source, destination, end, timeout, true, count)
+}
+
+// ZMoveMember moves the named members from source to destination, keeping
+// their scores. The reply is in argument order; missing members are skipped
+// and a member given twice moves once. It returns redis.Nil when nothing moved.
+//
+// cmd: ZMOVEMEMBER source destination MEMBERS num-members member [member ...]
+func (c cmdable) ZMoveMember(ctx context.Context, source, destination string, members ...string) *ZSliceCmd {
+	return c.ZMoveMemberWithArgs(ctx, source, destination, "", members...)
+}
+
+// ZMoveMemberWithArgs is ZMoveMember with a destination condition (NX or XX).
+// Members the condition leaves out stay in source and are not in the reply.
+//
+// cmd: ZMOVEMEMBER source destination [NX|XX] MEMBERS num-members member [member ...]
+func (c cmdable) ZMoveMemberWithArgs(ctx context.Context, source, destination string, condition ZMoveMemberCondition, members ...string) *ZSliceCmd {
+	args := make([]interface{}, 3, 6+len(members))
+	args[0], args[1], args[2] = "zmovemember", source, destination
+	if condition != "" {
+		args = append(args, string(condition))
+	}
+	args = append(args, "members", len(members))
+	for _, m := range members {
+		args = append(args, m)
+	}
+	cmd := NewZSliceCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) zMove(ctx context.Context, args []interface{}, withCount bool, count int64) *ZSliceCmd {
+	if withCount {
+		args = append(args, "count", count)
+	}
+	cmd := NewZSliceCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+func (c cmdable) bzMove(ctx context.Context, source, destination, end string, timeout time.Duration, withCount bool, count int64) *ZSliceCmd {
+	// Seconds as a float: BZMOVE takes a fractional timeout.
+	args := []interface{}{"bzmove", source, destination, end, timeout.Seconds()}
+	if withCount {
+		args = append(args, "count", count)
+	}
+	cmd := NewZSliceCmd(ctx, args...)
+	cmd.setReadTimeout(timeout)
+	_ = c(ctx, cmd)
+	return cmd
 }

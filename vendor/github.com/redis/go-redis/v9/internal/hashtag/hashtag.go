@@ -81,6 +81,27 @@ func Slot(key string) int {
 	return int(crc16sum(key)) % slotNumber
 }
 
+// PatternSlot returns the only slot that keys matching the glob pattern can be
+// in, or -1 if they can be in any slot. It follows patternHashSlot in Redis:
+// a wildcard ('*', '?', '[') or an escape ('\') before the end of the hash tag
+// gives -1. A pattern with no wildcard matches one key, so it hashes as a key.
+func PatternSlot(pattern string) int {
+	s := -1 // index of the first '{'
+	for i := 0; i < len(pattern); i++ {
+		switch c := pattern[i]; {
+		case c == '*' || c == '?' || c == '[' || c == '\\':
+			return -1
+		case s == -1 && c == '{':
+			s = i
+		case s >= 0 && c == '}' && i == s+1:
+			s = -2 // empty tag: the whole key is hashed
+		case s >= 0 && c == '}':
+			return int(crc16sum(pattern[s+1:i])) % slotNumber
+		}
+	}
+	return int(crc16sum(pattern)) % slotNumber
+}
+
 func crc16sum(key string) (crc uint16) {
 	for i := 0; i < len(key); i++ {
 		crc = (crc << 8) ^ crc16tab[(byte(crc>>8)^key[i])&0x00ff]

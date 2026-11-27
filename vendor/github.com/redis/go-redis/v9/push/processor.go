@@ -69,6 +69,14 @@ func (p *Processor) ProcessPendingNotifications(ctx context.Context, handlerCtx 
 // and then continues only through frames already buffered by that read. It is
 // used by callers that have already established socket readiness and must not
 // wait for another frame after draining the current batch.
+//
+// After the first notification it starts a push frame only when the whole frame
+// is buffered. Callers run it under one hard read deadline for the whole call, and
+// handler time counts against it: a partly buffered frame started after slow
+// handlers could need a socket read after the deadline passed, time out
+// mid-frame, and retire a healthy connection. Such a frame is left untouched for
+// the next drain. A partly buffered attribute is still read here: the pool's
+// put-path check would parse it without a deadline.
 func (p *Processor) ProcessPendingNotificationsBuffered(
 	ctx context.Context, handlerCtx NotificationHandlerContext, rd *proto.Reader,
 ) error {
@@ -107,6 +115,12 @@ func (p *Processor) processPendingNotifications(
 				if err := rd.DiscardNext(); err != nil {
 					return err
 				}
+			}
+			// At a push frame with nothing of it consumed (any attributes before it
+			// are gone): leave it for the next drain unless it is fully buffered,
+			// rather than read the rest under a deadline the handlers may have used up.
+			if processed && replyType == proto.RespPush && !rd.HasBufferedFrame() {
+				return nil
 			}
 		} else {
 			var err error
@@ -230,9 +244,19 @@ func (v *VoidProcessor) ProcessPendingNotifications(_ context.Context, handlerCt
 		// see if we should skip this notification
 		notificationName, err := rd.PeekPushNotificationName()
 		if err != nil {
-			// Name too long to peek: still consume the frame below so it isn't
-			// misread as a reply.
-			if !errors.Is(err, proto.ErrPushNotificationNameTooLong) {
+			// The frame is a confirmed push (peeked above) whose name could not
+			// be peeked. Consume it below only when the header is well-formed
+			// and just the name is unpeekable, either too long for the peek
+			// window or not a string. Breaking in that case leaves the push at
+			// the buffer head for the caller's reply read to take as the command
+			// value (reply shift). Any other error breaks. On an I/O error the
+			// frame has not fully arrived, and on a header that does not parse
+			// ReadReply would stop partway and leave the rest of the push to be
+			// read as the reply. Both are left for the caller's own read to fail
+			// on. The peek cannot vouch for the body: one that fails to parse
+			// still stops the ReadReply below partway, as for a named push.
+			if !errors.Is(err, proto.ErrPushNotificationNameTooLong) &&
+				!errors.Is(err, proto.ErrPushNotificationNameNotString) {
 				break
 			}
 		} else if willHandleNotificationInClient(notificationName) {

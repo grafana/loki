@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -24,8 +25,11 @@ import (
 // to the channels in case of network errors.
 type PubSub struct {
 	opt *Options
+	// rec is the creating client's recorder; nil (a PubSub built without a
+	// client) records to the global recorder. Read through recorder().
+	rec otel.Recorder
 
-	newConn   func(ctx context.Context, addr string, channels []string) (*pool.Conn, error)
+	newConn   func(ctx context.Context, addr string, channels []string, onInit ...func(*pool.Conn)) (*pool.Conn, error)
 	closeConn func(*pool.Conn) error
 
 	mu        sync.Mutex
@@ -37,6 +41,11 @@ type PubSub struct {
 	closed bool
 	exit   chan struct{}
 
+	// stickyErr is set when PubSub is constructed in a failed state (e.g. Ring
+	// shard lookup failure). Subsequent operations return this error instead of
+	// panicking at construction time.
+	stickyErr error
+
 	cmd *Cmd
 
 	chOnce sync.Once
@@ -45,13 +54,29 @@ type PubSub struct {
 
 	// Push notification processor for handling generic push notifications
 	pushProcessor push.NotificationProcessor
+	// processorFor, when set, picks the push processor for a given connection
+	// instead of pushProcessor. MultiDB sets it: the connections of one
+	// PubSub may be owned by different member clients over its lifetime, and
+	// a push must be handled by the processor of the member that owns the
+	// connection it arrived on.
+	processorFor func(*pool.Conn) push.NotificationProcessor
 
 	// Cleanup callback for maintenanceNotifications upgrade tracking
 	onClose func()
+
+	// In-place re-authentication pending reply count (RESP3)
+	authPending int
 }
 
 func (c *PubSub) init() {
 	c.exit = make(chan struct{})
+}
+
+func (c *PubSub) recorder() otel.Recorder {
+	if c.rec == nil {
+		return otel.Scoped(nil)
+	}
+	return c.rec
 }
 
 func (c *PubSub) String() string {
@@ -74,6 +99,9 @@ func (c *PubSub) connWithLock(ctx context.Context) (*pool.Conn, error) {
 func (c *PubSub) conn(ctx context.Context, newChannels []string) (*pool.Conn, error) {
 	if c.closed {
 		return nil, pool.ErrClosed
+	}
+	if c.stickyErr != nil {
+		return nil, c.stickyErr
 	}
 	if c.cn != nil {
 		return c.cn, nil
@@ -99,7 +127,13 @@ func (c *PubSub) conn(ctx context.Context, newChannels []string) (*pool.Conn, er
 	channels = append(channels, slices.Collect(maps.Keys(c.schannels))...)
 	channels = append(channels, newChannels...)
 
-	cn, err := c.newConn(ctx, c.opt.Addr, channels)
+	cn, err := c.newConn(ctx, c.opt.Addr, channels, func(cn *pool.Conn) {
+		// Bind the callback to this connection so a re-auth scheduled for it
+		// never reaches a replacement connection (see PubSub.reauth).
+		cn.SetPubSubReAuth(func(username, password string) error {
+			return c.reauth(cn, username, password)
+		})
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -181,6 +215,28 @@ func (c *PubSub) releaseConn(ctx context.Context, cn *pool.Conn, err error, allo
 	}
 }
 
+// forceReconnect closes the current connection and re-dials through the
+// PubSub's connection factory, resubscribing to all channels and patterns.
+// MultiDBClient uses it to move subscriptions to the new active database after
+// a failover.
+func (c *PubSub) forceReconnect(ctx context.Context, reason error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	// A canceled ctx means a newer switch superseded this one; its own
+	// reconnect may already hold the new connection.
+	if ctx.Err() != nil {
+		return
+	}
+	// Nothing to move: an empty handle dials lazily on first use.
+	if c.cn == nil && len(c.channels) == 0 && len(c.patterns) == 0 && len(c.schannels) == 0 {
+		return
+	}
+	c.reconnect(ctx, reason)
+}
+
 func (c *PubSub) reconnect(ctx context.Context, reason error) {
 	if c.cn != nil && c.cn.ShouldHandoff() {
 		newEndpoint := c.cn.GetHandoffEndpoint()
@@ -204,6 +260,9 @@ func (c *PubSub) closeTheCn(reason error) error {
 	if c.cn == nil {
 		return nil
 	}
+	c.cn.SetPubSubReAuth(nil)
+	c.authPending = 0
+	c.cmd = nil
 	err := c.closeConn(c.cn)
 	c.cn = nil
 	return err
@@ -445,7 +504,7 @@ func (c *PubSub) newMessage(ctx context.Context, cn *pool.Conn, reply interface{
 					Payload: payload,
 				}
 				// Record PubSub message received
-				otel.RecordPubSubMessage(ctx, cn, "received", channel, sharded)
+				c.recorder().RecordPubSubMessage(ctx, cn, "received", channel, sharded)
 				return msg, nil
 			case []interface{}:
 				ss := make([]string, len(payload))
@@ -457,7 +516,7 @@ func (c *PubSub) newMessage(ctx context.Context, cn *pool.Conn, reply interface{
 					PayloadSlice: ss,
 				}
 				// Record PubSub message received
-				otel.RecordPubSubMessage(ctx, cn, "received", channel, sharded)
+				c.recorder().RecordPubSubMessage(ctx, cn, "received", channel, sharded)
 				return msg, nil
 			default:
 				return nil, fmt.Errorf("redis: unsupported pubsub message payload: %T", payload)
@@ -470,7 +529,7 @@ func (c *PubSub) newMessage(ctx context.Context, cn *pool.Conn, reply interface{
 				Payload: reply[3].(string),
 			}
 			// Record PubSub message received (pattern message, not sharded)
-			otel.RecordPubSubMessage(ctx, cn, "received", channel, false)
+			c.recorder().RecordPubSubMessage(ctx, cn, "received", channel, false)
 			return msg, nil
 		case "pong":
 			return &Pong{
@@ -488,32 +547,66 @@ func (c *PubSub) newMessage(ctx context.Context, cn *pool.Conn, reply interface{
 // is not received in time. This is low-level API and in most cases
 // Channel should be used instead.
 func (c *PubSub) ReceiveTimeout(ctx context.Context, timeout time.Duration) (interface{}, error) {
-	if c.cmd == nil {
-		c.cmd = NewCmd(ctx)
-	}
-
 	// Don't hold the lock to allow subscriptions and pings.
 	cn, err := c.connWithLock(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	err = cn.WithReader(ctx, timeout, func(rd *proto.Reader) error {
-		// To be sure there are no buffered push notifications, we process them before reading the reply
-		if err := c.processPendingPushNotificationWithReader(ctx, cn, rd); err != nil {
-			// Log the error but don't fail the command execution
-			// Push notification processing errors shouldn't break normal Redis operations
-			internal.Logger.Printf(ctx, "push: conn[%d] error processing pending notifications before reading reply: %v", cn.GetID(), err)
+	c.mu.Lock()
+	if c.cmd == nil {
+		c.cmd = NewCmd(ctx)
+	}
+	cmd := c.cmd
+	c.mu.Unlock()
+
+	for {
+
+		err = cn.WithReader(ctx, timeout, func(rd *proto.Reader) error {
+			// To be sure there are no buffered push notifications, we process them before reading the reply
+			if err := c.processPendingPushNotificationWithReader(ctx, cn, rd); err != nil {
+				// Log the error but don't fail the command execution
+				// Push notification processing errors shouldn't break normal Redis operations
+				internal.Logger.Printf(ctx, "push: conn[%d] error processing pending notifications before reading reply: %v", cn.GetID(), err)
+			}
+			return cmd.readReply(rd)
+		})
+
+		if err != nil {
+			if isRedisError(err) {
+				c.mu.Lock()
+				if c.authPending > 0 {
+					c.authPending--
+					c.reconnect(ctx, err)
+					c.mu.Unlock()
+					return nil, err
+				}
+				c.mu.Unlock()
+			}
+			c.releaseConnWithLock(ctx, cn, err, timeout > 0)
+			return nil, err
 		}
-		return c.cmd.readReply(rd)
-	})
+
+		c.mu.Lock()
+		if c.authPending > 0 {
+			if val, ok := cmd.Val().(string); ok && strings.EqualFold(val, "OK") {
+				c.authPending--
+				c.mu.Unlock()
+				continue
+			}
+		}
+		c.mu.Unlock()
+
+		break
+	}
+
 	c.releaseConnWithLock(ctx, cn, err, timeout > 0)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return c.newMessage(ctx, cn, c.cmd.Val())
+	return c.newMessage(ctx, cn, cmd.Val())
 }
 
 // Receive returns a message as a Subscription, Message, Pong or error.
@@ -554,6 +647,9 @@ func (c *PubSub) ReceiveMessage(ctx context.Context) (*Message, error) {
 }
 
 func (c *PubSub) getContext() context.Context {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.cmd != nil {
 		return c.cmd.ctx
 	}
@@ -567,16 +663,40 @@ func (c *PubSub) getContext() context.Context {
 // is blocked full for 1 minute the message is dropped.
 // Receive* APIs can not be used after channel is created.
 //
+// If the PubSub was created with a sticky error (e.g. Ring subscribe on empty
+// ring or shard lookup failure), or if Channel is called after
+// ChannelWithSubscriptions, a warning is logged and an already-closed channel is
+// returned.
+//
 // go-redis periodically sends ping messages to test connection health
 // and re-subscribes if ping can not received for 1 minute.
 func (c *PubSub) Channel(opts ...ChannelOption) <-chan *Message {
+	c.mu.Lock()
+	if c.stickyErr != nil && !c.closed {
+		err := c.stickyErr
+		c.mu.Unlock()
+		internal.Logger.Printf(context.Background(),
+			"redis: Channel returning closed channel due to sticky error: %s", err)
+		ch := make(chan *Message)
+		close(ch)
+		return ch
+	}
+	c.mu.Unlock()
+
 	c.chOnce.Do(func() {
 		c.msgCh = newChannel(c, opts...)
 		c.msgCh.initMsgChan()
 	})
 	if c.msgCh == nil {
-		err := fmt.Errorf("redis: Channel can't be called after ChannelWithSubscriptions")
-		panic(err)
+		// Already using ChannelWithSubscriptions — return a closed channel
+		// instead of panicking so callers can recover (issue #3761).
+		// Use Background: getContext reads c.cmd which the other channel's
+		// Receive loop may write concurrently (data race under -race).
+		internal.Logger.Printf(context.Background(),
+			"redis: Channel can't be called after ChannelWithSubscriptions")
+		ch := make(chan *Message)
+		close(ch)
+		return ch
 	}
 	return c.msgCh.msgCh
 }
@@ -593,28 +713,67 @@ func (c *PubSub) ChannelSize(size int) <-chan *Message {
 // *Subscription or *Message. Subscription messages can be used to detect
 // reconnections.
 //
+// If the PubSub was created with a sticky error (e.g. Ring subscribe on empty
+// ring or shard lookup failure), or if ChannelWithSubscriptions is called after
+// Channel or ChannelSize, a warning is logged and an already-closed channel is
+// returned.
+//
 // ChannelWithSubscriptions can not be used together with Channel or ChannelSize.
 func (c *PubSub) ChannelWithSubscriptions(opts ...ChannelOption) <-chan interface{} {
+	c.mu.Lock()
+	if c.stickyErr != nil && !c.closed {
+		err := c.stickyErr
+		c.mu.Unlock()
+		internal.Logger.Printf(context.Background(),
+			"redis: ChannelWithSubscriptions returning closed channel due to sticky error: %s", err)
+		ch := make(chan interface{})
+		close(ch)
+		return ch
+	}
+	c.mu.Unlock()
+
 	c.chOnce.Do(func() {
 		c.allCh = newChannel(c, opts...)
 		c.allCh.initAllChan()
 	})
 	if c.allCh == nil {
-		err := fmt.Errorf("redis: ChannelWithSubscriptions can't be called after Channel")
-		panic(err)
+		// Already using Channel — return a closed channel instead of panicking
+		// so callers can recover (issue #3761).
+		// Use Background: getContext reads c.cmd which the other channel's
+		// Receive loop may write concurrently (data race under -race).
+		internal.Logger.Printf(context.Background(),
+			"redis: ChannelWithSubscriptions can't be called after Channel")
+		ch := make(chan interface{})
+		close(ch)
+		return ch
 	}
 	return c.allCh.allCh
 }
 
+// pushProcessorFor returns the processor for pushes arriving on cn, or nil
+// when pushes are not processed on that connection: no RESP3, or no
+// processor. With processorFor set (MultiDB), the connection's owner decides
+// both, since its protocol and its processor may differ from the ones this
+// PubSub was created with.
+func (c *PubSub) pushProcessorFor(cn *pool.Conn) push.NotificationProcessor {
+	if c.processorFor != nil {
+		return c.processorFor(cn)
+	}
+	if c.opt.Protocol != 3 {
+		return nil
+	}
+	return c.pushProcessor
+}
+
 func (c *PubSub) processPendingPushNotificationWithReader(ctx context.Context, cn *pool.Conn, rd *proto.Reader) error {
-	// Only process push notifications for RESP3 connections with a processor
-	if c.opt.Protocol != 3 || c.pushProcessor == nil {
+	processor := c.pushProcessorFor(cn)
+	if processor == nil {
 		return nil
 	}
 
 	// Create handler context with client, connection pool, and connection information
 	handlerCtx := c.pushNotificationHandlerContext(cn)
-	return c.pushProcessor.ProcessPendingNotifications(ctx, handlerCtx, rd)
+	return processor.ProcessPendingNotifications(ctx, handlerCtx, rd)
 }
 
 func (c *PubSub) pushNotificationHandlerContext(cn *pool.Conn) push.NotificationHandlerContext {
@@ -792,7 +951,8 @@ func (c *channel) initMsgChan() {
 				case <-timer.C:
 					internal.Logger.Printf(
 						ctx, "redis: %v channel is full for %s (message is dropped)",
-						c, c.chanSendTimeout)
+						c, c.chanSendTimeout,
+					)
 				}
 			default:
 				internal.Logger.Printf(ctx, "redis: unknown message type: %T", msg)
@@ -846,11 +1006,60 @@ func (c *channel) initAllChan() {
 				case <-timer.C:
 					internal.Logger.Printf(
 						ctx, "redis: %v channel is full for %s (message is dropped)",
-						c, c.chanSendTimeout)
+						c, c.chanSendTimeout,
+					)
 				}
 			default:
 				internal.Logger.Printf(ctx, "redis: unknown message type: %T", msg)
 			}
 		}
 	}()
+}
+
+// reauth re-authenticates target, the connection the credentials update was
+// scheduled for.
+func (c *PubSub) reauth(target *pool.Conn, username, password string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closed {
+		return pool.ErrClosed
+	}
+	if c.cn == nil {
+		return errors.New("redis: pubsub connection is not ready for re-authentication")
+	}
+	if c.cn != target {
+		// The connection was replaced (reconnect, handoff) after the re-auth
+		// was scheduled. The replacement authenticated with the provider's
+		// current credentials when it was dialed, so sending AUTH to it here
+		// could only apply credentials that are older than that.
+		return nil
+	}
+	cn := c.cn
+
+	if !cn.IsResp3() {
+		// When the negotiated protocol is RESP2 (either configured or negotiated
+		// as fallback), a subscribed pub/sub connection cannot execute in-place
+		// AUTH commands. Safely trigger reconnect rather than in-place AUTH.
+		c.reconnect(context.Background(), nil)
+		return nil
+	}
+
+	ctx := context.Background()
+	var cmd *StatusCmd
+	if username != "" {
+		cmd = NewStatusCmd(ctx, "AUTH", username, password)
+	} else {
+		cmd = NewStatusCmd(ctx, "AUTH", password)
+	}
+
+	err := c.writeCmd(ctx, cn, cmd)
+	c.releaseConn(ctx, cn, err, false)
+	if err != nil {
+		return err
+	}
+	if c.cn == cn {
+		c.authPending++
+	}
+	return nil
 }

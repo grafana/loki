@@ -177,7 +177,10 @@ issues `AUTH` on each refresh.
 - `internal/routing` — aggregator policies and shard pickers used by
   `ClusterClient` for multi-shard commands.
 - `internal/otel` — small OpenTelemetry shim used to keep root free of telemetry
-  deps; full instrumentation lives in `extra/redisotel-native`.
+  deps; full instrumentation lives in `extra/redisotel-native`. Every client
+  resolves its recorder once (`Options.OTelRecorder`, else a view of the global
+  one) and its pools get a matching callback table; see
+  `.claude/specs/otel-per-client-recorder.md`.
 
 ## Architectural specs
 

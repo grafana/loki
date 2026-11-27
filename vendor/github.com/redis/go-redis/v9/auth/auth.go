@@ -2,6 +2,8 @@
 // It also includes a basic implementation of credentials using username and password.
 package auth
 
+import "context"
+
 // StreamingCredentialsProvider is an interface that defines the methods for a streaming credentials provider.
 // It is used to provide credentials for authentication.
 // The CredentialsListener is used to receive updates when the credentials change.
@@ -21,8 +23,19 @@ type StreamingCredentialsProvider interface {
 	// the most recently returned UnsubscribeFunc and rely on it to fully
 	// unsubscribe the listener.
 	//
-	// TODO(ndyakov): Should we add context to the Subscribe method?
 	Subscribe(listener CredentialsListener) (Credentials, UnsubscribeFunc, error)
+}
+
+// ContextStreamingCredentialsProvider is an optional extension for providers
+// that can cooperatively cancel subscription setup using the caller's context.
+// The context bounds only the initial SubscribeWithContext call; it does not
+// define the lifetime of a successfully established subscription. Canceling one
+// caller must not abort token acquisition or subscriptions shared by other
+// connections. Provider wrappers must forward SubscribeWithContext to retain
+// this behavior; otherwise go-redis calls the legacy Subscribe method.
+type ContextStreamingCredentialsProvider interface {
+	StreamingCredentialsProvider
+	SubscribeWithContext(ctx context.Context, listener CredentialsListener) (Credentials, UnsubscribeFunc, error)
 }
 
 // UnsubscribeFunc is a function that is used to cancel the subscription to the credentials provider.

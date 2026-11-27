@@ -22,6 +22,11 @@ var ErrPoolExhausted = pool.ErrPoolExhausted
 // ErrPoolTimeout timed out waiting to get a connection from the connection pool.
 var ErrPoolTimeout = pool.ErrPoolTimeout
 
+// ErrClusterTopologyUnhealthy indicates that a node required by an operation
+// is reported as unavailable by the cluster topology. Use errors.Is to match
+// this error, which may include details about the node or slot.
+var ErrClusterTopologyUnhealthy = errors.New("redis: cluster topology contains a node that is not online")
+
 // ErrCrossSlot is returned when keys are used in the same Redis command and
 // the keys are not in the same hash slot. This error is returned by Redis
 // Cluster and will be returned by the client when TxPipeline or TxPipelined
@@ -143,7 +148,7 @@ func shouldRetry(err error, retryTimeout bool) bool {
 
 	// Fallback to string checking for backward compatibility with plain errors
 	s := err.Error()
-	if strings.HasPrefix(s, "ERR max number of clients reached") {
+	if strings.HasPrefix(s, "ERR max number of clients") {
 		return true
 	}
 	if strings.HasPrefix(s, "LOADING ") {
@@ -189,6 +194,11 @@ func isBadConn(err error, allowTimeout bool, addr string) bool {
 	if err == nil {
 		return false
 	}
+	// Pub/Sub permits receive timeouts even when the socket deadline came from ctx.
+	var deadlineErr *pool.ContextDeadlineError
+	if allowTimeout && errors.As(err, &deadlineErr) {
+		return false
+	}
 
 	// Check for context errors (works with wrapped errors)
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -228,6 +238,19 @@ func isBadConn(err error, allowTimeout bool, addr string) bool {
 }
 
 func isMovedError(err error) (moved bool, ask bool, addr string) {
+	// Unwrap serving-endpoint / redirect-from-node wrappers so typed and
+	// string MOVED/ASK checks still see the Redis error (#4233).
+	for {
+		switch e := err.(type) {
+		case *errWithServingEndpoint:
+			err = e.err
+		case *redirectFromNodeError:
+			err = e.err
+		default:
+			goto movedCheck
+		}
+	}
+movedCheck:
 	// Check for typed MovedError
 	if movedErr, ok := proto.IsMovedError(err); ok {
 		addr = movedErr.Addr()
@@ -273,10 +296,24 @@ func isReadOnlyError(err error) bool {
 }
 
 func isMovedSameConnAddr(err error, addr string) bool {
-	if movedErr, ok := proto.IsMovedError(err); ok {
-		return strings.HasSuffix(movedErr.Addr(), addr)
+	movedErr, ok := proto.IsMovedError(err)
+	if !ok {
+		return false
 	}
-	return false
+
+	movedHost, movedPort, err := net.SplitHostPort(internal.GetAddr(movedErr.Addr()))
+	if err != nil {
+		return false
+	}
+
+	connHost, connPort, err := net.SplitHostPort(internal.GetAddr(addr))
+	if err != nil || movedPort != connPort {
+		return false
+	}
+	// A MOVED without a host (cluster-preferred-endpoint-type
+	// unknown-endpoint) points at the host of the connection that sent it, so
+	// only the port has to match.
+	return movedHost == "" || strings.EqualFold(movedHost, connHost)
 }
 
 //------------------------------------------------------------------------------

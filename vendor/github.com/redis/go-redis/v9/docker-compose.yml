@@ -1,6 +1,6 @@
 ---
 
-x-default-image: &default-image ${CLIENT_LIBS_TEST_IMAGE:-redislabs/client-libs-test:8.10.0}
+x-default-image: &default-image ${CLIENT_LIBS_TEST_IMAGE:-redislabs/client-libs-test:8.12.0}
 
 services:
   redis:
@@ -26,6 +26,7 @@ services:
       - all-stack
       - all
       - e2e
+      - multidb
 
   osscluster:
     image: *default-image
@@ -42,6 +43,74 @@ services:
     profiles:
       - cluster
       - all-stack
+      - all
+
+  # Per-member RESP proxies for MultiDB (Active-Active) e2e tests. Each proxy
+  # is one "member database" endpoint; all front the same target Redis so data
+  # written through one member is visible through the others (a converged
+  # CRDB). Faults are injected via the multidb/e2e mock fault-injector
+  # (faultinjector_mock.go), which drives docker stop/start by default or, if
+  # MULTIDB_E2E_FI_MECHANISM=iptables is enabled after verifying the image
+  # supports it (see the design doc), `docker exec ... iptables` — hence
+  # cap_add: NET_ADMIN below, unused by the default mechanism.
+  cae-proxy-db0:
+    image: redislabs/client-resp-proxy:latest
+    container_name: cae-proxy-db0
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - TARGET_HOST=redis
+      - TARGET_PORT=6379
+      - LISTEN_PORT=17100
+      - LISTEN_HOST=0.0.0.0
+      - API_PORT=3000
+    ports:
+      - "17100:17100"
+      - "18120:3000"
+    depends_on:
+      - redis
+    profiles:
+      - multidb
+      - all
+
+  cae-proxy-db1:
+    image: redislabs/client-resp-proxy:latest
+    container_name: cae-proxy-db1
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - TARGET_HOST=redis
+      - TARGET_PORT=6379
+      - LISTEN_PORT=17101
+      - LISTEN_HOST=0.0.0.0
+      - API_PORT=3000
+    ports:
+      - "17101:17101"
+      - "18121:3000"
+    depends_on:
+      - redis
+    profiles:
+      - multidb
+      - all
+
+  cae-proxy-db2:
+    image: redislabs/client-resp-proxy:latest
+    container_name: cae-proxy-db2
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - TARGET_HOST=redis
+      - TARGET_PORT=6379
+      - LISTEN_PORT=17102
+      - LISTEN_HOST=0.0.0.0
+      - API_PORT=3000
+    ports:
+      - "17102:17102"
+      - "18122:3000"
+    depends_on:
+      - redis
+    profiles:
+      - multidb
       - all
 
   cae-resp-proxy:

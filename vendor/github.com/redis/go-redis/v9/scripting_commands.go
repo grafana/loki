@@ -223,6 +223,18 @@ func fcallArgs(command string, function string, keys []string, args ...interface
 		cmdArgs[3+i] = key
 	}
 
-	cmdArgs = append(cmdArgs, args...)
-	return cmdArgs
+	// Like eval, a single slice argument is expanded into its elements.
+	// Any other argument, a nil one included, is sent as it is.
+	if len(args) == 1 {
+		switch arg := args[0].(type) {
+		case []string:
+			for _, s := range arg {
+				cmdArgs = append(cmdArgs, s)
+			}
+			return cmdArgs
+		case []interface{}:
+			return append(cmdArgs, arg...)
+		}
+	}
+	return append(cmdArgs, args...)
 }

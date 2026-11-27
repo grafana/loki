@@ -18,6 +18,10 @@ type writer interface {
 	WriteString(s string) (n int, err error)
 }
 
+// maxInlineBulkLen is the longest bulk string value that bytes writes
+// together with its header in one Write. Longer values use a second Write.
+const maxInlineBulkLen = 128
+
 type Writer struct {
 	writer
 
@@ -36,7 +40,7 @@ func NewWriter(wr writer) *Writer {
 
 // Reset points an existing Writer at a new destination, keeping lenBuf and
 // numBuf. It exists so callers on a hot path can pool Writers instead of
-// allocating one (plus its two 64-byte scratch buffers) per use.
+// allocating one (plus its two scratch buffers) per use.
 //
 // Pass nil when returning a Writer to a pool so it does not retain the old
 // destination.
@@ -217,11 +221,19 @@ func (w *Writer) WriteArg(v interface{}) error {
 }
 
 func (w *Writer) bytes(b []byte) error {
-	if err := w.WriteByte(RespString); err != nil {
+	w.lenBuf = append(w.lenBuf[:0], RespString)
+	w.lenBuf = strconv.AppendUint(w.lenBuf, uint64(len(b)), 10)
+	w.lenBuf = append(w.lenBuf, '\r', '\n')
+
+	// Short values go out with the header in one Write.
+	if len(b) <= maxInlineBulkLen {
+		w.lenBuf = append(w.lenBuf, b...)
+		w.lenBuf = append(w.lenBuf, '\r', '\n')
+		_, err := w.Write(w.lenBuf)
 		return err
 	}
 
-	if err := w.writeLen(len(b)); err != nil {
+	if _, err := w.Write(w.lenBuf); err != nil {
 		return err
 	}
 

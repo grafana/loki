@@ -130,6 +130,8 @@ func himportFanOutDiscardAll(ctx context.Context, registry *himportRegistry, for
 // note: the API is experimental and may be subject to change.
 func (c *ClusterClient) HImportPrepare(ctx context.Context, fieldsetName string, fields ...string) *StatusCmd {
 	cmd := NewHImportPrepareCmd(ctx, fieldsetName, fields...)
+	ctx = cscUnmarkedContext(ctx)
+
 	himportFanOutPrepare(ctx, c.himport, c.ForEachMaster, cmd)
 	return &cmd.StatusCmd
 }
@@ -144,6 +146,8 @@ func (c *ClusterClient) HImportPrepare(ctx context.Context, fieldsetName string,
 // note: the API is experimental and may be subject to change.
 func (c *ClusterClient) HImportDiscard(ctx context.Context, fieldsetName string) *IntCmd {
 	cmd := NewHImportDiscardCmd(ctx, fieldsetName)
+	ctx = cscUnmarkedContext(ctx)
+
 	himportFanOutDiscard(ctx, c.himport, c.ForEachMaster, cmd)
 	return &cmd.IntCmd
 }
@@ -158,6 +162,8 @@ func (c *ClusterClient) HImportDiscard(ctx context.Context, fieldsetName string)
 // note: the API is experimental and may be subject to change.
 func (c *ClusterClient) HImportDiscardAll(ctx context.Context) *IntCmd {
 	cmd := NewHImportDiscardAllCmd(ctx)
+	ctx = cscUnmarkedContext(ctx)
+
 	himportFanOutDiscardAll(ctx, c.himport, c.ForEachMaster, cmd)
 	return &cmd.IntCmd
 }

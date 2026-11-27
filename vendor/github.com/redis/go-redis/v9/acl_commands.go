@@ -11,6 +11,7 @@ type ACLCmdable interface {
 	ACLGenPass(ctx context.Context, bit int) *StringCmd
 
 	ACLSetUser(ctx context.Context, username string, rules ...string) *StatusCmd
+	ACLGetUser(ctx context.Context, username string) *ACLUserCmd
 	ACLDelUser(ctx context.Context, username string) *IntCmd
 	ACLUsers(ctx context.Context) *StringSliceCmd
 	ACLWhoAmI(ctx context.Context) *StringCmd
@@ -65,6 +66,19 @@ func (c cmdable) ACLSetUser(ctx context.Context, username string, rules ...strin
 		args[i+3] = rule
 	}
 	cmd := NewStatusCmd(ctx, args...)
+	_ = c(ctx, cmd)
+	return cmd
+}
+
+// ACLGetUser returns the ACL rules of a user. It returns redis.Nil when the
+// user does not exist.
+//
+// The reply is read in the Redis 7.0+ format, where the key and channel
+// patterns are rule strings.
+//
+// See https://redis.io/docs/latest/commands/acl-getuser/
+func (c cmdable) ACLGetUser(ctx context.Context, username string) *ACLUserCmd {
+	cmd := NewACLUserCmd(ctx, "acl", "getuser", username)
 	_ = c(ctx, cmd)
 	return cmd
 }
