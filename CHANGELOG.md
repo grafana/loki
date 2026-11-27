@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.7.3](https://github.com/grafana/loki/compare/v3.7.11...v3.7.3) (2026-11-27)
+
+
+### Bug Fixes
+
+* **compactor:** Scope BoltDB RemoveChunk to current index table period ([#23402](https://github.com/grafana/loki/issues/23402)) ([d1ad9f9](https://github.com/grafana/loki/commit/d1ad9f932fa373b0db74229e235a2c63a7a1905b))
+
 ## [3.7.11](https://github.com/grafana/loki/compare/v3.7.10...v3.7.11) (2026-11-27)
 
 
