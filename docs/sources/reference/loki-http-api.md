@@ -157,6 +157,10 @@ The API accepts several formats for timestamps:
 - A floating point number is a Unix timestamp with fractions of a second.
 - A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
+Query endpoints accept times from `1970-01-01T00:00:00Z` to `2262-01-01T00:00:00Z`, and return a 400 error for a time outside this range.
+A floating point number is always a number of seconds.
+For example, a time in milliseconds with a fraction, such as `1700000000000.5`, is out of range.
+
 {{< admonition type="note" >}}
 When using `/api/v1/push`, you must send the timestamp as a string and not a number, otherwise the endpoint will return a 400 error.
 {{< /admonition >}}
