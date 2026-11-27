@@ -96,7 +96,7 @@ func (c *Context) newIndexOutput(tenant string, layout streams.Layout) (*indexOu
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
-	return &indexOutput{tenant: tenant, bucket: c.bucket, builder: builder}, nil
+	return &indexOutput{tenant: tenant, bucket: c.indexBucket, builder: builder}, nil
 }
 
 // appendPostingsRow writes row to the output. It first uploads the current

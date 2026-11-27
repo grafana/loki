@@ -237,8 +237,8 @@ func (w *reachabilityWalk) tocIndexPaths(ctx context.Context, window time.Time) 
 		// Every index object is below indexes/. A pointer elsewhere, for
 		// example one that holds IndexStoragePrefix, would get the prefix
 		// twice and match no object key.
-		if !strings.HasPrefix(pointer.Path, "indexes/") {
-			return fmt.Errorf("index pointer %q is not in indexes/", pointer.Path)
+		if !strings.HasPrefix(pointer.Path, dataobj.IndexDirectory) {
+			return fmt.Errorf("index pointer %q is not in %s", pointer.Path, dataobj.IndexDirectory)
 		}
 		paths = append(paths, pointer.Path)
 		return nil

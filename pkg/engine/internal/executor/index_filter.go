@@ -35,7 +35,7 @@ func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
 }
 
 func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter) ([]v2.ResultArtifact, error) {
-	if c.bucket == nil {
+	if c.indexBucket == nil {
 		return nil, errors.New("no object store bucket configured")
 	}
 	if node.Tenant == "" || len(node.SourceIndexPaths) == 0 || slices.Contains(node.SourceIndexPaths, "") {
@@ -132,7 +132,7 @@ func (c *Context) openFilterSources(ctx context.Context, node *physical.IndexFil
 		layout  sourceLayout
 	)
 	for _, path := range node.SourceIndexPaths {
-		obj, err := dataobj.FromBucket(ctx, c.bucket, path, indexPrefetchBytes)
+		obj, err := dataobj.FromBucket(ctx, c.indexBucket, path, indexPrefetchBytes)
 		if err != nil {
 			return nil, streams.Layout{}, fmt.Errorf("opening source index %q: %w", path, err)
 		}
