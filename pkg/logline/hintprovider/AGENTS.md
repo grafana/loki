@@ -201,3 +201,15 @@ Query-shape support and hint lookup for logline index lookups.
       frontend's default planned.
     - The frontend owns the configuration default of 1; multiple conjunctions
       require explicit opt-in. Examples are pinned in `TestSupportedQuery_Or`.
+19. **Data older than the index retention passes through**
+    - `RetentionHintProvider` wraps the hint cache and unions the delegate's
+      hints with a passthrough `[0, cutoff)`. The cutoff is now minus
+      `RetentionPeriod()`, rounded up to the next UTC day for clock skew. It
+      composes with `min_date`, which stays the store's value.
+    - The scheduler deletes indexes past that period, but Loki can still return
+      their data (backfilled chunks, longer per-stream retention). A lookup
+      would find no index and skip it.
+    - The delegate is only asked about `[cutoff, through]`. Through is
+      inclusive, so a query ending at the cutoff still looks up that instant.
+    - It sits outside the cache so the moving cutoff never changes cache keys.
+      Only the query-frontend wraps it, because it plans lookups.
