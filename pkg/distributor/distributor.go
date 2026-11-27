@@ -763,7 +763,7 @@ func (d *Distributor) validateStreams(
 	defer sp.AddEvent("finished to validate request")
 
 	tenantID := vCtx.userID
-	fieldDetector := newFieldDetector(vCtx)
+	fieldDetector := newFieldDetector(ctx, vCtx)
 	result := validatedPush{streams: make([]acceptedStream, 0, len(req.Streams))}
 	var (
 		validationErrors      util.GroupedErrors
@@ -1087,9 +1087,10 @@ func (d *Distributor) normalizeMetadataGroup(group *metadataGroup, tenantID, for
 }
 
 // normalizeEntryStructuredMetadata normalizes entry.StructuredMetadata in place, with the same
-// result as normalizeStructuredMetadata followed by logproto.CopyToLabelAdapters. When withLabels is
-// true it also returns the normalized metadata as labels, built with b; otherwise it returns empty
-// labels.
+// result as normalizeStructuredMetadata followed by logproto.CopyToLabelAdapters. It returns the
+// normalized metadata as labels when withLabels is true. When withLabels is false it returns empty
+// labels for metadata that needs no normalization, and the labels it built anyway for metadata that
+// does, so a caller that passes false must ignore the result.
 //
 // Most metadata needs no normalization, as the OTLP push parser already names attributes the way
 // normalizeStructuredMetadata does. For such metadata it only sorts the entries by name, in place,

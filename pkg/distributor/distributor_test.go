@@ -1317,7 +1317,7 @@ func TestDistributor_ProcessStreamEntries(t *testing.T) {
 			stream := logproto.InternalStreamAdapter{Labels: lbs.String(), ResourceLogs: tc.resources}
 			var validationErrors util.GroupedErrors
 
-			stats, err := d.processStreamEntries(ctx, vCtx, &stream, lbs, "24", "accounting", constants.OTLP, newFieldDetector(vCtx), &validationErrors)
+			stats, err := d.processStreamEntries(ctx, vCtx, &stream, lbs, "24", "accounting", constants.OTLP, newFieldDetector(ctx, vCtx), &validationErrors)
 			require.NoError(t, err)
 			require.Equal(t, tc.wantKeptBytes, stats.unexpandedSize)
 			require.Equal(t, tc.wantKeptBytes, nestedStreamSize(stream))

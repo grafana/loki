@@ -3,7 +3,7 @@ package distributor
 import (
 	"context"
 	"fmt"
-	"strings"
+	"slices"
 	"testing"
 	"time"
 
@@ -55,6 +55,25 @@ func TestLabelNameIsNormalized(t *testing.T) {
 		{name: "a-b", want: false},
 		{name: "é", want: false},
 		{name: "a b", want: false},
+		{name: "a_b_c", want: true},
+		{name: "k8s_pod_name", want: true},
+		{name: "A", want: true},
+		{name: "_1", want: true},
+		{name: "_a_b_", want: true},
+		{name: "__a__", want: true},
+		{name: "__1__", want: true},
+		{name: "__a_b__", want: true},
+		{name: "___a___", want: true},
+		{name: "__", want: false},
+		{name: "___", want: false},
+		{name: "a___", want: false},
+		{name: "1", want: false},
+		{name: "a\x00", want: false},
+		{name: "a\tb", want: false},
+		{name: "a\xffb", want: false},
+		{name: "aé", want: false},
+		{name: "٣", want: false},
+		{name: "Ⅻ", want: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, labelNameIsNormalized(tc.name))
@@ -88,13 +107,14 @@ func slowPathEntryMetadata(d *Distributor, metadata []logproto.LabelAdapter) ([]
 // returns the labels and the error, and counts the sanitizations exactly as the slow path does.
 func requireSameAsSlowPath(t testing.TB, metadata []logproto.LabelAdapter) {
 	t.Helper()
+	// slices.Clone keeps an empty slice non-nil, so both paths see nil and empty metadata as given.
 	slowDistributor := &Distributor{m: newMetrics(prometheus.NewRegistry())}
-	wantMetadata, wantLabels, wantErr := slowPathEntryMetadata(slowDistributor, append([]logproto.LabelAdapter(nil), metadata...))
+	wantMetadata, wantLabels, wantErr := slowPathEntryMetadata(slowDistributor, slices.Clone(metadata))
 	wantSanitized := testutil.ToFloat64(slowDistributor.m.tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki))
 
 	for _, withLabels := range []bool{true, false} {
 		d := &Distributor{m: newMetrics(prometheus.NewRegistry())}
-		entry := logproto.Entry{StructuredMetadata: append([]logproto.LabelAdapter(nil), metadata...)}
+		entry := logproto.Entry{StructuredMetadata: slices.Clone(metadata)}
 		var b labels.ScratchBuilder
 		gotLabels, gotErr := d.normalizeEntryStructuredMetadata(&entry, "test", constants.Loki, withLabels, &b)
 
@@ -155,18 +175,60 @@ func TestNormalizeEntryStructuredMetadata(t *testing.T) {
 	}
 }
 
-func FuzzNormalizeEntryStructuredMetadata(f *testing.F) {
-	f.Add("trace_id=4bf9;span_id=00f0;severity_text=INFO")
-	f.Add("b=1;a=2;b=3")
-	f.Add("http.method=GET;a__b=1;__name__=x;1a=2")
-	f.Add("empty=;value=a\xffb;=x")
-	f.Fuzz(func(t *testing.T, encoded string) {
-		var metadata []logproto.LabelAdapter
-		for pair := range strings.SplitSeq(encoded, ";") {
-			name, value, _ := strings.Cut(pair, "=")
-			metadata = append(metadata, logproto.LabelAdapter{Name: name, Value: value})
+// encodeFuzzMetadata encodes names and values for FuzzNormalizeEntryStructuredMetadata, each as a
+// length byte followed by its bytes. Every string must be shorter than 256 bytes.
+func encodeFuzzMetadata(namesAndValues ...string) []byte {
+	var data []byte
+	for _, s := range namesAndValues {
+		data = append(data, byte(len(s)))
+		data = append(data, s...)
+	}
+	return data
+}
+
+// decodeFuzzMetadata reads metadata encoded by encodeFuzzMetadata: a name, then a value, each a
+// length byte followed by that many bytes. A length past the end of data takes what is left, and a
+// missing value is empty, so any input decodes and any byte can appear in a name or a value.
+func decodeFuzzMetadata(data []byte) []logproto.LabelAdapter {
+	next := func() string {
+		if len(data) == 0 {
+			return ""
 		}
-		requireSameAsSlowPath(t, metadata)
+		n := min(int(data[0]), len(data)-1)
+		s := string(data[1 : 1+n])
+		data = data[1+n:]
+		return s
+	}
+	var metadata []logproto.LabelAdapter
+	for len(data) > 0 {
+		name := next()
+		metadata = append(metadata, logproto.LabelAdapter{Name: name, Value: next()})
+	}
+	return metadata
+}
+
+func TestDecodeFuzzMetadata(t *testing.T) {
+	want := buildNestedAttrs("a;b", "c=d", "", "x", "empty", "")
+	require.Equal(t, want, decodeFuzzMetadata(encodeFuzzMetadata("a;b", "c=d", "", "x", "empty", "")))
+	require.Equal(t, buildNestedAttrs("ab", "c"), decodeFuzzMetadata([]byte("\x02ab\x09c")), "a length past the end takes what is left")
+	require.Equal(t, buildNestedAttrs("ab", ""), decodeFuzzMetadata([]byte("\x02ab")), "a missing value is empty")
+	require.Nil(t, decodeFuzzMetadata(nil))
+}
+
+func FuzzNormalizeEntryStructuredMetadata(f *testing.F) {
+	f.Add(encodeFuzzMetadata("trace_id", "4bf9", "span_id", "00f0", "severity_text", "INFO"))
+	f.Add(encodeFuzzMetadata("b", "1", "a", "2", "b", "3"))
+	f.Add(encodeFuzzMetadata("http.method", "GET", "a__b", "1", "__name__", "x", "1a", "2"))
+	f.Add(encodeFuzzMetadata("empty", "", "value", "a\xffb", "", "x"))
+	f.Add(encodeFuzzMetadata("a;b", "c=d", "query", "a=1;b=2"))
+	// More than 12 entries, past the length up to which slices.SortFunc uses insertion sort, with
+	// duplicate names.
+	f.Add(encodeFuzzMetadata(
+		"m", "1", "l", "2", "k", "3", "j", "4", "i", "5", "h", "6", "g", "7",
+		"f", "8", "e", "9", "d", "10", "c", "11", "b", "12", "a", "13", "m", "14", "f", "15",
+	))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		requireSameAsSlowPath(t, decodeFuzzMetadata(data))
 	})
 }
 
@@ -242,7 +304,7 @@ func BenchmarkProcessStreamEntries(b *testing.B) {
 					var validationErrors util.GroupedErrors
 					b.StartTimer()
 
-					stats, err := d.processStreamEntries(ctx, vCtx, &stream, lbs, "744", "", constants.OTLP, newFieldDetector(vCtx), &validationErrors)
+					stats, err := d.processStreamEntries(ctx, vCtx, &stream, lbs, "744", "", constants.OTLP, newFieldDetector(ctx, vCtx), &validationErrors)
 					if err != nil || stats.entriesKept != 1000 {
 						b.Fatalf("unexpected result: kept %d entries, err %v", stats.entriesKept, err)
 					}
