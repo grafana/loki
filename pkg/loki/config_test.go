@@ -86,6 +86,23 @@ func TestCrossComponentValidation(t *testing.T) {
 				c.DataObj.MetadataCache.Cache = cache.NewMockCache()
 			},
 		},
+		{
+			desc: "chunk-builder without a topic with the chunk-builder disabled",
+		},
+		{
+			desc: "chunk-builder without a topic with the chunk-builder enabled",
+			setup: func(c *Config) {
+				c.ChunkBuilder.Enabled = true
+			},
+			err: "CONFIG ERROR: invalid chunk_builder config: the topic is required",
+		},
+		{
+			desc: "chunk-builder with a topic with the chunk-builder enabled",
+			setup: func(c *Config) {
+				c.ChunkBuilder.Enabled = true
+				c.ChunkBuilder.Topic = "replay"
+			},
+		},
 	} {
 		cfg := &Config{
 			Ingester: ingester.Config{

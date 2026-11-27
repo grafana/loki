@@ -43,6 +43,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
+	"github.com/grafana/loki/v3/pkg/chunkbuilder"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
@@ -162,6 +163,7 @@ const (
 	LoglineCorrectness              = "logline-correctness"
 	LoglineScheduler                = "logline-scheduler"
 	LoglineCompactor                = "logline-compactor"
+	ChunkBuilder                    = "chunk-builder"
 	All                             = "all"
 	AuthMiddleware                  = "auth-middleware"
 	LabelAccess                     = "label-access"
@@ -2209,6 +2211,19 @@ func (t *Loki) initDataObjBuilder() (services.Service, error) {
 	t.dataObjBuilder = dataObjBuilder
 
 	return t.dataObjBuilder, nil
+}
+
+func (t *Loki) initChunkBuilder() (services.Service, error) {
+	if !t.Cfg.ChunkBuilder.Enabled {
+		level.Warn(util_log.Logger).Log("msg", "the chunk-builder target does nothing unless -chunk-builder.enabled is set")
+		return nil, nil
+	}
+	level.Info(util_log.Logger).Log("msg", "initializing chunk-builder")
+	chunkBuilder, err := chunkbuilder.New(t.Cfg.KafkaConfig, t.Cfg.ChunkBuilder, prometheus.DefaultRegisterer, util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+	return chunkBuilder, nil
 }
 
 func (t *Loki) initDataObjCompactionPlanner() (services.Service, error) {
