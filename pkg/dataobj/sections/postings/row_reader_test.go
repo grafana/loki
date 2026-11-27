@@ -517,3 +517,128 @@ func TestRowReader_ContinuesPastEmptyBatches(t *testing.T) {
 
 	require.Equal(t, []string{"pod-z"}, got)
 }
+
+func TestRowReader_Rows(t *testing.T) {
+	// Each kind spans several batches of the RowReader.
+	const rowsPerKind = 300
+
+	var want []postings.Row
+	mb := postings.NewMergeBuilder(nil, 0, 0, 1<<30)
+	for i := range rowsPerKind {
+		entry := postings.BloomEntry{
+			ObjectPath:       fmt.Sprintf("/obj-%04d", i),
+			ShardBuckets:     4,
+			SectionIndex:     int64(i % 3),
+			ColumnName:       "trace_id",
+			BloomFilter:      []byte(fmt.Sprintf("bloom-%04d", i)),
+			StreamIDBitmap:   []byte{byte(i), 0x01},
+			MinTimestamp:     int64(i),
+			MaxTimestamp:     int64(i) + 10,
+			UncompressedSize: int64(i) * 100,
+		}
+		require.NoError(t, mb.AppendBloomEntry(entry))
+		want = append(want, entry.Row())
+	}
+	for i := range rowsPerKind {
+		entry := postings.LabelEntry{
+			ObjectPath:       fmt.Sprintf("/obj-%04d", i),
+			ShardBuckets:     4,
+			SectionIndex:     int64(i % 3),
+			ColumnName:       "service_name",
+			LabelValue:       fmt.Sprintf("svc-%04d", i),
+			StreamIDBitmap:   []byte{byte(i), 0x02},
+			MinTimestamp:     int64(i),
+			MaxTimestamp:     int64(i) + 10,
+			UncompressedSize: int64(i) * 100,
+			MinShardBucket:   1,
+			MaxShardBucket:   3,
+		}
+		require.NoError(t, mb.AppendLabelEntry(entry))
+		want = append(want, entry.Row())
+	}
+
+	objBuilder := dataobj.NewBuilder(nil)
+	require.NoError(t, objBuilder.Append(mb))
+	obj, closer, err := objBuilder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = closer.Close() })
+
+	var secs []*postings.Section
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err := postings.Open(t.Context(), s)
+		require.NoError(t, err)
+		secs = append(secs, sec)
+	}
+	require.NotEmpty(t, secs)
+
+	readRows := func(t *testing.T, opts func(sec *postings.Section) postings.ReaderOptions) []postings.Row {
+		var rows []postings.Row
+		for _, sec := range secs {
+			reader := postings.NewReader(opts(sec))
+			require.NoError(t, reader.Open(t.Context()))
+			rr := postings.NewRowReader(t.Context(), reader)
+			for rr.Next() {
+				rows = append(rows, rr.At())
+			}
+			require.NoError(t, rr.Err())
+			require.NoError(t, rr.Close())
+		}
+		return rows
+	}
+
+	t.Run("returns every row in order with rows that stay valid across batches", func(t *testing.T) {
+		got := readRows(t, func(sec *postings.Section) postings.ReaderOptions {
+			return postings.ReaderOptions{Columns: sec.Columns()}
+		})
+		require.Equal(t, want, got)
+	})
+
+	t.Run("decodes only the projected columns when a predicate reads another column", func(t *testing.T) {
+		got := readRows(t, func(sec *postings.Section) postings.ReaderOptions {
+			return postings.ReaderOptions{
+				Columns: []*postings.Column{
+					getSectionColumn(t, sec, postings.ColumnTypeLabelValue),
+					getSectionColumn(t, sec, postings.ColumnTypeObjectPath),
+				},
+				Predicates: []postings.Predicate{postings.EqualPredicate{
+					Column: getSectionColumn(t, sec, postings.ColumnTypeKind),
+					Value:  scalar.NewInt64Scalar(int64(postings.KindLabel)),
+				}},
+			}
+		})
+
+		var wantLabels []postings.Row
+		for _, row := range want {
+			if row.Kind == postings.KindLabel {
+				wantLabels = append(wantLabels, postings.Row{ObjectPath: row.ObjectPath, LabelValue: row.LabelValue})
+			}
+		}
+		require.Equal(t, wantLabels, got)
+	})
+
+	t.Run("returns the read error from Err when the context is cancelled", func(t *testing.T) {
+		reader := postings.NewReader(postings.ReaderOptions{Columns: secs[0].Columns()})
+		require.NoError(t, reader.Open(t.Context()))
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		rr := postings.NewRowReader(ctx, reader)
+		t.Cleanup(func() { _ = rr.Close() })
+
+		require.False(t, rr.Next())
+		require.ErrorIs(t, rr.Err(), context.Canceled)
+		require.False(t, rr.Next())
+	})
+
+	t.Run("returns an error from Err when the reader is not open", func(t *testing.T) {
+		reader := postings.NewReader(postings.ReaderOptions{Columns: secs[0].Columns()})
+		rr := postings.NewRowReader(t.Context(), reader)
+		t.Cleanup(func() { _ = rr.Close() })
+
+		require.False(t, rr.Next())
+		require.ErrorContains(t, rr.Err(), "reader not opened")
+	})
+}

@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	columnarv2 "github.com/grafana/loki/v3/pkg/columnar"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
@@ -166,12 +167,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	if !r.ready {
 		return nil, errReaderNotOpen
 	}
-
-	if r.readSpan == nil {
-		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "postings.Reader.Read")
-	} else {
-		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
-	}
+	ctx = r.readContext(ctx)
 
 	defer r.alloc.Reclaim()
 
@@ -182,6 +178,38 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 	}
 
 	return result, readErr
+}
+
+// readRecordBatch reads the next rows that pass the predicates, at most
+// batchSize of them. It returns a batch of at least one row, or nil and an
+// error. At the end of the section, the error is [io.EOF]. A short batch does
+// not mean that the section ended.
+//
+// The first len([ReaderOptions.Columns]) arrays of the batch hold those
+// columns, in the same order. Columns that only predicates read can follow.
+//
+// The arrays use memory from alloc, so they stay valid until the caller
+// reclaims alloc. The read can also leave temporary memory in alloc, so the
+// caller should reclaim alloc after it consumes each batch.
+func (r *Reader) readRecordBatch(ctx context.Context, alloc *memoryv2.Allocator, batchSize int) (*columnarv2.RecordBatch, error) {
+	if !r.ready {
+		return nil, errReaderNotOpen
+	}
+	rb, err := r.inner.ReadRecordBatch(r.readContext(ctx), alloc, batchSize)
+	if err != nil {
+		return nil, err
+	}
+	return rb, nil
+}
+
+// readContext returns ctx with the span that covers the reads of the Reader
+// since the last Reset. It starts the span on the first read.
+func (r *Reader) readContext(ctx context.Context) context.Context {
+	if r.readSpan == nil {
+		ctx, r.readSpan = xcap.StartSpan(ctx, tracer, "postings.Reader.Read")
+		return ctx
+	}
+	return xcap.ContextWithSpan(ctx, r.readSpan)
 }
 
 func (r *Reader) init(ctx context.Context) error {
