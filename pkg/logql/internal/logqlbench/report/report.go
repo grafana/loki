@@ -256,15 +256,16 @@ func generate(w io.Writer, rep *report) {
 	}
 
 	fmt.Fprintln(w)
-	fmt.Fprint(w, "| Query (shape) | Type | Store ops | Bytes fetched from storage | Max parallel reads | Memory allocations | Memory operations (bytes) |\n|---|---|---|---|---|---|---|\n")
+	fmt.Fprint(w, "| Query (shape) | Type | Store ops | Bytes fetched from storage | Max parallel reads | Memory allocations | Memory operations (bytes) | Intermediate series peak |\n|---|---|---|---|---|---|---|---|\n")
 	for _, q := range rep.order {
-		fmt.Fprintf(w, "| `%s`<br>%s | %s | %s | %s | %s | %s | %s |\n",
+		fmt.Fprintf(w, "| `%s`<br>%s | %s | %s | %s | %s | %s | %s | %s |\n",
 			escapeTableCell(q.expr), q.shape, q.kind,
 			cell(rep, q, "0s", formatCount("store_reqs/op")),
 			cell(rep, q, "0s", formatMB("store_bytes/op")),
 			cell(rep, q, maxParallelLatency, formatCount("store_max_parallel")),
 			cell(rep, q, "0s", formatMillions("allocs/op")),
 			cell(rep, q, "0s", formatMB("B/op")),
+			cell(rep, q, "0s", formatCount("intermediate_series_peak/op")),
 		)
 	}
 }
