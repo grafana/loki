@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.6.23](https://github.com/grafana/loki/compare/v3.6.22...v3.6.23) (2026-11-27)
+
+
+### Bug Fixes
+
+* **frontend:** Fail requests that cannot be encoded without closing the scheduler stream [release-3.6.x] ([#26769](https://github.com/grafana/loki/issues/26769)) ([0b8787c](https://github.com/grafana/loki/commit/0b8787ca3a4d282601b38d7477d7c484182e185c))
+* **loghttp:** Reject times before 1970 or after the int64 nanosecond limit [release-3.6.x] ([#26759](https://github.com/grafana/loki/issues/26759)) ([124b579](https://github.com/grafana/loki/commit/124b5798b30b8fda2b5ae53b34cd176d3efc89f0))
+
 ## [3.6.22](https://github.com/grafana/loki/compare/v3.6.21...v3.6.22) (2026-11-17)
 
 
