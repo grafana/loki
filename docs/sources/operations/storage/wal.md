@@ -49,6 +49,12 @@ The following metrics are available for monitoring the WAL:
 * `loki_ingester_wal_bytes_in_use`: Number of bytes currently held in memory by the WAL recovery process. Used to track progress toward the [backpressure](#backpressure) threshold
 * `loki_ingester_wal_replay_flushing`: Set to 1 while WAL replay is in a flushing phase due to [backpressure](#backpressure), 0 otherwise
 
+## Stream definitions and checkpoints
+
+WAL entry records refer to a stream by a local reference; a separate series record defines the stream's labels. A checkpoint keeps the definition and replay counter of every stream present at its boundary, including streams whose chunks flush before the checkpoint reaches them. The counter lets replay skip entries the checkpoint already covers.
+
+The ingester briefly pauses writes and stream removal while it rotates the WAL for a checkpoint, then serializes the checkpoint concurrently with new writes. When a flushed stream is removed from memory, the ingester keeps its definition and counter until a later successful checkpoint supersedes the WAL records that refer to it. A stream that returns before then continues its previous counter.
+
 ## Changes to deployment
 
 1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.

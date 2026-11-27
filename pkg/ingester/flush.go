@@ -558,6 +558,10 @@ func (i *Ingester) shouldFlushChunk(chunk *chunkDesc, maxIdle time.Duration) (bo
 }
 
 func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream, mayRemoveStream bool) {
+	if instance.checkpointMu != nil {
+		instance.checkpointMu.RLock()
+		defer instance.checkpointMu.RUnlock()
+	}
 	now := time.Now()
 
 	stream.chunkMtx.Lock()

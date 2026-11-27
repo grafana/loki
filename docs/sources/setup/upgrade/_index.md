@@ -70,6 +70,12 @@ The following changes affect rolling back to Loki 3.x:
 
 ## Main / Unreleased
 
+### The ingester keeps WAL stream definitions until a checkpoint supersedes them
+
+When a stream's chunks flush while a checkpoint is being written, the checkpoint now keeps the stream's labels and replay counter. A flushed stream's definition is released only after a later successful checkpoint no longer needs it, and a stream that returns before then continues its previous replay counter. Previously, WAL records written after the checkpoint boundary could refer to a stream that neither the checkpoint nor the remaining segments defined, and those entries were lost on replay.
+
+This uses the existing WAL and checkpoint formats and requires no configuration change. It can't restore definitions already missing from a WAL written by an earlier version.
+
 ### A `logfmt` expression no longer replaces a value from an earlier parser with an empty one
 
 A `logfmt` parser with label extraction expressions, for example `| logfmt foo, bar`, sets an empty label for a name that the log line does not contain. Loki used to set the empty label even when an earlier stage extracting or setting labels, for example `| json`, had already extracted a value with that name, so the empty value replaced the extracted value. Loki now keeps the value of the earlier stage.
