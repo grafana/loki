@@ -1,16 +1,15 @@
 package unmarshal
 
 import (
+	jsonv1 "encoding/json"
+	"encoding/json/v2"
 	"io"
-
-	jsoniter "github.com/json-iterator/go"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // DecodePushRequest directly decodes json to a logproto.PushRequest
 func DecodePushRequest(b io.Reader, r *logproto.PushRequest) error {
-	dec := jsoniter.NewDecoder(b)
-	dec.DisallowUnknownFields() // return error when parsing unknown field)
-	return dec.Decode(r)
+	// Return an error when parsing an unknown field.
+	return json.UnmarshalRead(b, r, jsonv1.DefaultOptionsV1(), json.RejectUnknownMembers(true))
 }

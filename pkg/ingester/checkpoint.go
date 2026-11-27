@@ -43,7 +43,7 @@ type chunkWithBuffer struct {
 }
 
 // The passed wireChunks slice is for re-use.
-func toWireChunks(descs []chunkDesc, wireChunks []chunkWithBuffer) ([]chunkWithBuffer, error) {
+func toWireChunks(descs []*chunkDesc, wireChunks []chunkWithBuffer) ([]chunkWithBuffer, error) {
 	// release memory from previous list of chunks.
 	for _, wc := range wireChunks {
 		chunksBufferPool.Put(wc.blocks)
@@ -93,10 +93,10 @@ func toWireChunks(descs []chunkDesc, wireChunks []chunkWithBuffer) ([]chunkWithB
 	return wireChunks, nil
 }
 
-func fromWireChunks(conf *Config, headfmt chunkenc.HeadBlockFmt, wireChunks []Chunk) ([]chunkDesc, error) {
-	descs := make([]chunkDesc, 0, len(wireChunks))
+func fromWireChunks(conf *Config, headfmt chunkenc.HeadBlockFmt, wireChunks []Chunk) ([]*chunkDesc, error) {
+	descs := make([]*chunkDesc, 0, len(wireChunks))
 	for _, c := range wireChunks {
-		desc := chunkDesc{
+		desc := &chunkDesc{
 			closed:      c.Closed,
 			synced:      c.Synced,
 			flushed:     c.FlushedAt,
@@ -729,8 +729,8 @@ func (c *Checkpointer) Run() {
 	}
 }
 
-func unflushedChunks(descs []chunkDesc) []chunkDesc {
-	filtered := make([]chunkDesc, 0, len(descs))
+func unflushedChunks(descs []*chunkDesc) []*chunkDesc {
+	filtered := make([]*chunkDesc, 0, len(descs))
 
 	for _, d := range descs {
 		if d.flushed.IsZero() {

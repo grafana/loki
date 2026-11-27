@@ -1,6 +1,7 @@
 package loghttp
 
 import (
+	"encoding/json"
 	"net/http"
 	"reflect"
 	"testing"
@@ -56,4 +57,39 @@ func TestParseTailQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDroppedStreamJSON(t *testing.T) {
+	for name, tc := range map[string]struct {
+		in       DroppedStream
+		expected string
+	}{
+		"with labels": {
+			in:       DroppedStream{Timestamp: time.Unix(0, 42), Labels: LabelSet{"b": "2", "a": "1\n"}},
+			expected: `{"timestamp":"42","labels":{"a":"1\n","b":"2"}}`,
+		},
+		"no labels": {
+			in:       DroppedStream{Timestamp: time.Unix(0, 42)},
+			expected: `{"timestamp":"42"}`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			data, err := json.Marshal(&tc.in)
+			require.NoError(t, err)
+			// Labels are marshalled in consistent order now.
+			require.Equal(t, tc.expected, string(data))
+
+			var out DroppedStream
+			require.NoError(t, json.Unmarshal(data, &out))
+			require.Equal(t, tc.in.Timestamp, out.Timestamp)
+			require.Equal(t, tc.in.Labels, out.Labels)
+		})
+	}
+
+	var out DroppedStream
+	require.Error(t, json.Unmarshal([]byte(`{"timestamp":42}`), &out))
+	require.Error(t, json.Unmarshal([]byte(`{"labels":{"a":"b"}}`), &out))
+	// Parsing is more lenient now
+	require.NoError(t, json.Unmarshal([]byte(`{"timestamp":"1","labels":null,"extra":[1]}`), &out))
+	require.Nil(t, out.Labels)
 }

@@ -37,7 +37,9 @@ var errStalePlan = errors.New("source index no longer exists in ToC")
 type coordinator struct {
 	cfg    Config
 	logger log.Logger
-	bucket objstore.Bucket
+	// indexBucket is the index storage. It holds the ToCs and the index
+	// objects.
+	indexBucket objstore.Bucket
 	// indexDispatcher runs IndexMerge plans. logDispatcher runs LogMerge and
 	// IndexFilter plans. They have separate concurrency limits.
 	indexDispatcher *planDispatcher
@@ -68,13 +70,13 @@ type coordinator struct {
 }
 
 // newCoordinator constructs a coordinator wired to a real
-// *metastore.TableOfContentsWriter and a workflow.Runner. bucket is the index
-// storage. dataBucket is the root of the data object storage. Only the
+// *metastore.TableOfContentsWriter and a workflow.Runner. indexBucket is the
+// index storage. dataBucket is the root of the data object storage. Only the
 // deletion sweep uses dataBucket, so it may be nil if the sweep is disabled.
 func newCoordinator(
 	cfg Config,
 	logger log.Logger,
-	bucket objstore.Bucket,
+	indexBucket objstore.Bucket,
 	dataBucket objstore.BucketReader,
 	runner workflow.Runner,
 	metastoreWriter *metastore.TableOfContentsWriter,
@@ -92,7 +94,7 @@ func newCoordinator(
 	c := &coordinator{
 		cfg:             cfg,
 		logger:          logger,
-		bucket:          bucket,
+		indexBucket:     indexBucket,
 		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		pairDispatcher:  newPlanDispatcher(logger, run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
@@ -234,7 +236,7 @@ func (c *coordinator) runTenant(ctx context.Context, tenant string) {
 func (c *coordinator) discoverTenants(ctx context.Context) (map[string]struct{}, error) {
 	tenants := make(map[string]struct{})
 	for _, window := range c.windows() {
-		listed, err := metastore.ListTableOfContentsTenants(ctx, c.bucket, window)
+		listed, err := metastore.ListTableOfContentsTenants(ctx, c.indexBucket, window)
 		if err != nil {
 			return nil, fmt.Errorf("list ToCs for window %s: %w", window, err)
 		}
@@ -346,7 +348,7 @@ func (c *coordinator) planLogCompaction(
 	window time.Time,
 	sourceIndexRun indexRun,
 ) (logCompactionPlan, error) {
-	sections, shardBuckets, err := logSectionRefsFor(ctx, c.bucket, tenant, sourceIndexRun)
+	sections, shardBuckets, err := logSectionRefsFor(ctx, c.indexBucket, tenant, sourceIndexRun)
 	if err != nil {
 		return logCompactionPlan{}, fmt.Errorf("reading log section refs: %w", err)
 	}
@@ -476,7 +478,7 @@ func (c *coordinator) executeLogCompaction(
 	// A swap leaves the old index objects in storage, so only the ToC shows
 	// that the plan is stale. A swap by another writer while the tasks run is
 	// still safe, because our swap then fails and writes nothing.
-	exists, err := existsInToC(ctx, c.bucket, tenant, plan.window, plan.sourceIndexRun.paths())
+	exists, err := existsInToC(ctx, c.indexBucket, tenant, plan.window, plan.sourceIndexRun.paths())
 	if err != nil {
 		return compactionStats{}, fmt.Errorf("check source index %s exists in ToC: %w", plan.sourceIndexRun, err)
 	}
@@ -731,7 +733,7 @@ func (c *coordinator) readIndexRuns(ctx context.Context, tenant string, window t
 			if err := groupCtx.Err(); err != nil {
 				return err
 			}
-			read, err := readIndexRun(groupCtx, c.bucket, tenant, run)
+			read, err := readIndexRun(groupCtx, c.indexBucket, tenant, run)
 			if errors.Is(err, errCorruptIndex) {
 				skipCorruptIndex(c.logger, c.metrics, tenant, window, run.String(), phaseLabelIndexMerge, err)
 				corrupt[i] = true
@@ -1077,9 +1079,9 @@ func (c *coordinator) runIndexMergePhase(ctx context.Context, tenant string, win
 // error yields (nil, false). It logs no warning when ctx is done, because the
 // caller treats that case as a shutdown.
 func (c *coordinator) tenantEntries(ctx context.Context, tenant string, window time.Time) ([]indexpointers.IndexPointer, bool) {
-	entries, err := loadTenantIndexes(ctx, c.bucket, window, tenant)
+	entries, err := loadTenantIndexes(ctx, c.indexBucket, window, tenant)
 	if err != nil {
-		if c.bucket.IsObjNotFoundErr(err) {
+		if c.indexBucket.IsObjNotFoundErr(err) {
 			level.Debug(c.logger).Log("msg", "no ToC for window",
 				"tenant", tenant, "window", window, "err", err)
 			return nil, true

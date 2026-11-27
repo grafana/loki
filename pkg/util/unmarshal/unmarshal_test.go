@@ -1,6 +1,8 @@
 package unmarshal
 
 import (
+	"bytes"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"strings"
@@ -13,6 +15,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	legacy_loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
 
@@ -117,7 +122,7 @@ func Test_DecodePushRequest(t *testing.T) {
 		},
 		{
 			name:        "string without quotes in stream label value",
-			expectedErr: "Skip: do not know how to skip: 78",
+			expectedErr: "invalid character 'N' at start of value",
 			actual: `{
 			"streams": [
 				{
@@ -278,6 +283,86 @@ func Benchmark_DecodePushRequest(b *testing.B) {
 		require.NoError(b, err)
 		require.Equal(b, 10000, len(actual.Streams[0].Entries))
 	}
+}
+
+// Create a simple stream with a full entry including structured metadata
+func createStream() string {
+	// Create a JSON string that simulates the HTTP API interaction
+	return `{
+		"streams": [
+			{
+				"stream": {"service_name":"test"},
+				"values": [["1723986725000000000", "{}", {"message": "a\nb\nc"}]]
+			}
+		]
+	}`
+}
+
+// Test that simulates the full flow from HTTP API to response
+func TestFullPushApiFlow(t *testing.T) {
+	// 1. Create a test input that simulates pushing to /loki/api/v1/push
+	jsonStr := createStream()
+
+	// 2. Parse the raw values first and verify what's getting unmarshaled
+	var parsed map[string]interface{}
+	err := json.Unmarshal([]byte(jsonStr), &parsed)
+	require.NoError(t, err)
+
+	// 3. Log the parsed values for inspection
+	t.Logf("Parsed JSON: %+v", parsed)
+
+	// 4. Manually extract the structured metadata to see what's happening
+	streams := parsed["streams"].([]interface{})
+	values := streams[0].(map[string]interface{})["values"].([]interface{})
+	entry := values[0].([]interface{})
+	metadata := entry[2].(map[string]interface{})
+
+	t.Logf("Raw metadata: %+v", metadata)
+	require.Equal(t, "a\nb\nc", metadata["message"], "JSON unmarshal should preserve newlines")
+
+	// 5. Now use our PushRequest implementation
+	var request logproto.PushRequest
+	err = DecodePushRequest(strings.NewReader(jsonStr), &request)
+	require.NoError(t, err)
+
+	// 6. Extract and verify the structured metadata
+	require.NotEmpty(t, request.Streams)
+	logEntry := request.Streams[0].Entries[0]
+	t.Logf("Entry line: %s", logEntry.Line)
+	t.Logf("Entry structured metadata: %v", logEntry.StructuredMetadata)
+
+	// 7. Verify the structured metadata contains actual newlines
+	require.Equal(t, "a\nb\nc", logEntry.StructuredMetadata[0].Value,
+		"After unmarshaling, structured metadata should contain actual newlines")
+
+	// 8. Marshal it back like the query would do
+	var buf bytes.Buffer
+	pushed := logqlmodel.Streams{{
+		Labels:  request.Streams[0].Labels,
+		Entries: request.Streams[0].Entries,
+	}}
+	flags := httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels)
+	require.NoError(t, marshal.WriteQueryResponseJSON(pushed, nil, stats.Result{}, &buf, flags))
+	marshaledData := buf.Bytes()
+	t.Logf("Marshaled response: %s", string(marshaledData))
+
+	// 9. Verify no double escaping in the JSON representation
+	// We can't easily check the exact JSON string since the order of fields might change
+	// and timestamps might be formatted differently, so we'll just check that double
+	// escaping doesn't happen
+	require.NotContains(t, string(marshaledData), `\\n`, "JSON should not have double-escaped newlines")
+
+	// 10. Unmarshal again and verify
+	var reUnmarshaled loghttp.QueryResponse
+	require.NoError(t, json.Unmarshal(marshaledData, &reUnmarshaled))
+
+	// 11. Final verification
+	result, ok := reUnmarshaled.Data.Result.(loghttp.Streams)
+	require.True(t, ok)
+	require.Len(t, result, 1)
+	require.Len(t, result[0].Entries, 1)
+	require.Equal(t, "a\nb\nc", result[0].Entries[0].StructuredMetadata.Get("message"),
+		"After round-trip marshaling, structured metadata should still contain actual newlines")
 }
 
 type websocket struct {

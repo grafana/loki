@@ -2,12 +2,12 @@ package marshal
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	"fmt"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
-	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	utiljson "github.com/grafana/loki/v3/pkg/util/json"
 )
 
 var (
@@ -199,363 +200,246 @@ func NewMetric(l labels.Labels) model.Metric {
 	return ret
 }
 
-func EncodeResult(data parser.Value, warnings []string, statistics stats.Result, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
-	s.WriteObjectStart()
-	s.WriteObjectField("status")
-	s.WriteString("success")
+func EncodeResult(data parser.Value, warnings []string, statistics stats.Result, enc *jsontext.Encoder, encodeFlags httpreq.EncodingFlags) error {
+	e := utiljson.Latching(enc)
+	e.Tokens(jsontext.BeginObject)
+	e.StringField("status", "success")
 
 	if len(warnings) > 0 {
-		s.WriteMore()
-
-		s.WriteObjectField("warnings")
-		s.WriteArrayStart()
-		for i, w := range warnings {
-			s.WriteString(w)
-			if i < len(warnings)-1 {
-				s.WriteMore()
-			}
+		e.Tokens(jsontext.String("warnings"), jsontext.BeginArray)
+		for _, w := range warnings {
+			e.Tokens(jsontext.String(w))
 		}
-		s.WriteArrayEnd()
+		e.Tokens(jsontext.EndArray)
 	}
 
-	s.WriteMore()
-	s.WriteObjectField("data")
-	err := encodeData(data, statistics, s, encodeFlags)
-	if err != nil {
-		return err
-	}
-
-	s.WriteObjectEnd()
-	return nil
+	e.Tokens(jsontext.String("data"))
+	encodeData(data, statistics, e, encodeFlags)
+	e.Tokens(jsontext.EndObject)
+	return e.Err()
 }
 
-func EncodeTailResult(data legacy.TailResponse, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
-	s.WriteObjectStart()
-	s.WriteObjectField("streams")
-	err := encodeStreams(data.Streams, s, encodeFlags)
-	if err != nil {
-		return err
-	}
+func EncodeTailResult(data legacy.TailResponse, enc *jsontext.Encoder, encodeFlags httpreq.EncodingFlags) error {
+	e := utiljson.Latching(enc)
+	e.Tokens(jsontext.BeginObject, jsontext.String("streams"))
+	encodeStreams(data.Streams, e, encodeFlags)
 
 	if len(data.DroppedEntries) > 0 {
-		s.WriteMore()
-		s.WriteObjectField("dropped_entries")
-		err = encodeDroppedEntries(data.DroppedEntries, s)
-		if err != nil {
-			return err
-		}
+		e.Tokens(jsontext.String("dropped_entries"))
+		encodeDroppedEntries(data.DroppedEntries, e)
 	}
 
 	if len(encodeFlags) > 0 {
-		s.WriteMore()
-		s.WriteObjectField("encodingFlags")
-		if err := encodeEncodingFlags(s, encodeFlags); err != nil {
-			return err
-		}
+		e.Tokens(jsontext.String("encodingFlags"))
+		encodeEncodingFlags(e, encodeFlags)
 	}
 
-	s.WriteObjectEnd()
-	return nil
+	e.Tokens(jsontext.EndObject)
+	return e.Err()
 }
 
-func encodeDroppedEntries(entries []legacy.DroppedEntry, s *jsoniter.Stream) error {
-	s.WriteArrayStart()
-	defer s.WriteArrayEnd()
+func encodeDroppedEntries(entries []legacy.DroppedEntry, e *utiljson.Encoder) {
+	e.Tokens(jsontext.BeginArray)
 
-	for i, entry := range entries {
-		if i > 0 {
-			s.WriteMore()
+	for i := range entries {
+		if e.Err() != nil {
+			return
 		}
-
-		ds, err := NewDroppedStream(&entry)
+		ds, err := NewDroppedStream(&entries[i])
 		if err != nil {
-			return err
+			e.Fail(err)
+			return
 		}
-
-		jsonEntry, err := ds.MarshalJSON()
-		if err != nil {
-			return err
-		}
-
-		s.WriteRaw(string(jsonEntry))
+		e.MarshalJSONFrom(&ds)
 	}
 
-	return nil
+	e.Tokens(jsontext.EndArray)
 }
 
-func encodeEncodingFlags(s *jsoniter.Stream, flags httpreq.EncodingFlags) error {
-	s.WriteArrayStart()
-	defer s.WriteArrayEnd()
-
-	var i int
+func encodeEncodingFlags(e *utiljson.Encoder, flags httpreq.EncodingFlags) {
+	e.Tokens(jsontext.BeginArray)
 	for flag := range flags {
-		if i > 0 {
-			s.WriteMore()
-		}
-		s.WriteString(string(flag))
-		i++
+		e.Tokens(jsontext.String(string(flag)))
 	}
-
-	return nil
+	e.Tokens(jsontext.EndArray)
 }
 
-func encodeData(data parser.Value, statistics stats.Result, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
-	s.WriteObjectStart()
-
-	s.WriteObjectField("resultType")
-	s.WriteString(string(data.Type()))
+func encodeData(data parser.Value, statistics stats.Result, e *utiljson.Encoder, encodeFlags httpreq.EncodingFlags) {
+	e.Tokens(jsontext.BeginObject)
+	e.StringField("resultType", string(data.Type()))
 
 	if len(encodeFlags) > 0 {
-		s.WriteMore()
-		s.WriteObjectField("encodingFlags")
-		if err := encodeEncodingFlags(s, encodeFlags); err != nil {
-			return err
-		}
+		e.Tokens(jsontext.String("encodingFlags"))
+		encodeEncodingFlags(e, encodeFlags)
 	}
 
-	s.WriteMore()
-	s.WriteObjectField("result")
-	err := encodeResult(data, s, encodeFlags)
-	if err != nil {
-		return err
-	}
+	e.Tokens(jsontext.String("result"))
+	encodeResult(data, e, encodeFlags)
 
-	s.WriteMore()
-	s.WriteObjectField("stats")
-	s.WriteVal(statistics)
+	e.Tokens(jsontext.String("stats"))
+	e.Marshal(statistics)
 
-	s.WriteObjectEnd()
-	s.Flush()
-	return nil
+	e.Tokens(jsontext.EndObject)
 }
 
-func encodeResult(v parser.Value, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
+func encodeResult(v parser.Value, e *utiljson.Encoder, encodeFlags httpreq.EncodingFlags) {
 	switch v.Type() {
 	case loghttp.ResultTypeStream:
 		result, ok := v.(logqlmodel.Streams)
-
 		if !ok {
-			return fmt.Errorf("unexpected type %T for streams", s)
+			e.Fail(fmt.Errorf("unexpected type %T for streams", v))
+			return
 		}
-
-		return encodeStreams(result, s, encodeFlags)
+		encodeStreams(result, e, encodeFlags)
 	case loghttp.ResultTypeScalar:
 		scalar, ok := v.(promql.Scalar)
-
 		if !ok {
-			return fmt.Errorf("unexpected type %T for scalar", scalar)
+			e.Fail(fmt.Errorf("unexpected type %T for scalar", scalar))
+			return
 		}
-
-		encodeScalar(scalar, s)
-
+		encodeScalar(scalar, e)
 	case loghttp.ResultTypeVector:
 		vector, ok := v.(promql.Vector)
-
 		if !ok {
-			return fmt.Errorf("unexpected type %T for vector", vector)
+			e.Fail(fmt.Errorf("unexpected type %T for vector", vector))
+			return
 		}
-
-		encodeVector(vector, s)
-
+		encodeVector(vector, e)
 	case loghttp.ResultTypeMatrix:
 		m, ok := v.(promql.Matrix)
-
 		if !ok {
-			return fmt.Errorf("unexpected type %T for matrix", m)
+			e.Fail(fmt.Errorf("unexpected type %T for matrix", m))
+			return
 		}
-
-		encodeMatrix(m, s)
-
+		encodeMatrix(m, e)
 	default:
-		s.WriteNil()
-		return fmt.Errorf("v1 endpoints do not support type %s", v.Type())
+		e.Tokens(jsontext.Null)
+		e.Fail(fmt.Errorf("v1 endpoints do not support type %s", v.Type()))
 	}
-	return nil
 }
 
-func encodeStreams(streams logqlmodel.Streams, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
-	s.WriteArrayStart()
-	defer s.WriteArrayEnd()
-
-	for i, stream := range streams {
-		if i > 0 {
-			s.WriteMore()
+func encodeStreams(streams logqlmodel.Streams, e *utiljson.Encoder, encodeFlags httpreq.EncodingFlags) {
+	e.Tokens(jsontext.BeginArray)
+	for _, stream := range streams {
+		if e.Err() != nil {
+			return
 		}
-
-		err := encodeStream(stream, s, encodeFlags)
-		if err != nil {
-			return err
-		}
+		encodeStream(stream, e, encodeFlags)
 	}
-
-	return nil
+	e.Tokens(jsontext.EndArray)
 }
 
-func encodeLabels(labels []logproto.LabelAdapter, s *jsoniter.Stream) {
-	for i, label := range labels {
-		if i > 0 {
-			s.WriteMore()
-		}
-
-		s.WriteObjectField(label.Name)
-		s.WriteString(label.Value)
+func encodeLabels(labels []logproto.LabelAdapter, e *utiljson.Encoder) {
+	for _, label := range labels {
+		e.StringField(label.Name, label.Value)
 	}
 }
 
 // encodeStream encodes a logproto.Stream to JSON.
 // If the FlagCategorizeLabels is set, the stream labels are grouped by their group name.
 // Otherwise, the stream labels are written one after the other.
-func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
+func encodeStream(stream logproto.Stream, e *utiljson.Encoder, encodeFlags httpreq.EncodingFlags) {
 	categorizeLabels := encodeFlags.Has(httpreq.FlagCategorizeLabels)
-
-	s.WriteObjectStart()
-	defer s.WriteObjectEnd()
-
-	s.WriteObjectField("stream")
-	s.WriteObjectStart()
 
 	lbls, err := syntax.ParseMetric(stream.Labels)
 	if err != nil {
-		return err
+		e.Fail(err)
+		return
 	}
-	encodeLabels(logproto.FromLabelsToLabelAdapters(lbls), s)
 
-	s.WriteObjectEnd()
+	e.Tokens(jsontext.BeginObject, jsontext.String("stream"), jsontext.BeginObject)
+	encodeLabels(logproto.FromLabelsToLabelAdapters(lbls), e)
+	e.Tokens(jsontext.EndObject, jsontext.String("values"), jsontext.BeginArray)
 
-	s.WriteMore()
-	s.WriteObjectField("values")
-	s.WriteArrayStart()
-
-	for i, e := range stream.Entries {
-		if i > 0 {
-			s.WriteMore()
+	for _, entry := range stream.Entries {
+		if e.Err() != nil {
+			return
 		}
-
-		s.WriteArrayStart()
-		s.WriteRaw(`"`)
-		s.WriteRaw(strconv.FormatInt(e.Timestamp.UnixNano(), 10))
-		s.WriteRaw(`"`)
-		s.WriteMore()
-		s.WriteStringWithHTMLEscaped(e.Line)
+		e.Tokens(
+			jsontext.BeginArray,
+			jsontext.String(strconv.FormatInt(entry.Timestamp.UnixNano(), 10)),
+			jsontext.String(entry.Line),
+		)
 
 		if categorizeLabels {
-			s.WriteMore()
-			s.WriteObjectStart()
-
-			var writeMore bool
-			if len(e.StructuredMetadata) > 0 {
-				s.WriteObjectField("structuredMetadata")
-				s.WriteObjectStart()
-				encodeLabels(e.StructuredMetadata, s)
-				s.WriteObjectEnd()
-				writeMore = true
+			e.Tokens(jsontext.BeginObject)
+			if len(entry.StructuredMetadata) > 0 {
+				e.Tokens(jsontext.String("structuredMetadata"), jsontext.BeginObject)
+				encodeLabels(entry.StructuredMetadata, e)
+				e.Tokens(jsontext.EndObject)
 			}
-
-			if len(e.Parsed) > 0 {
-				if writeMore {
-					s.WriteMore()
-				}
-				s.WriteObjectField("parsed")
-				s.WriteObjectStart()
-				encodeLabels(e.Parsed, s)
-				s.WriteObjectEnd()
+			if len(entry.Parsed) > 0 {
+				e.Tokens(jsontext.String("parsed"), jsontext.BeginObject)
+				encodeLabels(entry.Parsed, e)
+				e.Tokens(jsontext.EndObject)
 			}
-
-			s.WriteObjectEnd()
+			e.Tokens(jsontext.EndObject)
 		}
-		s.WriteArrayEnd()
+		e.Tokens(jsontext.EndArray)
 	}
 
-	s.WriteArrayEnd()
-
-	return nil
+	e.Tokens(jsontext.EndArray, jsontext.EndObject)
 }
 
-func encodeScalar(v promql.Scalar, s *jsoniter.Stream) {
-	s.WriteArrayStart()
-	defer s.WriteArrayEnd()
-
-	s.WriteRaw(model.Time(v.T).String())
-	s.WriteMore()
-	s.WriteString(model.SampleValue(v.V).String())
+func encodeScalar(v promql.Scalar, e *utiljson.Encoder) {
+	encodeValue(v.T, v.V, e)
 }
 
-func encodeVector(v promql.Vector, s *jsoniter.Stream) {
-	s.WriteArrayStart()
-	defer s.WriteArrayEnd()
-
-	for i, sample := range v {
-		if i > 0 {
-			s.WriteMore()
+func encodeVector(v promql.Vector, e *utiljson.Encoder) {
+	e.Tokens(jsontext.BeginArray)
+	for _, sample := range v {
+		if e.Err() != nil {
+			return
 		}
-		encodeSample(sample, s)
-		s.Flush()
+		encodeSample(sample, e)
 	}
+	e.Tokens(jsontext.EndArray)
 }
 
-func encodeSample(sample promql.Sample, s *jsoniter.Stream) {
-	s.WriteObjectStart()
-	defer s.WriteObjectEnd()
-
-	s.WriteObjectField("metric")
-	encodeMetric(sample.Metric, s)
-
-	s.WriteMore()
-	s.WriteObjectField("value")
-	encodeValue(sample.T, sample.F, s)
+func encodeSample(sample promql.Sample, e *utiljson.Encoder) {
+	e.Tokens(jsontext.BeginObject, jsontext.String("metric"))
+	encodeMetric(sample.Metric, e)
+	e.Tokens(jsontext.String("value"))
+	encodeValue(sample.T, sample.F, e)
+	e.Tokens(jsontext.EndObject)
 }
 
-func encodeValue(T int64, V float64, s *jsoniter.Stream) {
-	s.WriteArrayStart()
-	s.WriteRaw(model.Time(T).String())
-	s.WriteMore()
-	s.WriteString(model.SampleValue(V).String())
-	s.WriteArrayEnd()
+// encodeValue writes a [timestamp, "value"] pair, where the timestamp is a
+// bare number of seconds.
+func encodeValue(T int64, V float64, e *utiljson.Encoder) {
+	e.Tokens(jsontext.BeginArray)
+	e.Value(jsontext.Value(model.Time(T).String()))
+	e.Tokens(jsontext.String(model.SampleValue(V).String()), jsontext.EndArray)
 }
 
-func encodeMetric(l labels.Labels, s *jsoniter.Stream) {
-	s.WriteObjectStart()
-	i := 0
+func encodeMetric(l labels.Labels, e *utiljson.Encoder) {
+	e.Tokens(jsontext.BeginObject)
 	l.Range(func(label labels.Label) {
-		if i > 0 {
-			s.WriteMore()
-		}
-
-		s.WriteObjectField(label.Name)
-		s.WriteString(label.Value)
-		i++
+		e.StringField(label.Name, label.Value)
 	})
-	s.WriteObjectEnd()
+	e.Tokens(jsontext.EndObject)
 }
 
-func encodeMatrix(m promql.Matrix, s *jsoniter.Stream) {
-	s.WriteArrayStart()
-	defer s.WriteArrayEnd()
-
-	for i, sampleStream := range m {
-		if i > 0 {
-			s.WriteMore()
+func encodeMatrix(m promql.Matrix, e *utiljson.Encoder) {
+	e.Tokens(jsontext.BeginArray)
+	for _, sampleStream := range m {
+		if e.Err() != nil {
+			return
 		}
-		encodeSampleStream(sampleStream, s)
-		s.Flush()
+		encodeSampleStream(sampleStream, e)
 	}
+	e.Tokens(jsontext.EndArray)
 }
 
-func encodeSampleStream(stream promql.Series, s *jsoniter.Stream) {
-	s.WriteObjectStart()
-	defer s.WriteObjectEnd()
-
-	s.WriteObjectField("metric")
-	encodeMetric(stream.Metric, s)
-
-	s.WriteMore()
-	s.WriteObjectField("values")
-	s.WriteArrayStart()
-	for i, p := range stream.Floats {
-		if i > 0 {
-			s.WriteMore()
+func encodeSampleStream(stream promql.Series, e *utiljson.Encoder) {
+	e.Tokens(jsontext.BeginObject, jsontext.String("metric"))
+	encodeMetric(stream.Metric, e)
+	e.Tokens(jsontext.String("values"), jsontext.BeginArray)
+	for _, p := range stream.Floats {
+		if e.Err() != nil {
+			return
 		}
-		encodeValue(p.T, p.F, s)
+		encodeValue(p.T, p.F, e)
 	}
-	s.WriteArrayEnd()
+	e.Tokens(jsontext.EndArray, jsontext.EndObject)
 }

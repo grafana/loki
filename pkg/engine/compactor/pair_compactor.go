@@ -77,7 +77,7 @@ type pairCompactor struct {
 func (c *coordinator) newPairPlanner(cache *logSectionsCache) *pairPlanner {
 	return &pairPlanner{
 		logger:                      c.logger,
-		bucket:                      c.bucket,
+		bucket:                      c.indexBucket,
 		metrics:                     c.metrics,
 		strategy:                    c.logMergePlanningStrategy,
 		maxLogsRunUncompressedBytes: c.limits.MaxLogsRunSizeUncompressedBytes,
@@ -95,7 +95,7 @@ func (c *coordinator) newPairCompactor(tenant string) *pairCompactor {
 		tenant:           tenant,
 		logger:           log.With(c.logger, "tenant", tenant, "planner", "pairs"),
 		planner:          c.newPairPlanner(newLogSectionsCache(tenant, c.metrics)),
-		bucket:           c.bucket,
+		bucket:           c.indexBucket,
 		publisher:        c.publisher,
 		dispatcher:       c.pairDispatcher,
 		limits:           c.limits,

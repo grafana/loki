@@ -87,7 +87,7 @@ func TestWorkerGracefulShutdown(t *testing.T) {
 		w, err := worker.New(worker.Config{
 			TenantOverrides:  fakeTenantOverrides{},
 			Logger:           log.NewNopLogger(),
-			Bucket:           bucket,
+			IndexBucket:      bucket,
 			Dialer:           wire.NewLocalDialer(schedulerListener, workerListener),
 			Listener:         workerListener,
 			SchedulerAddress: wire.LocalScheduler,
