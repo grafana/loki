@@ -117,6 +117,8 @@ func (c *StreamRateCalculator) completeKafkaRecordTracking(batch *kafkaRateBatch
 	state := c.kafka
 	state.mu.Lock()
 	defer state.mu.Unlock()
+	// The failed attempt may belong to an earlier sample.
+	state.sampleInvalid = true
 	state.complete(batch, index)
 }
 

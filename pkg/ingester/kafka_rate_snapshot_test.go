@@ -177,6 +177,7 @@ func TestKafkaRateSnapshotRetries(t *testing.T) {
 		name                string
 		retrySucceeds       bool
 		skipFailedRecording bool
+		rotateBeforeCancel  bool
 		wantBytes           int64
 		wantPushes          uint32
 	}{
@@ -184,6 +185,8 @@ func TestKafkaRateSnapshotRetries(t *testing.T) {
 		{name: "retry cancelled", wantBytes: 10, wantPushes: 1},
 		{name: "retry succeeds after early rejection", skipFailedRecording: true, retrySucceeds: true, wantBytes: 20, wantPushes: 1},
 		{name: "retry cancelled after early rejection", skipFailedRecording: true},
+		{name: "retry cancelled after sample rotation", rotateBeforeCancel: true},
+		{name: "retry cancelled after early rejection and sample rotation", skipFailedRecording: true, rotateBeforeCancel: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := newReadyKafkaStreamRateCalculator(1)
@@ -196,6 +199,12 @@ func TestKafkaRateSnapshotRetries(t *testing.T) {
 			c.recordKafkaAttempt(batch, 0, observation, false)
 			require.Zero(t, *observation, "failed attempts must not leave contributions for the next attempt")
 			require.Zero(t, batch.next, "a retryable failure must not advance completed progress")
+			if tc.rotateBeforeCancel {
+				c.updateRates()
+				response := c.buildRatesResponse()
+				require.False(t, response.Kafka.ProgressValid)
+				require.EqualValues(t, -1, response.Kafka.EndOffset)
+			}
 			if tc.retrySucceeds {
 				c.Record(ctx, "tenant", 9, 7, 20)
 				c.recordKafkaAttempt(batch, 0, observation, true)
@@ -212,7 +221,7 @@ func TestKafkaRateSnapshotRetries(t *testing.T) {
 				require.Equal(t, tc.wantBytes, response.StreamRates[0].Rate)
 				require.Equal(t, tc.wantPushes, response.StreamRates[0].Pushes)
 			}
-			require.False(t, response.Kafka.ProgressValid, "completion must not clear the failed sample")
+			require.False(t, response.Kafka.ProgressValid, "failed or cancelled attempts must invalidate their sample")
 			require.EqualValues(t, 0, response.Kafka.EndOffset)
 			c.updateRates()
 			response = c.buildRatesResponse()
