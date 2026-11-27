@@ -2,6 +2,7 @@ package builder
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"math"
 	"slices"
@@ -124,6 +125,12 @@ func newBatchedChunkLoader(
 	metrics *Metrics,
 	batchSize int,
 ) *batchedLoader[chunk.Chunk, chunk.Chunk, v1.ChunkRefWithIter] {
+	// Query fetchers may return partial results without an error. That is not
+	// safe for Bloom creation: the block index records all requested chunk refs.
+	strictFetchers := make([]Fetcher[chunk.Chunk, chunk.Chunk], len(fetchers))
+	for i, fetcher := range fetchers {
+		strictFetchers[i] = strictChunkFetcher{fetcher}
+	}
 
 	mapper := func(c chunk.Chunk) (v1.ChunkRefWithIter, error) {
 		chk := c.Data.(*chunkenc.Facade).LokiChunk()
@@ -149,7 +156,46 @@ func newBatchedChunkLoader(
 			Itr: itr,
 		}, nil
 	}
-	return newBatchedLoader(ctx, fetchers, inputs, mapper, batchSize)
+	return newBatchedLoader(ctx, strictFetchers, inputs, mapper, batchSize)
+}
+
+type strictChunkFetcher struct {
+	Fetcher[chunk.Chunk, chunk.Chunk]
+}
+
+func (f strictChunkFetcher) Fetch(ctx context.Context, requested []chunk.Chunk) ([]chunk.Chunk, error) {
+	fetched, err := f.Fetcher.Fetch(ctx, requested)
+	if err != nil {
+		return nil, err
+	}
+	// FetchChunks does not preserve ordering. Compare complete chunk identities,
+	// including multiplicity, rather than accepting equal result lengths alone.
+	type identity struct {
+		tenant        string
+		fingerprint   uint64
+		from, through int64
+		checksum      uint32
+	}
+	key := func(c chunk.Chunk) identity {
+		return identity{c.UserID, c.Fingerprint, int64(c.From), int64(c.Through), c.Checksum}
+	}
+	remaining := make(map[identity]int, len(requested))
+	for _, c := range requested {
+		remaining[key(c)]++
+	}
+	for _, c := range fetched {
+		k := key(c)
+		if remaining[k] == 0 {
+			return nil, fmt.Errorf("unexpected chunk in Bloom input")
+		}
+		remaining[k]--
+	}
+	for _, count := range remaining {
+		if count != 0 {
+			return nil, fmt.Errorf("incomplete Bloom input: requested %d chunks, fetched %d", len(requested), len(fetched))
+		}
+	}
+	return fetched, nil
 }
 
 func newBatchedBlockLoader(
