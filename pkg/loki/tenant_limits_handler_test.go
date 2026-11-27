@@ -1,10 +1,12 @@
 package loki
 
 import (
+	"context"
 	"io"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.yaml.in/yaml/v4"
@@ -114,8 +116,11 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/config/tenant/v1/limits", nil)
-			req.Header.Set("X-Scope-OrgID", tt.tenantID)
+			// Inject the tenant into the request context, which is how the
+			// production auth middleware (both real and fake/no-auth) passes
+			// the tenant ID to downstream handlers.
+			ctx := user.InjectOrgID(context.Background(), tt.tenantID)
+			req := httptest.NewRequest("GET", "/config/tenant/v1/limits", nil).WithContext(ctx)
 
 			loki := &Loki{
 				TenantLimits: mockTenantLimits,

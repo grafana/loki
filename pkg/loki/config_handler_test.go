@@ -1,12 +1,15 @@
 package loki
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -228,7 +231,7 @@ func TestDrilldownConfigOverridesFallback(t *testing.T) {
 	handler := loki.tenantLimitsHandler(true)
 
 	req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
-	req.Header.Set("X-Scope-OrgID", "unknown-tenant")
+	req = req.WithContext(user.InjectOrgID(req.Context(), "unknown-tenant"))
 
 	w := httptest.NewRecorder()
 	handler(w, req)
@@ -325,7 +328,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 			handler := loki.tenantLimitsHandler(true)
 
 			req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
-			req.Header.Set("X-Scope-OrgID", tc.tenantID)
+			req = req.WithContext(user.InjectOrgID(req.Context(), tc.tenantID))
 
 			w := httptest.NewRecorder()
 			handler(w, req)
@@ -474,7 +477,7 @@ func TestDrilldownConfig(t *testing.T) {
 			handler := loki.tenantLimitsHandler(true)
 
 			req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
-			req.Header.Set("X-Scope-OrgID", "test-tenant")
+			req = req.WithContext(user.InjectOrgID(req.Context(), "test-tenant"))
 
 			w := httptest.NewRecorder()
 			handler(w, req)
@@ -541,6 +544,49 @@ func TestFilterLimitFieldsReturnsJSONMap(t *testing.T) {
 			require.NotNil(t, result)
 
 			tc.verify(t, result)
+		})
+	}
+}
+
+// TestTenantLimitsHandlerNoAuthTenant verifies that tenantLimitsHandler works
+// correctly when auth is disabled (auth_enabled: false). In that mode Loki's
+// middleware injects the no-auth tenant ("fake") into the request *context*
+// rather than into the X-Scope-OrgID header. The handler must therefore read
+// the tenant from the context, not the header.
+func TestTenantLimitsHandlerNoAuthTenant(t *testing.T) {
+	limits := &validation.Limits{
+		IngestionRateMB: 10.0,
+		MaxQuerySeries:  1000,
+	}
+
+	lokiInst := &Loki{
+		TenantLimits: &mockTenantLimits{limits: limits},
+		Cfg: Config{
+			TenantLimitsAllowPublish: []string{},
+			Pattern:                  pattern.Config{Enabled: false},
+		},
+	}
+
+	for _, forDrilldown := range []bool{false, true} {
+		name := "tenant-limits-endpoint"
+		if forDrilldown {
+			name = "drilldown-limits-endpoint"
+		}
+		t.Run(name, func(t *testing.T) {
+			handler := http.HandlerFunc(lokiInst.tenantLimitsHandler(forDrilldown))
+
+			// Simulate what the no-auth middleware does: inject the tenant into
+			// the request context only, with no X-Scope-OrgID header.
+			ctx := user.InjectOrgID(context.Background(), "fake")
+			req := httptest.NewRequest("GET", "/", nil).WithContext(ctx)
+			// No X-Scope-OrgID header — this is the scenario that was broken.
+
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+			resp := w.Result()
+
+			require.Equal(t, http.StatusOK, resp.StatusCode,
+				"handler must return 200 when tenant is in context but not in header")
 		})
 	}
 }
