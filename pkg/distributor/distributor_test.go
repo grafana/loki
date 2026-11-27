@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -41,6 +42,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -3080,6 +3082,8 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 		blockStatusCode    int
 		expectError        bool
 		expectedStatusCode int
+		expectBlocked      bool
+		expectFailureLog   bool
 	}{
 		{
 			name:               "not configured",
@@ -3096,6 +3100,8 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			blockStatusCode:    456,
 			expectError:        true,
 			expectedStatusCode: 456,
+			expectBlocked:      true,
+			expectFailureLog:   true,
 		},
 		{
 			name:               "blocked with status code 200",
@@ -3103,6 +3109,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			blockStatusCode:    http.StatusOK,
 			expectError:        false,
 			expectedStatusCode: http.StatusOK,
+			expectBlocked:      true,
 		},
 		{
 			name:               "blocked with status code 260",
@@ -3110,6 +3117,8 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			blockStatusCode:    260,
 			expectError:        true,
 			expectedStatusCode: 260,
+			expectBlocked:      true,
+			expectFailureLog:   true,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3118,7 +3127,21 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			limits.BlockIngestionUntil = flagext.Time(tc.blockUntil)
 			limits.BlockIngestionStatusCode = tc.blockStatusCode
 
-			distributors, _ := prepare(t, 1, 5, limits, nil)
+			distributors, _ := prepareButDontStart(t, 1, 5, limits, nil)
+
+			buf := bytes.NewBuffer(nil)
+			distributors[0].writeFailuresManager = writefailures.NewManager(
+				log.NewLogfmtLogger(buf),
+				prometheus.NewRegistry(),
+				writefailures.Cfg{LogRate: loki_flagext.ByteSize(1000)},
+				runtime.DefaultTenantConfigs(),
+				"distributor",
+			)
+			startAndWaitRunningDistributors(t, distributors)
+
+			discarded := validation.DiscardedBytes.WithLabelValues(validation.BlockedIngestion, "test", "0", "", constants.Loki)
+			before := testutil.ToFloat64(discarded)
+
 			request := makeWriteRequest(1, 1024)
 			response, err := distributors[0].Push(ctx, request)
 
@@ -3128,6 +3151,17 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, success, response)
+			}
+
+			if tc.expectBlocked {
+				// A configured block is counted as discarded either way; only
+				// an error-status answer is also logged as a write failure.
+				require.Greater(t, testutil.ToFloat64(discarded), before)
+				if tc.expectFailureLog {
+					require.Contains(t, buf.String(), "write operation failed")
+				} else {
+					require.NotContains(t, buf.String(), "write operation failed")
+				}
 			}
 		})
 	}
