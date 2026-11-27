@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 // Config is the top-level configuration for dataobj compaction.
@@ -66,11 +67,12 @@ type Config struct {
 	// with nothing to do stops hammering object storage.
 	MaxBackoff time.Duration `yaml:"max_backoff"`
 
-	// WindowLookback is the number of metastore windows prior to the current one the coordinator
-	// compacts in addition to the current window. It must be at least 1 (the
-	// default), so tenants stay discoverable through the preceding window while
-	// the current window has no ToC yet.
-	WindowLookback int `yaml:"window_lookback"`
+	// Lookback is how far before the current metastore window the
+	// coordinator compacts. The coordinator compacts the current window and
+	// the older windows that Lookback reaches into, see lookbackWindows. It
+	// must be at least one window (the default), so tenants stay discoverable
+	// through the preceding window while the current window has no ToC yet.
+	Lookback time.Duration `yaml:"lookback"`
 
 	// MaxRunsPerTask (K in the K-way merge) is the maximum number of runs a
 	// single IndexMerge task may consume. Memory grows linearly with K.
@@ -230,6 +232,18 @@ type WorkerConfig struct {
 	Endpoint string `yaml:"endpoint"`
 }
 
+// lookbackWindows returns the number of metastore windows before the current
+// one that the coordinator compacts: Lookback in whole windows, rounded up.
+func (cfg *Config) lookbackWindows() int {
+	// Round up without an addition, which overflows for a lookback near the
+	// largest time.Duration.
+	windows := cfg.Lookback / metastore.MetastoreWindowSize
+	if cfg.Lookback%metastore.MetastoreWindowSize != 0 {
+		windows++
+	}
+	return int(windows)
+}
+
 // taskRetryBackoff returns the backoff before each retry of a compaction task.
 func (cfg *Config) taskRetryBackoff() backoff.Config {
 	return backoff.Config{MinBackoff: cfg.TaskRetryMinBackoff, MaxBackoff: cfg.TaskRetryMaxBackoff}
@@ -254,7 +268,7 @@ const (
 	defaultPollingInterval       = 5 * time.Minute
 	defaultMinBackoff            = 1 * time.Minute
 	defaultMaxBackoff            = 15 * time.Minute
-	defaultWindowLookback        = 1
+	defaultLookback              = 12 * time.Hour
 	defaultMaxRunsPerTask        = 8
 	defaultLogMaxRunsPerTask     = 8
 	defaultToCConsolidateTimeout = 30 * time.Second
@@ -293,8 +307,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		"Experimental: Minimum wait a per-tenant worker applies between compaction phases, and the starting point of the exponential backoff idle or failing tenants grow toward max-backoff.")
 	f.DurationVar(&cfg.MaxBackoff, prefix+"max-backoff", defaultMaxBackoff,
 		"Experimental: Maximum wait a per-tenant worker backs off to after consecutive no-work (converged or empty) or failing phases, so an idle worker stops hammering object storage.")
-	f.IntVar(&cfg.WindowLookback, prefix+"window-lookback", defaultWindowLookback,
-		"Experimental: Number of prior metastore windows to compact in addition to the current window. Must be at least 1, which compacts the current and immediately prior window.")
+	f.DurationVar(&cfg.Lookback, prefix+"lookback", defaultLookback,
+		"Experimental: How far before the current 12h metastore window to compact. The coordinator compacts the current window and every older window that the lookback reaches into, so the lookback rounds up to whole windows. Must be at least 12h, which compacts the current and immediately prior window.")
 	f.IntVar(&cfg.MaxRunsPerTask, prefix+"max-runs-per-task", defaultMaxRunsPerTask,
 		"Experimental: Maximum runs per IndexMerge task (K). Memory grows linearly with K.")
 	f.Var(&cfg.MaxTaskSize, prefix+"max-task-size",
@@ -394,8 +408,8 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxBackoff < cfg.MinBackoff {
 		return errInvalidMaxBackoff
 	}
-	if cfg.WindowLookback < 1 {
-		return errInvalidWindowLookback
+	if cfg.Lookback < metastore.MetastoreWindowSize {
+		return errInvalidLookback
 	}
 	if cfg.ToCConsolidateTimeout <= 0 {
 		return errInvalidToCConsolidateTimeout
@@ -446,7 +460,7 @@ var (
 	errInvalidPollingInterval              = errors.New("dataobj.compaction.polling_interval must be > 0 when compaction is enabled")
 	errInvalidMinBackoff                   = errors.New("dataobj.compaction.min_backoff must be > 0 when compaction is enabled")
 	errInvalidMaxBackoff                   = errors.New("dataobj.compaction.max_backoff must be >= dataobj.compaction.min_backoff when compaction is enabled")
-	errInvalidWindowLookback               = errors.New("dataobj.compaction.window_lookback must be >= 1")
+	errInvalidLookback                     = fmt.Errorf("dataobj.compaction.lookback must be at least one metastore window (%s)", metastore.MetastoreWindowSize)
 	errInvalidToCConsolidateTimeout        = errors.New("dataobj.compaction.toc_consolidate_timeout must be > 0 when compaction is enabled")
 	errInvalidMaxRunsPerTask               = errors.New("dataobj.compaction.max_runs_per_task must be > 0 when compaction is enabled")
 	errInvalidLogMaxRunsPerTask            = errors.New("dataobj.compaction.logs.max_runs_per_task must be at least 2 when compaction is enabled")

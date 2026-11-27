@@ -2,11 +2,14 @@ package compactor
 
 import (
 	"flag"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
 // TestConfig_ValidateRejectsBadValues verifies that each new coordinator-loop
@@ -27,7 +30,8 @@ func TestConfig_ValidateRejectsBadValues(t *testing.T) {
 		{"min backoff zero", func(c *Config) { c.MinBackoff = 0 }, errInvalidMinBackoff},
 		{"min backoff negative", func(c *Config) { c.MinBackoff = -1 }, errInvalidMinBackoff},
 		{"max backoff below min", func(c *Config) { c.MinBackoff = 2 * time.Minute; c.MaxBackoff = time.Minute }, errInvalidMaxBackoff},
-		{"window lookback below one", func(c *Config) { c.WindowLookback = 0 }, errInvalidWindowLookback},
+		{"lookback zero", func(c *Config) { c.Lookback = 0 }, errInvalidLookback},
+		{"lookback below one window", func(c *Config) { c.Lookback = 11 * time.Hour }, errInvalidLookback},
 		{"task retry min backoff zero", func(c *Config) { c.TaskRetryMinBackoff = 0 }, errInvalidTaskRetryMinBackoff},
 		{"task retry max backoff below min", func(c *Config) { c.TaskRetryMinBackoff = time.Minute; c.TaskRetryMaxBackoff = time.Second }, errInvalidTaskRetryMaxBackoff},
 		{"deletion sweep enabled with zero max concurrent sweeps", func(c *Config) { c.DeletionSweep.Enabled = true; c.DeletionSweep.MaxConcurrentSweeps = 0 }, errInvalidMaxConcurrentSweeps},
@@ -158,5 +162,22 @@ func TestConfig_TaskMaxRetriesValidation(t *testing.T) {
 	t.Run("rejects a negative value", func(t *testing.T) {
 		cfg := base(t, "--dataobj.compaction.task-max-retries=-1")
 		require.ErrorIs(t, cfg.Validate(), errInvalidTaskMaxRetries)
+	})
+}
+
+func TestConfigLookbackWindows(t *testing.T) {
+	window := metastore.MetastoreWindowSize
+
+	t.Run("returns the lookback in whole windows", func(t *testing.T) {
+		require.Equal(t, 1, (&Config{Lookback: window}).lookbackWindows())
+		require.Equal(t, 60, (&Config{Lookback: 30 * 24 * time.Hour}).lookbackWindows())
+	})
+
+	t.Run("rounds a lookback that is not a whole number of windows up", func(t *testing.T) {
+		require.Equal(t, 2, (&Config{Lookback: window + time.Hour}).lookbackWindows())
+	})
+
+	t.Run("returns the windows of the largest lookback without an overflow", func(t *testing.T) {
+		require.Equal(t, int(math.MaxInt64/int64(window))+1, (&Config{Lookback: math.MaxInt64}).lookbackWindows())
 	})
 }
