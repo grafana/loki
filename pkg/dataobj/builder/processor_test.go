@@ -173,13 +173,13 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 // failureFlusher is a special flusher that always fails.
 type failureFlusher struct{}
 
-func (f *failureFlusher) Flush(_ context.Context, _ builder, _ string) (*dataobj.Object, io.Closer, string, error) {
+func (f *failureFlusher) Flush(_ context.Context, _ logsBuilder, _ string) (*dataobj.Object, io.Closer, string, error) {
 	return nil, nil, "", errors.New("mock error")
 }
 
 type failureFlushCommitter struct{}
 
-func (m *failureFlushCommitter) Flush(_ context.Context, _ []builder, _ string, _ int64) error {
+func (m *failureFlushCommitter) Flush(_ context.Context, _ []*tocScopedBuilders, _ string, _ int64) error {
 	return errors.New("mock error")
 }
 
@@ -191,7 +191,7 @@ type fixedErrFlushCommitter struct {
 	waitForCancel bool
 }
 
-func (m *fixedErrFlushCommitter) Flush(ctx context.Context, _ []builder, _ string, _ int64) error {
+func (m *fixedErrFlushCommitter) Flush(ctx context.Context, _ []*tocScopedBuilders, _ string, _ int64) error {
 	if m.waitForCancel {
 		<-ctx.Done()
 	}
@@ -524,16 +524,16 @@ func TestProcessor_ConsumeDuringFlush(t *testing.T) {
 
 			flushing := flushCommitter.startedBuilders()[0]
 			require.Len(t, flushing, 1)
-			flushingSize := flushing[0].GetEstimatedSize()
+			flushingSize := flushing[0].estimatedSize()
 
 			// The records have the tenant and window of the flushing builder.
 			// They must go to a new builder all the same.
 			for offset := int64(3); offset < 10; offset++ {
 				require.NoError(t, proc.processRecord(ctx, newRecord(t, offset)))
 			}
-			require.Equal(t, flushingSize, flushing[0].GetEstimatedSize())
+			require.Equal(t, flushingSize, flushing[0].estimatedSize())
 			require.Len(t, m.getBuilders(), 1)
-			require.NotSame(t, flushing[0].(WatermarkedBuilder).logsBuilder, m.getBuilders()[0].(WatermarkedBuilder).logsBuilder)
+			require.NotSame(t, flushing[0].builders[inTimeClass], m.getBuilders()[0].builders[inTimeClass])
 
 			flushCommitter.results <- nil
 			require.NoError(t, stop())
@@ -730,7 +730,7 @@ func flushSerially(t *testing.T, recordsByFlush [][]*kgo.Record) (map[string][]b
 	decoder, err := kafka.NewDecoder()
 	require.NoError(t, err)
 
-	m := NewMultiObjectBuilder(stack.factory, stack.targetSize, stack.watermarks)
+	m := NewMultiObjectBuilder(stack.factory, stack.targetSize, stack.watermarks, testOverrides{})
 	for _, records := range recordsByFlush {
 		for _, rec := range records {
 			stream, err := decoder.DecodeWithoutLabels(rec.Value)
@@ -757,7 +757,7 @@ func runWithRealStack(t *testing.T, recordsByFlush [][]*kgo.Record) (map[string]
 		stack   = newRealStack(t)
 		records = make(chan *kgo.Record)
 		m       = &fixedCountMultiBuilder{
-			MultiObjectBuilder: NewMultiObjectBuilder(stack.factory, stack.targetSize, stack.watermarks),
+			MultiObjectBuilder: NewMultiObjectBuilder(stack.factory, stack.targetSize, stack.watermarks, testOverrides{}),
 			fullAfter:          len(recordsByFlush[0]),
 		}
 		proc = newProcessor(m, records, stack.flushCommitter, time.Hour, 0, log.NewNopLogger(), prometheus.NewRegistry())

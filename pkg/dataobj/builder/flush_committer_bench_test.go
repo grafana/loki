@@ -90,7 +90,7 @@ func benchmarkFlush(b *testing.B, tenants []benchTenant, latency benchBucketLate
 		b.StopTimer()
 		// A new bucket per flush keeps the ToCs from growing across flushes.
 		flush := newBenchFlush(b, latency, concurrency)
-		builders := make([]builder, len(tenants))
+		builders := make([]*tocScopedBuilders, len(tenants))
 		for i, tenant := range tenants {
 			builders[i] = tenant.fill(b, flush.factory)
 		}
@@ -178,7 +178,7 @@ type benchTenant struct {
 // The lines are in logfmt, with random IDs to keep compression realistic.
 // Their timestamps are out of order inside one ToC window, so the sort has
 // work to do.
-func (t benchTenant) fill(tb testing.TB, factory *logsobj.BuilderFactory) builder {
+func (t benchTenant) fill(tb testing.TB, factory *logsobj.BuilderFactory) *tocScopedBuilders {
 	const (
 		linesPerStream = 2_000
 		linesPerAppend = 100
@@ -214,7 +214,7 @@ func (t benchTenant) fill(tb testing.TB, factory *logsobj.BuilderFactory) builde
 			}
 		}
 	}
-	return WatermarkedBuilder{logsBuilder: lb}
+	return &tocScopedBuilders{toc: tocKey{tenant: t.name, window: testWindow1}, builders: map[class]logsBuilder{inTimeClass: lb}}
 }
 
 // newBenchTenants returns the tenants of one flush. The sizes follow a real

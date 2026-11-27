@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -42,6 +43,9 @@ type crashHooks struct {
 	// afterCommit runs after the n-th commit of the run. It returns true if the
 	// builder must stop now.
 	afterCommit func(n int) bool
+	// afterIndex runs after the n-th index of the run, before the flush uses
+	// it. An error fails the flush, so the run ends.
+	afterIndex func(n int) error
 }
 
 // crashEnv is the state that survives a restart of the builder: the bucket and
@@ -52,6 +56,10 @@ type crashEnv struct {
 
 	// crashed is true after a hook crashed the builder.
 	crashed atomic.Bool
+
+	// lateLogs is the late log threshold of the builder. Zero turns the
+	// separation of late logs off.
+	lateLogs time.Duration
 
 	committed atomic.Int64
 
@@ -77,14 +85,24 @@ func (e *crashEnv) resumeOffset() int64 {
 type recordingIndexer struct {
 	inner indexer
 	env   *crashEnv
+	hooks crashHooks
+
+	indexes atomic.Int64
 }
 
 func (r *recordingIndexer) Index(ctx context.Context, obj *dataobj.Object, objPath string) (index.Result, error) {
 	res, err := r.inner.Index(ctx, obj, objPath)
-	if err == nil {
-		r.env.logObjectOf.Store(res.Path, objPath)
+	if err != nil {
+		return res, err
 	}
-	return res, err
+	r.env.logObjectOf.Store(res.Path, objPath)
+	if n := int(r.indexes.Add(1)); r.hooks.afterIndex != nil {
+		if err := r.hooks.afterIndex(n); err != nil {
+			r.env.crashed.Store(true)
+			return index.Result{}, fmt.Errorf("%w: %w", index.ErrUnprocessableObject, err)
+		}
+	}
+	return res, nil
 }
 
 type hookedTOCWriter struct {
@@ -106,11 +124,11 @@ func (h *hookedTOCWriter) before() error {
 	return nil
 }
 
-func (h *hookedTOCWriter) WriteEntryWithWatermark(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry, update metastore.WatermarkUpdate) error {
+func (h *hookedTOCWriter) WriteEntriesWithWatermark(ctx context.Context, tenant string, entries []metastore.TableOfContentsEntry, update metastore.WatermarkUpdate) error {
 	if err := h.before(); err != nil {
 		return err
 	}
-	return h.inner.WriteEntryWithWatermark(ctx, tenant, entry, update)
+	return h.inner.WriteEntriesWithWatermark(ctx, tenant, entries, update)
 }
 
 type hookedCommitter struct {
@@ -172,11 +190,15 @@ func (e *crashEnv) run(t *testing.T, records []*kgo.Record, flushEvery, concurre
 	committer := &hookedCommitter{env: e, hooks: hooks, cancel: cancel}
 	w := newWatermarkCache("test-topic", 0, e.idxBucket, NewWatermarkMetrics(reg))
 	resume := e.resumeOffset()
-	flushCommitter := newFlushCommitter(newFlusher(uploader, logger, reg), committer, &recordingIndexer{inner: idx, env: e}, tocWriter, "test-topic", 0, concurrency, logger, reg)
+	flushCommitter := newFlushCommitter(newFlusher(uploader, logger, reg), committer, &recordingIndexer{inner: idx, env: e, hooks: hooks}, tocWriter, "test-topic", 0, concurrency, logger, reg)
 
 	input := make(chan *kgo.Record)
+	overrides := TenantOverrides(testOverrides{})
+	if e.lateLogs > 0 {
+		overrides = constThreshold(e.lateLogs)
+	}
 	m := &fixedCountMultiBuilder{
-		MultiObjectBuilder: NewMultiObjectBuilder(factory, int(cfg.LogsobjBuilder.TargetObjectSize), w),
+		MultiObjectBuilder: NewMultiObjectBuilder(factory, int(cfg.LogsobjBuilder.TargetObjectSize), w, overrides),
 		fullAfter:          flushEvery,
 	}
 	proc := newProcessor(m, input, flushCommitter, time.Hour, 0, logger, reg)
@@ -304,7 +326,7 @@ func newCrashRecords(t *testing.T, count int) []*kgo.Record {
 }
 
 // TestWatermarks_CrashRecovery stops the builder at each point of the flush
-// timeline, restarts it with other log object cuts, and counts the lines that
+// timeline, restarts it with different log object boundaries, and counts the lines that
 // the ToCs reach.
 func TestWatermarks_CrashRecovery(t *testing.T) {
 	const recordCount = 12
@@ -353,4 +375,171 @@ func TestWatermarks_CrashRecovery(t *testing.T) {
 			}
 		})
 	}
+}
+
+// logPathsOf returns the paths of the log objects that the index pointers of
+// toc reach.
+func (e *crashEnv) logPathsOf(t *testing.T, toc *dataobj.Object) []string {
+	t.Helper()
+	var paths []string
+	for res := range indexpointers.Iter(t.Context(), toc) {
+		pointer, err := res.Value()
+		require.NoError(t, err)
+		logPath, ok := e.logObjectOf.Load(pointer.Path)
+		require.True(t, ok, "unknown index %s", pointer.Path)
+		paths = append(paths, logPath.(string))
+	}
+	return paths
+}
+
+// TestWatermarks_CrashRecoveryLateLogs stops the builder at each point of the
+// flush timeline with late log separation on, restarts it with other log object
+// cuts, and counts the lines that the ToCs reach. It also checks that no log
+// object mixes late and in-time lines.
+func TestWatermarks_CrashRecoveryLateLogs(t *testing.T) {
+	const recordCount = 12
+	var (
+		records = newLateCrashRecords(t, recordCount)
+		tenants = []string{"a", "b"}
+		windows = []time.Time{testWindow1, testWindow2}
+	)
+	allLines := make(map[string]int, 2*recordCount)
+	for offset := range recordCount {
+		allLines[fmt.Sprintf("fresh-%d", offset)] = 1
+		if offset%2 == 1 {
+			allLines[fmt.Sprintf("late-%d", offset)] = 1
+		}
+	}
+
+	// The probe run shows how many ToC writes the first run makes, so the
+	// crash points cover its first, middle and last write.
+	var tocWrites int
+	probe := newCrashEnv()
+	probe.lateLogs = testLateThreshold
+	require.False(t, probe.run(t, records, 4, 1, crashHooks{beforeTOCWrite: func(n int) error {
+		tocWrites = n
+		return nil
+	}}))
+	require.Greater(t, tocWrites, 3)
+	require.Equal(t, allLines, probe.lineCounts(t, tenants, windows))
+
+	crashAtTOCWrite := func(crashAt int) crashHooks {
+		return crashHooks{beforeTOCWrite: func(n int) error {
+			if n == crashAt {
+				return errors.New("crash at a ToC write")
+			}
+			return nil
+		}}
+	}
+	crashAfterIndex := func(crashAt int) crashHooks {
+		return crashHooks{afterIndex: func(n int) error {
+			if n == crashAt {
+				return errors.New("crash after an index")
+			}
+			return nil
+		}}
+	}
+	for _, tc := range []struct {
+		name  string
+		hooks crashHooks
+	}{
+		{name: "reaches every line once after a stop before the first ToC write", hooks: crashAtTOCWrite(1)},
+		{name: "reaches every line once after a stop before a ToC write in the middle", hooks: crashAtTOCWrite(tocWrites / 2)},
+		{name: "reaches every line once after a stop before the last ToC write", hooks: crashAtTOCWrite(tocWrites)},
+		{name: "reaches every line once after a stop between the objects of the first ToC", hooks: crashAfterIndex(1)},
+		{name: "reaches every line once after a stop between the objects of a ToC in the middle", hooks: crashAfterIndex(7)},
+		{name: "reaches every line once after a stop after the ToC writes and before the commit", hooks: crashHooks{onCommit: func(n int) bool { return n == 2 }}},
+		{name: "reaches every line once after a stop after the commit", hooks: crashHooks{afterCommit: func(n int) bool { return n == 2 }}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, concurrency := range []int{1, 2} {
+				env := newCrashEnv()
+				env.lateLogs = testLateThreshold
+				require.True(t, env.run(t, records, 4, concurrency, tc.hooks), "the hook did not crash the first run")
+				require.False(t, env.run(t, records, 2, concurrency, crashHooks{}))
+
+				require.Equal(t, allLines, env.lineCounts(t, tenants, windows), "flush concurrency %d", concurrency)
+				seen := make(map[string]struct{})
+				for _, kinds := range env.lineKinds(t, tenants, windows) {
+					require.Len(t, uniqueStrings(kinds), 1, "a log object mixes late and in-time lines: %v", kinds)
+					seen[kinds[0]] = struct{}{}
+				}
+				require.Len(t, seen, 2, "the objects must hold both late and in-time lines")
+			}
+		})
+	}
+}
+
+func uniqueStrings(values []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(values))
+	for _, v := range values {
+		set[v] = struct{}{}
+	}
+	return set
+}
+
+// lineKinds returns the kinds of the lines of every data object that the ToCs
+// of the tenants and windows reach. A kind is the part of a line before the
+// first dash: "late" or "fresh".
+func (e *crashEnv) lineKinds(t *testing.T, tenants []string, windows []time.Time) [][]string {
+	t.Helper()
+	ctx := t.Context()
+	var objects [][]string
+	for _, tenant := range tenants {
+		for _, window := range windows {
+			toc, err := dataobj.FromBucket(ctx, e.idxBucket, metastore.TableOfContentsPath(tenant, window), 0)
+			if err != nil {
+				require.True(t, e.idxBucket.IsObjNotFoundErr(err), "ToC of %s: %v", tenant, err)
+				continue
+			}
+			for _, logPath := range e.logPathsOf(t, toc) {
+				obj, err := dataobj.FromBucket(ctx, e.bucket, logPath, 0)
+				require.NoError(t, err)
+				var kinds []string
+				for rec := range logs.Iter(ctx, obj) {
+					r, err := rec.Value()
+					require.NoError(t, err)
+					kinds = append(kinds, strings.SplitN(string(r.Line), "-", 2)[0])
+				}
+				objects = append(objects, kinds)
+			}
+		}
+	}
+	return objects
+}
+
+// newLateCrashRecords returns one record per offset from 0, alternating
+// between the tenants "a" and "b". The records at odd offsets arrive 3 hours
+// after the line "late-<offset>" and carry the line "fresh-<offset>" too, so
+// they feed both builders. The other records carry only "fresh-<offset>".
+// Every third record lies in the second ToC window.
+func newLateCrashRecords(t *testing.T, count int) []*kgo.Record {
+	t.Helper()
+	records := make([]*kgo.Record, 0, count)
+	for offset := range count {
+		window := testWindow1
+		if offset%3 == 2 {
+			window = testWindow2
+		}
+		ts := window.Add(time.Duration(offset+1) * time.Minute)
+		recTime := ts
+		entries := []push.Entry{{Timestamp: ts, Line: fmt.Sprintf("fresh-%d", offset)}}
+		if offset%2 == 1 {
+			recTime = ts.Add(3 * time.Hour)
+			entries = []push.Entry{
+				{Timestamp: ts, Line: fmt.Sprintf("late-%d", offset)},
+				{Timestamp: recTime.Add(-time.Minute), Line: fmt.Sprintf("fresh-%d", offset)},
+			}
+		}
+		stream := logproto.Stream{Labels: `{foo="bar"}`, Entries: entries}
+		value, err := stream.Marshal()
+		require.NoError(t, err)
+		records = append(records, &kgo.Record{
+			Key:       []byte([]string{"a", "b"}[offset%2]),
+			Value:     value,
+			Timestamp: recTime,
+			Offset:    int64(offset),
+		})
+	}
+	return records
 }

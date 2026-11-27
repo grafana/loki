@@ -455,3 +455,96 @@ func TestWriteEntryWithWatermark(t *testing.T) {
 		}
 	})
 }
+
+func TestWriteEntriesWithWatermark(t *testing.T) {
+	ctx := context.Background()
+	update := func(end int64, expected *int64) WatermarkUpdate {
+		return WatermarkUpdate{Topic: wmTopic, Partition: 0, EndOffset: end, Expected: expected}
+	}
+
+	t.Run("adds every entry and the watermark in one write", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket)
+
+		err := writer.WriteEntriesWithWatermark(ctx, wmTenant, []TableOfContentsEntry{wmEntry("indexes/a"), wmEntry("indexes/b")}, update(99, nil))
+		require.NoError(t, err)
+
+		require.Equal(t, []tocRow{
+			{Tenant: wmTenant, Path: "indexes/a", StartUnix: 10, EndUnix: 20},
+			{Tenant: wmTenant, Path: "indexes/b", StartUnix: 10, EndUnix: 20},
+		}, readToC(ctx, t, bucket, wmTocPath()))
+		require.Equal(t, []watermarks.Watermark{wm(0, 99)}, readWatermarks(ctx, t, bucket, wmTocPath()))
+		require.Equal(t, uint64(1), sampleCount(t, writer.metrics.writeSeconds, opWriteEntry, changeWritten))
+	})
+
+	t.Run("writes each entry as a run of one index object", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket)
+
+		err := writer.WriteEntriesWithWatermark(ctx, wmTenant, []TableOfContentsEntry{wmEntry("indexes/a"), wmEntry("indexes/b")}, update(99, nil))
+		require.NoError(t, err)
+
+		for _, pointer := range readToCPointers(t, bucket, wmTocPath()) {
+			require.Zero(t, pointer.RunID, "pointer %s", pointer.Path)
+		}
+	})
+
+	t.Run("writes nothing when the ToC holds another watermark than expected", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedWatermarkToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 150)})
+		before := readRawToC(ctx, t, bucket, wmTocPath())
+		writer := newTableOfContentsWriter(t, bucket)
+
+		err := writer.WriteEntriesWithWatermark(ctx, wmTenant, []TableOfContentsEntry{wmEntry("indexes/b"), wmEntry("indexes/c")}, update(199, int64Ptr(99)))
+
+		require.ErrorIs(t, err, ErrWatermarkMismatch)
+		require.Equal(t, before, readRawToC(ctx, t, bucket, wmTocPath()))
+	})
+
+	t.Run("writes nothing and returns nil when the ToC already holds every entry and the watermark", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket)
+		entries := []TableOfContentsEntry{wmEntry("indexes/a"), wmEntry("indexes/b")}
+		require.NoError(t, writer.WriteEntriesWithWatermark(ctx, wmTenant, entries, update(99, nil)))
+		before := readRawToC(ctx, t, bucket, wmTocPath())
+
+		require.NoError(t, writer.WriteEntriesWithWatermark(ctx, wmTenant, entries, update(99, nil)))
+
+		require.Equal(t, before, readRawToC(ctx, t, bucket, wmTocPath()))
+	})
+
+	t.Run("writes the missing entry when the ToC holds only some entries and a lower watermark", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedWatermarkToC(t, bucket, []string{"indexes/a"}, []watermarks.Watermark{wm(0, 50)})
+		writer := newTableOfContentsWriter(t, bucket)
+
+		err := writer.WriteEntriesWithWatermark(ctx, wmTenant, []TableOfContentsEntry{wmEntry("indexes/a"), wmEntry("indexes/b")}, update(99, int64Ptr(50)))
+		require.NoError(t, err)
+
+		require.Equal(t, []tocRow{
+			{Tenant: wmTenant, Path: "indexes/a", StartUnix: 10, EndUnix: 20},
+			{Tenant: wmTenant, Path: "indexes/b", StartUnix: 10, EndUnix: 20},
+		}, readToC(ctx, t, bucket, wmTocPath()))
+		require.Equal(t, []watermarks.Watermark{wm(0, 99)}, readWatermarks(ctx, t, bucket, wmTocPath()))
+	})
+
+	t.Run("fails when there are no entries", func(t *testing.T) {
+		writer := newTableOfContentsWriter(t, objstore.NewInMemBucket())
+
+		err := writer.WriteEntriesWithWatermark(ctx, wmTenant, nil, update(99, nil))
+
+		require.ErrorContains(t, err, "no ToC entries")
+	})
+
+	t.Run("fails without writing when the entries lie in different windows", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		writer := newTableOfContentsWriter(t, bucket)
+		other := TableOfContentsEntry{Path: "indexes/b", StartTime: unixTime(10).Add(MetastoreWindowSize), EndTime: unixTime(20).Add(MetastoreWindowSize)}
+
+		err := writer.WriteEntriesWithWatermark(ctx, wmTenant, []TableOfContentsEntry{wmEntry("indexes/a"), other}, update(99, nil))
+
+		require.ErrorContains(t, err, "different windows")
+		_, err = bucket.Get(ctx, wmTocPath())
+		require.True(t, bucket.IsObjNotFoundErr(err))
+	})
+}

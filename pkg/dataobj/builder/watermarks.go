@@ -31,7 +31,7 @@ type watermarkCache struct {
 
 	entriesMu sync.Mutex
 	// entries holds a nil value for a ToC that has no row for the partition.
-	entries *lru.Cache[builderScope, *int64]
+	entries *lru.Cache[tocKey, *int64]
 }
 
 // newWatermarkCache returns an empty cache. It reads the ToCs from bucket, which
@@ -46,20 +46,20 @@ func newWatermarkCache(topic string, partition int32, bucket objstore.BucketRead
 	}
 }
 
-func newWatermarkEntries(size int) *lru.Cache[builderScope, *int64] {
+func newWatermarkEntries(size int) *lru.Cache[tocKey, *int64] {
 	// New fails only for a size below 1.
-	entries, err := lru.New[builderScope, *int64](size)
+	entries, err := lru.New[tocKey, *int64](size)
 	if err != nil {
 		panic(err)
 	}
 	return entries
 }
 
-// get returns the watermark of the scope. A scope that is not in the cache costs
+// get returns the watermark of the ToC. A ToC that is not in the cache costs
 // one read of the ToC. The error of a failed read is never cached.
-func (c *watermarkCache) get(ctx context.Context, scope builderScope) (*int64, error) {
+func (c *watermarkCache) get(ctx context.Context, toc tocKey) (*int64, error) {
 	c.entriesMu.Lock()
-	value, ok := c.entries.Get(scope)
+	value, ok := c.entries.Get(toc)
 	c.entriesMu.Unlock()
 	if ok {
 		c.metrics.cacheLookups.WithLabelValues(lookupHit).Inc()
@@ -67,7 +67,7 @@ func (c *watermarkCache) get(ctx context.Context, scope builderScope) (*int64, e
 	}
 
 	c.metrics.cacheLookups.WithLabelValues(lookupMiss).Inc()
-	value, err := c.read(ctx, scope)
+	value, err := c.read(ctx, toc)
 	if err != nil {
 		return nil, err
 	}
@@ -76,35 +76,35 @@ func (c *watermarkCache) get(ctx context.Context, scope builderScope) (*int64, e
 	defer c.entriesMu.Unlock()
 	defer c.updateEntriesLocked()
 	// A set can land while the read runs, and the read can be older.
-	if existing, found, _ := c.entries.PeekOrAdd(scope, value); found {
+	if existing, found, _ := c.entries.PeekOrAdd(toc, value); found {
 		return existing, nil
 	}
 	return value, nil
 }
 
-// set stores that the watermark of the scope is at least offset. It never lowers
+// set stores that the watermark of the ToC is at least offset. It never lowers
 // an entry.
-func (c *watermarkCache) set(scope builderScope, offset int64) {
+func (c *watermarkCache) set(toc tocKey, offset int64) {
 	c.entriesMu.Lock()
 	defer c.entriesMu.Unlock()
 	defer c.updateEntriesLocked()
 
-	if current, ok := c.entries.Peek(scope); ok && current != nil && *current >= offset {
+	if current, ok := c.entries.Peek(toc); ok && current != nil && *current >= offset {
 		return
 	}
-	c.entries.Add(scope, &offset)
+	c.entries.Add(toc, &offset)
 }
 
 func (c *watermarkCache) updateEntriesLocked() {
 	c.metrics.cacheEntries.Set(float64(c.entries.Len()))
 }
 
-func (c *watermarkCache) read(ctx context.Context, scope builderScope) (*int64, error) {
+func (c *watermarkCache) read(ctx context.Context, toc tocKey) (*int64, error) {
 	start := time.Now()
-	value, err := metastore.ReadWatermark(ctx, c.bucket, scope.tenant, scope.window, c.topic, c.partition)
+	value, err := metastore.ReadWatermark(ctx, c.bucket, toc.tenant, toc.window, c.topic, c.partition)
 	c.metrics.readDuration.WithLabelValues(resultOf(err)).Observe(time.Since(start).Seconds())
 	if err != nil {
-		return nil, fmt.Errorf("read ToC watermark of %s: %w", scope, err)
+		return nil, fmt.Errorf("read ToC watermark of %s: %w", toc, err)
 	}
 	return value, nil
 }

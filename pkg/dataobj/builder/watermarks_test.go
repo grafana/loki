@@ -78,26 +78,26 @@ func readSamples(t *testing.T, w *watermarkCache, result string) uint64 {
 }
 
 func TestWatermarkCache_Get(t *testing.T) {
-	scope := builderScope{tenant: "a", window: testWindow1}
+	toc := tocKey{tenant: "a", window: testWindow1}
 
 	t.Run("returns nil and reads once when the ToC has no row", func(t *testing.T) {
 		w := newBucketWatermarks(objstore.NewInMemBucket())
 
 		for range 3 {
-			value, err := w.get(t.Context(), scope)
+			value, err := w.get(t.Context(), toc)
 			require.NoError(t, err)
 			require.Nil(t, value)
 		}
 		require.Equal(t, uint64(1), readSamples(t, w, resultOK))
 	})
 
-	t.Run("returns the watermark of the ToC, reads each scope once and counts the cache lookups", func(t *testing.T) {
+	t.Run("returns the watermark of the ToC, reads each ToC once and counts the cache lookups", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		writeTestWatermark(t, bucket, "a", testWindow1, 10)
 		w := newBucketWatermarks(bucket)
 
 		for range 3 {
-			value, err := w.get(t.Context(), scope)
+			value, err := w.get(t.Context(), toc)
 			require.NoError(t, err)
 			require.Equal(t, int64(10), *value)
 		}
@@ -114,16 +114,16 @@ func TestWatermarkCache_Get(t *testing.T) {
 		w := newBucketWatermarks(bucket)
 
 		for _, tc := range []struct {
-			scope builderScope
-			want  *int64
+			toc  tocKey
+			want *int64
 		}{
-			{scope: scope, want: ptr(int64(10))},
-			{scope: builderScope{tenant: "a", window: testWindow2}},
-			{scope: builderScope{tenant: "b", window: testWindow1}},
+			{toc: toc, want: ptr(int64(10))},
+			{toc: tocKey{tenant: "a", window: testWindow2}},
+			{toc: tocKey{tenant: "b", window: testWindow1}},
 		} {
-			value, err := w.get(t.Context(), tc.scope)
+			value, err := w.get(t.Context(), tc.toc)
 			require.NoError(t, err)
-			require.Equal(t, tc.want, value, tc.scope.String())
+			require.Equal(t, tc.want, value, tc.toc.String())
 		}
 	})
 
@@ -132,7 +132,7 @@ func TestWatermarkCache_Get(t *testing.T) {
 		w := newBucketWatermarks(failingBucket{Bucket: objstore.NewInMemBucket(), err: readErr})
 
 		for range 2 {
-			value, err := w.get(t.Context(), scope)
+			value, err := w.get(t.Context(), toc)
 			require.ErrorIs(t, err, readErr)
 			require.Nil(t, value)
 		}
@@ -145,29 +145,29 @@ func TestWatermarkCache_Get(t *testing.T) {
 	t.Run("evicts the least recently used entry when the cache is full", func(t *testing.T) {
 		w := newBucketWatermarks(objstore.NewInMemBucket())
 		w.entries = newWatermarkEntries(2)
-		scopeOf := func(tenant string) builderScope { return builderScope{tenant: tenant, window: testWindow1} }
+		tocOf := func(tenant string) tocKey { return tocKey{tenant: tenant, window: testWindow1} }
 
 		for _, tenant := range []string{"a", "b", "a", "c"} {
-			_, err := w.get(t.Context(), scopeOf(tenant))
+			_, err := w.get(t.Context(), tocOf(tenant))
 			require.NoError(t, err)
 		}
 
-		require.True(t, w.entries.Contains(scopeOf("a")))
-		require.False(t, w.entries.Contains(scopeOf("b")))
-		require.True(t, w.entries.Contains(scopeOf("c")))
+		require.True(t, w.entries.Contains(tocOf("a")))
+		require.False(t, w.entries.Contains(tocOf("b")))
+		require.True(t, w.entries.Contains(tocOf("c")))
 		require.Equal(t, 2.0, testutil.ToFloat64(w.metrics.cacheEntries))
 	})
 }
 
 func TestWatermarkCache_Set(t *testing.T) {
-	scope := builderScope{tenant: "a", window: testWindow1}
+	toc := tocKey{tenant: "a", window: testWindow1}
 
 	t.Run("serves the offset without a read of the ToC", func(t *testing.T) {
 		w := newBucketWatermarks(objstore.NewInMemBucket())
 
-		w.set(scope, 7)
+		w.set(toc, 7)
 
-		value, err := w.get(t.Context(), scope)
+		value, err := w.get(t.Context(), toc)
 		require.NoError(t, err)
 		require.Equal(t, int64(7), *value)
 		require.Equal(t, uint64(0), readSamples(t, w, resultOK))
@@ -176,10 +176,10 @@ func TestWatermarkCache_Set(t *testing.T) {
 	t.Run("keeps the higher value when it gets a lower offset", func(t *testing.T) {
 		w := newBucketWatermarks(objstore.NewInMemBucket())
 
-		w.set(scope, 9)
-		w.set(scope, 5)
+		w.set(toc, 9)
+		w.set(toc, 5)
 
-		value, err := w.get(t.Context(), scope)
+		value, err := w.get(t.Context(), toc)
 		require.NoError(t, err)
 		require.Equal(t, int64(9), *value)
 	})
@@ -189,12 +189,12 @@ func TestWatermarkCache_Set(t *testing.T) {
 		writeTestWatermark(t, withRow, "a", testWindow1, 10)
 		for name, bucket := range map[string]objstore.Bucket{"row": withRow, "no row": objstore.NewInMemBucket()} {
 			w := newBucketWatermarks(bucket)
-			_, err := w.get(t.Context(), scope)
+			_, err := w.get(t.Context(), toc)
 			require.NoError(t, err, name)
 
-			w.set(scope, 20)
+			w.set(toc, 20)
 
-			value, err := w.get(t.Context(), scope)
+			value, err := w.get(t.Context(), toc)
 			require.NoError(t, err, name)
 			require.Equal(t, int64(20), *value, name)
 		}
@@ -204,19 +204,19 @@ func TestWatermarkCache_Set(t *testing.T) {
 func TestProcessor_Watermarks(t *testing.T) {
 	// newTestProcessor returns a processor on a multi-builder whose ToCs hold
 	// the given watermarks.
-	newTestProcessor := func(t *testing.T, watermarks map[builderScope]int64) (*processor, *mockMultiBuilder) {
+	newTestProcessor := func(t *testing.T, watermarks map[tocKey]int64) (*processor, *mockMultiBuilder) {
 		bucket := objstore.NewInMemBucket()
-		for scope, offset := range watermarks {
-			writeTestWatermark(t, bucket, scope.tenant, scope.window, offset)
+		for toc, offset := range watermarks {
+			writeTestWatermark(t, bucket, toc.tenant, toc.window, offset)
 		}
-		m := &mockMultiBuilder{MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newBucketWatermarks(bucket))}
+		m := &mockMultiBuilder{MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newBucketWatermarks(bucket), testOverrides{})}
 		return newProcessor(m, nil, &mockFlushCommitter{}, time.Hour, time.Hour, log.NewNopLogger(), prometheus.NewRegistry()), m
 	}
-	scopeA1 := builderScope{tenant: "a", window: testWindow1}
-	scopeA2 := builderScope{tenant: "a", window: testWindow2}
+	tocA1 := tocKey{tenant: "a", window: testWindow1}
+	tocA2 := tocKey{tenant: "a", window: testWindow2}
 
 	t.Run("drops a record at or below the watermark, keeps the next one, and moves lastOffset", func(t *testing.T) {
-		proc, m := newTestProcessor(t, map[builderScope]int64{scopeA1: 10})
+		proc, m := newTestProcessor(t, map[tocKey]int64{tocA1: 10})
 		process := func(offset int64) {
 			rec := newTestRecord(t, "a", testWindow1.Add(time.Minute))
 			rec.Offset = offset
@@ -241,7 +241,7 @@ func TestProcessor_Watermarks(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
 			writeTestWatermark(t, bucket, "a", testWindow1, 20)
 			flushCommitter := &mockFlushCommitter{}
-			m := &mockMultiBuilder{MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newBucketWatermarks(bucket))}
+			m := &mockMultiBuilder{MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newBucketWatermarks(bucket), testOverrides{})}
 			proc := newProcessor(m, nil, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), prometheus.NewRegistry())
 			startTestFlushLoop(t.Context(), t, proc)
 			process := func(offset int64) {
@@ -273,7 +273,7 @@ func TestProcessor_Watermarks(t *testing.T) {
 			writeTestWatermark(t, bucket, "a", testWindow1, 20)
 			flushCommitter := &mockFlushCommitter{}
 			records := make(chan *kgo.Record)
-			m := &mockMultiBuilder{MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newBucketWatermarks(bucket))}
+			m := &mockMultiBuilder{MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newBucketWatermarks(bucket), testOverrides{})}
 			proc := newProcessor(m, records, flushCommitter, 5*time.Minute, 30*time.Minute, log.NewNopLogger(), prometheus.NewRegistry())
 			ctx, cancel := context.WithCancel(t.Context())
 			ran := make(chan error, 1)
@@ -296,7 +296,7 @@ func TestProcessor_Watermarks(t *testing.T) {
 	})
 
 	t.Run("drops only the windows of a multi-window record that the ToC holds", func(t *testing.T) {
-		proc, m := newTestProcessor(t, map[builderScope]int64{scopeA1: 10, scopeA2: 9})
+		proc, m := newTestProcessor(t, map[tocKey]int64{tocA1: 10, tocA2: 9})
 
 		rec := newTestMultiWindowRecord(t, "a", []time.Time{testWindow1, testWindow2})
 		rec.Offset = 10
@@ -304,7 +304,7 @@ func TestProcessor_Watermarks(t *testing.T) {
 
 		builders := m.getBuilders()
 		require.Len(t, builders, 1)
-		require.Equal(t, testWindow2, builders[0].TimeRange().MinTime.UTC().Truncate(metastore.MetastoreWindowSize))
+		require.Equal(t, testWindow2, builders[0].toc.window)
 		require.Equal(t, 1.0, testutil.ToFloat64(proc.metrics.droppedRecords))
 		require.Equal(t, int64(10), proc.lastOffset)
 	})
@@ -312,7 +312,7 @@ func TestProcessor_Watermarks(t *testing.T) {
 	t.Run("fails the flush when another process raised the ToC watermark after the first record", func(t *testing.T) {
 		stack := newRealStack(t)
 		m := &fixedCountMultiBuilder{
-			MultiObjectBuilder: NewMultiObjectBuilder(stack.factory, stack.targetSize, stack.watermarks),
+			MultiObjectBuilder: NewMultiObjectBuilder(stack.factory, stack.targetSize, stack.watermarks, testOverrides{}),
 			fullAfter:          2,
 		}
 		proc := newProcessor(m, nil, stack.flushCommitter, time.Hour, 0, log.NewNopLogger(), prometheus.NewRegistry())
@@ -340,7 +340,7 @@ func TestProcessor_Watermarks(t *testing.T) {
 		bucket := &blockingBucket{Bucket: objstore.NewInMemBucket(), started: make(chan struct{}), release: make(chan struct{})}
 		flushCommitter := &mockFlushCommitter{}
 		records := make(chan *kgo.Record, 1)
-		m := &mockMultiBuilder{MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newBucketWatermarks(bucket))}
+		m := &mockMultiBuilder{MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newBucketWatermarks(bucket), testOverrides{})}
 		proc := newProcessor(m, records, flushCommitter, time.Hour, time.Hour, log.NewNopLogger(), prometheus.NewRegistry())
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
@@ -361,7 +361,7 @@ func TestProcessor_Watermarks(t *testing.T) {
 		w := newBucketWatermarks(failingBucket{Bucket: objstore.NewInMemBucket(), err: readErr})
 		flushCommitter := &mockFlushCommitter{}
 		records := make(chan *kgo.Record, 2)
-		m := &mockMultiBuilder{MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), w)}
+		m := &mockMultiBuilder{MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), w, testOverrides{})}
 		proc := newProcessor(m, records, flushCommitter, time.Hour, time.Hour, log.NewNopLogger(), prometheus.NewRegistry())
 
 		for offset := int64(4); offset < 6; offset++ {
@@ -383,8 +383,10 @@ func TestFlushCommitter_Watermarks(t *testing.T) {
 	newCommitter := func(tocWriter *mockTOCWriter, committer *mockCommitter, reg *prometheus.Registry) *flushCommitterImpl {
 		return newFlushCommitter(&mockFlusher{obj: &dataobj.Object{}}, committer, &mockIndexer{}, tocWriter, "test-topic", 3, 1, log.NewNopLogger(), reg)
 	}
-	newBuilderWithWatermark := func(t *testing.T, reg prometheus.Registerer, watermark *int64) builder {
-		return WatermarkedBuilder{logsBuilder: newTestFlushBuilder(t, reg), initialWatermark: watermark}
+	newBuilderWithWatermark := func(t *testing.T, reg prometheus.Registerer, watermark *int64) *tocScopedBuilders {
+		toc := newTestFlushBuilder(t, reg)
+		toc.initialWatermark = watermark
+		return toc
 	}
 
 	t.Run("commits the offset and writes no ToC when it has no builders", func(t *testing.T) {
@@ -410,7 +412,7 @@ func TestFlushCommitter_Watermarks(t *testing.T) {
 		)
 		fc := newCommitter(tocWriter, &mockCommitter{}, reg)
 
-		require.NoError(t, fc.Flush(t.Context(), []builder{newBuilderWithWatermark(t, reg, &five)}, "test", 12))
+		require.NoError(t, fc.Flush(t.Context(), []*tocScopedBuilders{newBuilderWithWatermark(t, reg, &five)}, "test", 12))
 
 		require.Equal(t, []metastore.WatermarkUpdate{
 			{Topic: "test-topic", Partition: 3, EndOffset: 12, Expected: &five},
@@ -459,7 +461,7 @@ func (b *blockingBucket) GetRange(ctx context.Context, name string, off, length 
 }
 
 func TestWatermarkCache_Concurrency(t *testing.T) {
-	scope := builderScope{tenant: "a", window: testWindow1}
+	toc := tocKey{tenant: "a", window: testWindow1}
 
 	t.Run("keeps the offset that landed while the read of the ToC ran", func(t *testing.T) {
 		bucket := &blockingBucket{Bucket: objstore.NewInMemBucket(), started: make(chan struct{}), release: make(chan struct{})}
@@ -471,11 +473,11 @@ func TestWatermarkCache_Concurrency(t *testing.T) {
 		}
 		done := make(chan result, 1)
 		go func() {
-			value, err := w.get(t.Context(), scope)
+			value, err := w.get(t.Context(), toc)
 			done <- result{value, err}
 		}()
 		<-bucket.started
-		w.set(scope, 50)
+		w.set(toc, 50)
 		close(bucket.release)
 
 		res := <-done
