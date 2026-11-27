@@ -14,3 +14,4 @@ The section provides information to help you troubleshoot issues with Grafana Lo
 * [Troubleshoot ingestion (write)](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-ingest/)
 * [Troubleshoot Logs Drilldown](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-drilldown/)
 * [Troubleshoot querying (read)](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/troubleshooting/troubleshoot-query/)
+* [Troubleshoot the Full-Text Index]({{< relref "./troubleshoot-full-text-index.md" >}})
