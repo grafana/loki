@@ -31,16 +31,15 @@ import (
 const readDBsConcurrency = 50
 
 type indexProcessor struct {
-	dedupe *dedupeMetrics
+	metrics *dedupeMetrics
 }
 
 func NewIndexCompactor() compactor.IndexCompactor {
 	return indexProcessor{}
 }
 
-// NewIndexCompactorWithDedupeMetrics is NewIndexCompactor, registering the dedupe counters with r.
 func NewIndexCompactorWithDedupeMetrics(r prometheus.Registerer) compactor.IndexCompactor {
-	return indexProcessor{dedupe: newDedupeMetrics(r)}
+	return indexProcessor{metrics: newDedupeMetrics(r)}
 }
 
 // dedupeMetrics counts the chunk entries that the compactor adds to the compacted index after
@@ -50,7 +49,6 @@ type dedupeMetrics struct {
 	distinctLines prometheus.Counter
 }
 
-// newDedupeMetrics registers the counters with reg, or leaves them unregistered if reg is nil.
 func newDedupeMetrics(reg prometheus.Registerer) *dedupeMetrics {
 	return &dedupeMetrics{
 		distinctBytes: promauto.With(reg).NewCounter(prometheus.CounterOpts{
@@ -68,7 +66,6 @@ func newDedupeMetrics(reg prometheus.Registerer) *dedupeMetrics {
 	}
 }
 
-// distinct counts chunk entries added to the compacted index.
 func (m *dedupeMetrics) distinct(kb, lines uint64) {
 	if m == nil {
 		return
@@ -78,7 +75,7 @@ func (m *dedupeMetrics) distinct(kb, lines uint64) {
 }
 
 func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet compactor.IndexSet, existingUserIndexSet map[string]compactor.IndexSet, userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig) compactor.TableCompactor {
-	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig, i.dedupe)
+	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig, i.metrics)
 }
 
 func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableName, userID, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) (compactor.CompactedIndex, error) {
@@ -119,7 +116,7 @@ type tableCompactor struct {
 	ctx                     context.Context
 	periodConfig            config.PeriodConfig
 	compactedIndexes        map[string]compactor.CompactedIndex
-	dedupe                  *dedupeMetrics
+	metrics                 *dedupeMetrics
 }
 
 func newTableCompactor(
@@ -128,7 +125,7 @@ func newTableCompactor(
 	existingUserIndexSet map[string]compactor.IndexSet,
 	userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc,
 	periodConfig config.PeriodConfig,
-	dedupe *dedupeMetrics,
+	metrics *dedupeMetrics,
 ) *tableCompactor {
 	return &tableCompactor{
 		ctx:                     ctx,
@@ -136,7 +133,7 @@ func newTableCompactor(
 		existingUserIndexSet:    existingUserIndexSet,
 		userIndexSetFactoryFunc: userIndexSetFactoryFunc,
 		periodConfig:            periodConfig,
-		dedupe:                  dedupe,
+		metrics:                 metrics,
 	}
 }
 
@@ -264,7 +261,7 @@ func (t *tableCompactor) CompactTable() error {
 			return err
 		}
 	}
-	t.dedupe.distinct(distinctKB, distinctLines)
+	t.metrics.distinct(distinctKB, distinctLines)
 	return nil
 }
 
