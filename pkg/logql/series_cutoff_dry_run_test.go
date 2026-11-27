@@ -36,6 +36,8 @@ func TestCutoffTracker_ShouldReportTheOutcomeOnlyWhenItFired(t *testing.T) {
 		"fired and succeeded":        {fired: true, err: nil, wantOutcome: cutoffDryRunMismatch, wantOK: true},
 		"fired and hit the limit":    {fired: true, err: logqlerr.NewSeriesLimitError(1), wantOutcome: cutoffDryRunAgreed, wantOK: true},
 		"fired and failed otherwise": {fired: true, err: otherErr, wantOutcome: cutoffDryRunInconclusive, wantOK: true},
+		// The limit of the buckets of a histogram is not the limit of series, so the cut-off did not agree with it.
+		"fired and hit the limit of histogram buckets": {fired: true, err: checkBucketLimit(maxHistogramBuckets + 1), wantOutcome: cutoffDryRunInconclusive, wantOK: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tracker := newCutoffTracker()
