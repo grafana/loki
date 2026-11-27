@@ -77,8 +77,8 @@ var (
 	bytesProcessedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_bytes_processed_total",
-		Help:      "Total number of bytes processed by LogQL queries, partitioned by tenant.",
-	}, []string{"tenant"})
+		Help:      "Total number of bytes processed by LogQL queries, partitioned by tenant. Bytes from multi-tenant queries are split equally across the queried tenants and carry multi_tenant=\"true\".",
+	}, []string{"tenant", "multi_tenant"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_latency_seconds",
@@ -335,14 +335,22 @@ func RecordRangeAndInstantQueryMetrics(
 
 	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType, sharded).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
-	// Record per-tenant query bytes. For federated multi-tenant queries the aggregated
-	// byte total is divided evenly across the tenants in the request, since the stats are
-	// not broken down per tenant. This keeps the sum across tenants equal to the actual
-	// bytes processed. TenantIDs returns a normalized (sorted, de-duplicated) list.
+	// Record per-tenant query bytes. For multi-tenant queries the aggregated byte total
+	// is divided evenly across the tenants in the request, since the stats are not broken
+	// down per tenant. This keeps the sum across tenants equal to the actual bytes
+	// processed. TenantIDs returns a normalized (sorted, de-duplicated) list.
+	//
+	// The multi-tenant share is labelled multi_tenant="true" so consumers can tell it
+	// apart from single-tenant usage. Single-tenant queries use an empty value, which
+	// Prometheus treats as an absent label, so their series are unchanged.
 	if tenantIDs, err := tenant.TenantIDs(ctx); err == nil && len(tenantIDs) > 0 {
+		multiTenant := ""
+		if len(tenantIDs) > 1 {
+			multiTenant = "true"
+		}
 		bytesPerTenant := float64(stats.Summary.TotalBytesProcessed) / float64(len(tenantIDs))
 		for _, tenantID := range tenantIDs {
-			bytesProcessedTotal.WithLabelValues(tenantID).Add(bytesPerTenant)
+			bytesProcessedTotal.WithLabelValues(tenantID, multiTenant).Add(bytesPerTenant)
 		}
 	}
 	execLatency.WithLabelValues(status, queryType, rt).
