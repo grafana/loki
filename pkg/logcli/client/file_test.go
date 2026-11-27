@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -25,11 +25,8 @@ func TestFileClient_QueryRangeLogQueries(t *testing.T) {
 		`level=info event="loki ready" caller=main.go ts=1625996095`,
 	}
 
-	reversed := make([]string, len(input))
-	copy(reversed, input)
-	sort.Slice(reversed, func(i, j int) bool {
-		return i > j
-	})
+	reversed := slices.Clone(input)
+	slices.Reverse(reversed)
 
 	now := time.Now()
 
@@ -97,12 +94,8 @@ func TestFileClient_Query(t *testing.T) {
 		`level=info event="loki ready" caller=main.go ts=1625996095`,
 	}
 
-	reversed := make([]string, len(input))
-	copy(reversed, input)
-	sort.Slice(reversed, func(i, j int) bool {
-		return i > j
-	})
-
+	reversed := slices.Clone(input)
+	slices.Reverse(reversed)
 	now := time.Now()
 
 	cases := []struct {
@@ -238,15 +231,55 @@ func assertStreams(t *testing.T, result loghttp.ResultValue, logLines []string) 
 
 	streams, ok := result.(loghttp.Streams)
 	require.True(t, ok, "response type should be `loghttp.Streams`")
-
 	require.Len(t, streams, 1, "there should be only one stream for FileClient")
 
 	got := streams[0]
-	sort.Slice(got.Entries, func(i, j int) bool {
-		return got.Entries[i].Timestamp.UnixNano() < got.Entries[j].Timestamp.UnixNano()
-	})
-	require.Equal(t, len(got.Entries), len(logLines))
+	require.Len(t, got.Entries, len(logLines))
 	for i, entry := range got.Entries {
-		assert.Equal(t, entry.Line, logLines[i])
+		assert.Equal(t, logLines[i], entry.Line)
+	}
+}
+func TestFileClient_QueryRangeDirection(t *testing.T) {
+	input := "first\nsecond\nthird\n"
+
+	tests := []struct {
+		name      string
+		direction logproto.Direction
+		limit     int
+		want      []string
+	}{
+		{"forward", logproto.FORWARD, 10, []string{"first", "second", "third"}},
+		{"backward", logproto.BACKWARD, 10, []string{"third", "second", "first"}},
+		{"forward with limit", logproto.FORWARD, 2, []string{"first", "second"}},
+		{"backward with limit", logproto.BACKWARD, 2, []string{"third", "second"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := NewFileClient(io.NopCloser(strings.NewReader(input)))
+			now := time.Now()
+
+			resp, err := c.QueryRange(`{source="logcli"}`, tc.limit,
+				now.Add(-time.Hour), now.Add(time.Hour), tc.direction, 0, 0, true)
+			require.NoError(t, err)
+
+			streams, ok := resp.Data.Result.(loghttp.Streams)
+			require.True(t, ok)
+			require.Len(t, streams, 1)
+
+			var got []string
+			for _, e := range streams[0].Entries {
+				got = append(got, e.Line)
+			}
+			for i := 1; i < len(streams[0].Entries); i++ {
+				prev, cur := streams[0].Entries[i-1].Timestamp, streams[0].Entries[i].Timestamp
+				if tc.direction == logproto.FORWARD {
+					require.True(t, cur.After(prev), "forward: timestamps must increase")
+				} else {
+					require.True(t, cur.Before(prev), "backward: timestamps must decrease")
+				}
+			}
+			require.Equal(t, tc.want, got)
+		})
 	}
 }
