@@ -2,16 +2,11 @@ package index
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"math/rand"
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -19,145 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
-
-// postingsTable holds the result of reading all postings from an object:
-// rows has opaque columns stripped; opaque has the raw bytes indexed by
-// field name then row index.
-type postingsTable struct {
-	rows   arrowtest.Rows
-	opaque map[string][][]byte // "bloom_filter.binary" and "stream_id_bitmap.binary"
-}
-
-// flushAndReadAllPostingsTable flushes the builder and reads all postings
-// from all sections, returning stripped rows and opaque column data separately.
-func flushAndReadAllPostingsTable(t *testing.T, builder *indexobj.Builder) postingsTable {
-	t.Helper()
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-
-	result := postingsTable{
-		opaque: map[string][][]byte{
-			"bloom_filter.binary":     nil,
-			"stream_id_bitmap.binary": nil,
-		},
-	}
-
-	for _, s := range obj.Sections() {
-		if !postings.CheckSection(s) {
-			continue
-		}
-		sec, err := postings.Open(context.Background(), s)
-		require.NoError(t, err)
-
-		r := postings.NewReader(postings.ReaderOptions{
-			Columns:   sec.Columns(),
-			Allocator: memory.DefaultAllocator,
-		})
-		require.NoError(t, r.Open(context.Background()))
-		t.Cleanup(func() { _ = r.Close() })
-
-		tbl, err := readPostingsTable(context.Background(), r)
-		if errors.Is(err, io.EOF) {
-			continue
-		}
-		require.NoError(t, err)
-
-		secRows, err := arrowtest.TableRows(memory.DefaultAllocator, tbl)
-		require.NoError(t, err)
-
-		blooms := extractBinaryColumn(t, tbl, "bloom_filter.binary")
-		bitmaps := extractBinaryColumn(t, tbl, "stream_id_bitmap.binary")
-		result.opaque["bloom_filter.binary"] = append(result.opaque["bloom_filter.binary"], blooms...)
-		result.opaque["stream_id_bitmap.binary"] = append(result.opaque["stream_id_bitmap.binary"], bitmaps...)
-		result.rows = append(result.rows, stripOpaqueCols(secRows, "bloom_filter.binary", "stream_id_bitmap.binary")...)
-	}
-	return result
-}
-
-// findRow returns the index of the first row where every (k,v) in match is
-// satisfied using == on the values arrowtest.TableRows produces. Returns -1
-// if not found.
-//
-// Match values must be comparable types (int64, string, time.Time). Do NOT
-// pass []byte values — interface == comparison on []byte panics at runtime.
-func findRow(rows arrowtest.Rows, match map[string]any) int {
-	for i, row := range rows {
-		ok := true
-		for k, v := range match {
-			if row[k] != v {
-				ok = false
-				break
-			}
-		}
-		if ok {
-			return i
-		}
-	}
-	return -1
-}
-
-// readPostingsTable drains a postings.Reader into an arrow.Table.
-func readPostingsTable(ctx context.Context, r *postings.Reader) (arrow.Table, error) {
-	var recs []arrow.RecordBatch
-	for {
-		rec, err := r.Read(ctx, 128)
-		if rec != nil && rec.NumRows() > 0 {
-			recs = append(recs, rec)
-		}
-		if err != nil && errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-	}
-	if len(recs) == 0 {
-		return nil, io.EOF
-	}
-	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
-}
-
-// stripOpaqueCols returns a copy of rows with the named keys removed.
-func stripOpaqueCols(rows arrowtest.Rows, keys ...string) arrowtest.Rows {
-	out := make(arrowtest.Rows, len(rows))
-	for i, row := range rows {
-		cp := make(arrowtest.Row, len(row))
-		for k, v := range row {
-			cp[k] = v
-		}
-		for _, k := range keys {
-			delete(cp, k)
-		}
-		out[i] = cp
-	}
-	return out
-}
-
-// extractBinaryColumn extracts a named Binary arrow column as [][]byte.
-func extractBinaryColumn(t *testing.T, table arrow.Table, field string) [][]byte {
-	t.Helper()
-	idx := table.Schema().FieldIndices(field)
-	require.Len(t, idx, 1, "field %q not found in schema", field)
-	col := table.Column(idx[0])
-	var out [][]byte
-	for _, chunk := range col.Data().Chunks() {
-		bin, ok := chunk.(*array.Binary)
-		require.True(t, ok, "field %q is not a Binary column", field)
-		for i := 0; i < bin.Len(); i++ {
-			if bin.IsNull(i) {
-				out = append(out, nil)
-				continue
-			}
-			src := bin.Value(i)
-			cp := make([]byte, len(src))
-			copy(cp, src)
-			out = append(out, cp)
-		}
-	}
-	return out
-}
 
 func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	builder := newTestIndexBuilder(t)
@@ -181,53 +38,38 @@ func TestLabelPostingsCalculation_BasicPostings(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 
 	// We expect 4 label postings: service_name=svcA, service_name=svcB, env=prod, env=dev.
-	require.Len(t, tbl.rows, 4)
+	require.Len(t, rows, 4)
 
 	// All should be label-kind.
-	for _, row := range tbl.rows {
-		require.Equal(t, int64(postings.KindLabel), row["kind.int64"])
-		require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row["shard_buckets.int64"])
-		require.NotNil(t, row["label_value.utf8"])
+	for _, row := range rows {
+		require.Equal(t, postings.KindLabel, row.Kind)
+		require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row.ShardBuckets)
+		require.NotEmpty(t, row.LabelValue)
 	}
 
 	// Find svcA and svcB.
-	i := findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "service_name",
-		"label_value.utf8": "svcA",
-	})
+	i := findLabelRow(rows, "service_name", "svcA")
 	require.NotEqual(t, -1, i, "expected svcA posting")
-	svcARow := tbl.rows[i]
+	svcARow := rows[i]
 
-	j := findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "service_name",
-		"label_value.utf8": "svcB",
-	})
+	j := findLabelRow(rows, "service_name", "svcB")
 	require.NotEqual(t, -1, j, "expected svcB posting")
 
 	// svcA should have bit 1 set.
-	require.NotEmpty(t, tbl.opaque["stream_id_bitmap.binary"][i])
+	require.NotEmpty(t, rows[i].StreamIDBitmap)
 	// svcB should have bit 2 set.
-	require.NotEmpty(t, tbl.opaque["stream_id_bitmap.binary"][j])
+	require.NotEmpty(t, rows[j].StreamIDBitmap)
 
 	// Verify timestamps for svcA (min=ts1, max=ts3).
-	require.Equal(t, ts1.UTC(), svcARow["min_timestamp.timestamp"])
-	require.Equal(t, ts3.UTC(), svcARow["max_timestamp.timestamp"])
+	require.Equal(t, ts1.UnixNano(), svcARow.MinTimestamp)
+	require.Equal(t, ts3.UnixNano(), svcARow.MaxTimestamp)
 
 	// Verify env labels are also present.
-	k := findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "env",
-		"label_value.utf8": "prod",
-	})
-	require.NotEqual(t, -1, k, "expected env=prod posting")
-
-	l := findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "env",
-		"label_value.utf8": "dev",
-	})
-	require.NotEqual(t, -1, l, "expected env=dev posting")
+	require.NotEqual(t, -1, findLabelRow(rows, "env", "prod"), "expected env=prod posting")
+	require.NotEqual(t, -1, findLabelRow(rows, "env", "dev"), "expected env=dev posting")
 }
 
 func TestLabelPostingsCalculation_BitmapsNormalized(t *testing.T) {
@@ -245,43 +87,29 @@ func TestLabelPostingsCalculation_BitmapsNormalized(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 	// 4 postings: service_name=svcA, service_name=svcB, env=prod, env=dev
-	require.Len(t, tbl.rows, 4)
+	require.Len(t, rows, 4)
 
-	i := findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "service_name",
-		"label_value.utf8": "svcA",
-	})
+	i := findLabelRow(rows, "service_name", "svcA")
 	require.NotEqual(t, -1, i)
 
-	j := findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "service_name",
-		"label_value.utf8": "svcB",
-	})
+	j := findLabelRow(rows, "service_name", "svcB")
 	require.NotEqual(t, -1, j)
 
 	// All bitmaps should be the same length after normalization.
-	for k := 1; k < len(tbl.opaque["stream_id_bitmap.binary"]); k++ {
-		require.Equal(t, len(tbl.opaque["stream_id_bitmap.binary"][0]), len(tbl.opaque["stream_id_bitmap.binary"][k]),
+	for k := 1; k < len(rows); k++ {
+		require.Equal(t, len(rows[0].StreamIDBitmap), len(rows[k].StreamIDBitmap),
 			"all bitmaps should be normalized to the same size")
 	}
 
 	// svcA posting should include stream 1 but not stream 2.
-	require.True(t, isBitSet(tbl.opaque["stream_id_bitmap.binary"][i], 1), "svcA bitmap should have bit 1 set")
-	require.False(t, isBitSet(tbl.opaque["stream_id_bitmap.binary"][i], 2), "svcA bitmap should not have bit 2 set")
+	require.True(t, isBitSet(rows[i].StreamIDBitmap, 1), "svcA bitmap should have bit 1 set")
+	require.False(t, isBitSet(rows[i].StreamIDBitmap, 2), "svcA bitmap should not have bit 2 set")
 
 	// svcB posting should include stream 2 but not stream 1.
-	require.True(t, isBitSet(tbl.opaque["stream_id_bitmap.binary"][j], 2), "svcB bitmap should have bit 2 set")
-	require.False(t, isBitSet(tbl.opaque["stream_id_bitmap.binary"][j], 1), "svcB bitmap should not have bit 1 set")
-}
-
-// isBitSet checks if bit n is set in a LSB-numbered bitmap (Arrow convention).
-func isBitSet(bitmap []byte, n int) bool {
-	if n/8 >= len(bitmap) {
-		return false
-	}
-	return bitmap[n/8]&(1<<(n%8)) != 0
+	require.True(t, isBitSet(rows[j].StreamIDBitmap, 2), "svcB bitmap should have bit 2 set")
+	require.False(t, isBitSet(rows[j].StreamIDBitmap, 1), "svcB bitmap should not have bit 1 set")
 }
 
 func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
@@ -304,21 +132,18 @@ func TestLabelPostingsCalculation_TimestampsAndSizes(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 	// 2 postings: service_name=svcA, env=prod (both from stream 1).
-	require.Len(t, tbl.rows, 2)
+	require.Len(t, rows, 2)
 
 	// Check timestamps and sizes on the service_name=svcA posting.
-	i := findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "service_name",
-		"label_value.utf8": "svcA",
-	})
+	i := findLabelRow(rows, "service_name", "svcA")
 	require.NotEqual(t, -1, i)
-	row := tbl.rows[i]
-	require.Equal(t, ts1.UTC(), row["min_timestamp.timestamp"])
-	require.Equal(t, ts3.UTC(), row["max_timestamp.timestamp"])
+	row := rows[i]
+	require.Equal(t, ts1.UnixNano(), row.MinTimestamp)
+	require.Equal(t, ts3.UnixNano(), row.MaxTimestamp)
 	expectedSize := int64(len("hello") + len("world!") + len("mid"))
-	require.Equal(t, expectedSize, row["uncompressed_size.int64"])
+	require.Equal(t, expectedSize, row.UncompressedSize)
 }
 
 func TestLabelPostingsCalculation_ProcessBatch(t *testing.T) {
@@ -357,16 +182,13 @@ func TestLabelPostingsCalculation_ProcessBatch(t *testing.T) {
 			require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, tc.batch))
 			require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-			tbl := flushAndReadAllPostingsTable(t, builder)
-			i := findRow(tbl.rows, map[string]any{
-				"column_name.utf8": "service_name",
-				"label_value.utf8": "svcA",
-			})
+			rows := flushAndReadAllPostingsRows(t, builder)
+			i := findLabelRow(rows, "service_name", "svcA")
 			require.NotEqual(t, -1, i)
-			row := tbl.rows[i]
-			require.Equal(t, ts10, row["min_timestamp.timestamp"])
-			require.Equal(t, ts30, row["max_timestamp.timestamp"])
-			require.Equal(t, int64(len("a")+len("bb")+len("ccc")), row["uncompressed_size.int64"])
+			row := rows[i]
+			require.Equal(t, ts10.UnixNano(), row.MinTimestamp)
+			require.Equal(t, ts30.UnixNano(), row.MaxTimestamp)
+			require.Equal(t, int64(len("a")+len("bb")+len("ccc")), row.UncompressedSize)
 		})
 	}
 
@@ -409,7 +231,7 @@ func TestLabelPostingsCalculation_ProcessBatch(t *testing.T) {
 			})
 		}
 
-		require.Equal(t, flushAndReadAllPostingsTable(t, perRecordBuilder), flushAndReadAllPostingsTable(t, perRunBuilder))
+		require.Equal(t, flushAndReadAllPostingsRows(t, perRecordBuilder), flushAndReadAllPostingsRows(t, perRunBuilder))
 	})
 }
 
@@ -431,21 +253,21 @@ func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 	// 5 postings: service_name={svcA, svcB}, env={dev, staging, prod}
-	require.Len(t, tbl.rows, 5)
+	require.Len(t, rows, 5)
 
 	// Shard factor should be constant on all rows
-	for _, row := range tbl.rows {
-		require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row["shard_buckets.int64"])
+	for _, row := range rows {
+		require.Equal(t, int64(streams.DefaultShardLayout().Buckets()), row.ShardBuckets)
 	}
 
 	// Check min & max shard buckets are calculated correctly
 	// Dev is derived from two records in the same object. Prod & staging have one record.
 	type expectation struct {
 		env      string
-		minShard int64
-		maxShard int64
+		minShard uint32
+		maxShard uint32
 	}
 	expect := []expectation{
 		{
@@ -465,14 +287,11 @@ func TestLabelPostingsCalculation_ShardBucketsHandling(t *testing.T) {
 		},
 	}
 	for _, exp := range expect {
-		i := findRow(tbl.rows, map[string]any{
-			"column_name.utf8": "env",
-			"label_value.utf8": exp.env,
-		})
+		i := findLabelRow(rows, "env", exp.env)
 		require.NotEqual(t, -1, i)
-		row := tbl.rows[i]
-		require.Equal(t, exp.minShard, row["min_shard_bucket.int64"])
-		require.Equal(t, exp.maxShard, row["max_shard_bucket.int64"])
+		row := rows[i]
+		require.Equal(t, exp.minShard, row.MinShardBucket)
+		require.Equal(t, exp.maxShard, row.MaxShardBucket)
 	}
 }
 
@@ -497,21 +316,18 @@ func TestLabelPostingsCalculation_SharedLabelAggregation(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 	// service_name=svcA, service_name=svcB, env=prod, env=dev
-	require.Len(t, tbl.rows, 4)
+	require.Len(t, rows, 4)
 
-	i := findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "env",
-		"label_value.utf8": "dev",
-	})
+	i := findLabelRow(rows, "env", "dev")
 	require.NotEqual(t, -1, i, "expected env=dev posting aggregated across streams 2 and 4")
-	row := tbl.rows[i]
-	require.Equal(t, int64(len(line2)+len(line4)), row["uncompressed_size.int64"])
-	require.Equal(t, ts1.UTC(), row["min_timestamp.timestamp"])
-	require.Equal(t, ts2.UTC(), row["max_timestamp.timestamp"])
+	row := rows[i]
+	require.Equal(t, int64(len(line2)+len(line4)), row.UncompressedSize)
+	require.Equal(t, ts1.UnixNano(), row.MinTimestamp)
+	require.Equal(t, ts2.UnixNano(), row.MaxTimestamp)
 
-	bitmap := tbl.opaque["stream_id_bitmap.binary"][i]
+	bitmap := row.StreamIDBitmap
 	require.True(t, isBitSet(bitmap, 2), "env=dev bitmap should have stream 2 set")
 	require.True(t, isBitSet(bitmap, 4), "env=dev bitmap should have stream 4 set")
 	require.False(t, isBitSet(bitmap, 1), "env=dev bitmap should not include stream 1 (env=prod)")
@@ -592,28 +408,16 @@ func TestLabelPostingsCalculation_MultipleBatches(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), calcCtx, batch2))
 	require.NoError(t, calc.Flush(context.Background(), calcCtx, builder))
 
-	tbl := flushAndReadAllPostingsTable(t, builder)
+	rows := flushAndReadAllPostingsRows(t, builder)
 	// 4 postings: service_name=svcA, service_name=svcB, env=prod, env=dev
-	require.Len(t, tbl.rows, 4)
+	require.Len(t, rows, 4)
 
 	// Verify that both svcA and svcB postings are present.
-	require.NotEqual(t, -1, findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "service_name",
-		"label_value.utf8": "svcA",
-	}))
-	require.NotEqual(t, -1, findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "service_name",
-		"label_value.utf8": "svcB",
-	}))
+	require.NotEqual(t, -1, findLabelRow(rows, "service_name", "svcA"))
+	require.NotEqual(t, -1, findLabelRow(rows, "service_name", "svcB"))
 	// Verify env labels are also present.
-	require.NotEqual(t, -1, findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "env",
-		"label_value.utf8": "prod",
-	}))
-	require.NotEqual(t, -1, findRow(tbl.rows, map[string]any{
-		"column_name.utf8": "env",
-		"label_value.utf8": "dev",
-	}))
+	require.NotEqual(t, -1, findLabelRow(rows, "env", "prod"))
+	require.NotEqual(t, -1, findLabelRow(rows, "env", "dev"))
 }
 
 // BenchmarkLabelPostingsCalculation_ProcessBatch benchmarks ProcessBatch with
@@ -686,4 +490,63 @@ func BenchmarkLabelPostingsCalculation_ProcessBatch(b *testing.B) {
 			}
 		})
 	}
+}
+
+// flushAndReadAllPostingsRows flushes the builder and reads the rows of all its
+// postings sections, in section order.
+func flushAndReadAllPostingsRows(t *testing.T, builder *indexobj.Builder) []postings.Row {
+	t.Helper()
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+	var rows []postings.Row
+	for _, s := range obj.Sections() {
+		if !postings.CheckSection(s) {
+			continue
+		}
+		sec, err := postings.Open(t.Context(), s)
+		require.NoError(t, err)
+
+		r := postings.NewReader(postings.ReaderOptions{Columns: sec.Columns()})
+		require.NoError(t, r.Open(t.Context()))
+
+		rowReader := postings.NewRowReader(t.Context(), r)
+		for rowReader.Next() {
+			rows = append(rows, rowReader.At())
+		}
+		require.NoError(t, rowReader.Err())
+		require.NoError(t, rowReader.Close())
+	}
+	return rows
+}
+
+// findLabelRow returns the index of the first label row with the given column
+// name and label value. It returns -1 if there is none.
+func findLabelRow(rows []postings.Row, columnName, labelValue string) int {
+	for i, row := range rows {
+		if row.Kind == postings.KindLabel && row.ColumnName == columnName && row.LabelValue == labelValue {
+			return i
+		}
+	}
+	return -1
+}
+
+// findBloomRow returns the index of the first bloom row with the given column
+// name. It returns -1 if there is none.
+func findBloomRow(rows []postings.Row, columnName string) int {
+	for i, row := range rows {
+		if row.Kind == postings.KindBloom && row.ColumnName == columnName {
+			return i
+		}
+	}
+	return -1
+}
+
+// isBitSet checks if bit n is set in a LSB-numbered bitmap.
+func isBitSet(bitmap []byte, n int) bool {
+	if n/8 >= len(bitmap) {
+		return false
+	}
+	return bitmap[n/8]&(1<<(n%8)) != 0
 }

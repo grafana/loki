@@ -149,16 +149,16 @@ func TestCalculator_Calculate_StatsShardBuckets(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = indexCloser.Close() })
 
-	rows := readAllStatsRows(t, indexObj)
+	rows := readAllStats(t, indexObj)
 	require.Len(t, rows, 2)
-	gotShards := make(map[int64]struct{}, len(rows))
+	gotShards := make(map[uint32]struct{}, len(rows))
 	for _, row := range rows {
-		require.Equal(t, "api", row["service_name.label.utf8"])
-		gotShards[row["__shard_bucket__.int64"].(int64)] = struct{}{}
+		require.Equal(t, "api", row.Labels["service_name"])
+		gotShards[row.ShardBucket] = struct{}{}
 	}
-	require.Equal(t, map[int64]struct{}{
-		int64(firstShard): {},
-		int64(streams.DefaultShardLayout().BucketFromLabels(second)): {},
+	require.Equal(t, map[uint32]struct{}{
+		firstShard: {},
+		streams.DefaultShardLayout().BucketFromLabels(second): {},
 	}, gotShards)
 }
 
@@ -268,11 +268,11 @@ func TestCalculator_Calculate(t *testing.T) {
 	t.Run("writes the stats rows of a multi-section object in ascending section order", func(t *testing.T) {
 		obj := calculateConcurrently(t, newMultiSectionSource(t))
 
-		rows := readAllStatsRows(t, obj)
+		rows := readAllStats(t, obj)
 		require.NotEmpty(t, rows)
 		sectionIndexes := make([]int64, 0, len(rows))
 		for _, row := range rows {
-			sectionIndexes = append(sectionIndexes, row["section_index.int64"].(int64))
+			sectionIndexes = append(sectionIndexes, row.SectionIndex)
 		}
 		require.True(t, slices.IsSorted(sectionIndexes), "section indexes are not sorted: %v", sectionIndexes)
 	})
@@ -520,11 +520,11 @@ func TestCalculator_Calculate_StreamsLayout(t *testing.T) {
 		indexObj, err := calculate(t, buildSource(t, layout, true))
 		require.NoError(t, err)
 
-		statsRows := readAllStatsRows(t, indexObj)
+		statsRows := readAllStats(t, indexObj)
 		require.NotEmpty(t, statsRows)
 		for _, row := range statsRows {
-			require.Equal(t, "label:app", row["sort_schema.utf8"])
-			require.Less(t, row["__shard_bucket__.int64"].(int64), int64(4))
+			require.Equal(t, "label:app", row.SortSchema)
+			require.Less(t, row.ShardBucket, uint32(4))
 		}
 
 		var labelRows, bloomRows int

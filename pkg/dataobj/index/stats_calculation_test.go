@@ -2,15 +2,10 @@ package index
 
 import (
 	"context"
-	"errors"
-	"io"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
@@ -19,7 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/stats"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 var fakeSchema = []string{"label:service_name"}
@@ -65,63 +59,6 @@ func makeTestCalcContext(builder *indexobj.Builder) *logsCalculationContext {
 	}
 }
 
-func flushAndReadAllStatsTable(t *testing.T, builder *indexobj.Builder) arrowtest.Rows {
-	t.Helper()
-	obj, closer, err := builder.Flush()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = closer.Close() })
-	return readAllStatsRows(t, obj)
-}
-
-func readAllStatsRows(t *testing.T, obj *dataobj.Object) arrowtest.Rows {
-	t.Helper()
-	var all arrowtest.Rows
-	for _, s := range obj.Sections() {
-		if !stats.CheckSection(s) {
-			continue
-		}
-		sec, err := stats.Open(context.Background(), s)
-		require.NoError(t, err)
-
-		r := stats.NewReader(stats.ReaderOptions{
-			Columns:   sec.Columns(),
-			Allocator: memory.DefaultAllocator,
-		})
-		require.NoError(t, r.Open(context.Background()))
-		t.Cleanup(func() { _ = r.Close() })
-
-		tbl, err := readStatsTable(context.Background(), r)
-		if errors.Is(err, io.EOF) {
-			continue
-		}
-		require.NoError(t, err)
-
-		rows, err := arrowtest.TableRows(memory.DefaultAllocator, tbl)
-		require.NoError(t, err)
-		all = append(all, rows...)
-	}
-	return all
-}
-
-func readStatsTable(ctx context.Context, r *stats.Reader) (arrow.Table, error) {
-	var recs []arrow.RecordBatch
-	for {
-		rec, err := r.Read(ctx, 128)
-		if rec != nil && rec.NumRows() > 0 {
-			recs = append(recs, rec)
-		}
-		if err != nil && errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-	}
-	if len(recs) == 0 {
-		return nil, io.EOF
-	}
-	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
-}
-
 func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 	builder := newTestIndexBuilder(t)
 	testLabels := labels.FromStrings("service_name", "svcA", "cluster", "c1")
@@ -145,16 +82,14 @@ func TestStatsCalculation_StoresFullyQualifiedSchema(t *testing.T) {
 	}))
 	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
-	actual := flushAndReadAllStatsTable(t, builder)
+	actual := flushAndReadAllStats(t, builder)
 	require.Len(t, actual, 1)
 
-	require.Equal(t, "label:service_name,label:cluster", actual[0]["sort_schema.utf8"],
+	require.Equal(t, "label:service_name,label:cluster", actual[0].SortSchema,
 		"stats sort_schema must store the fully-qualified schema")
-	require.Equal(t, "svcA", actual[0]["service_name.label.utf8"],
+	require.Equal(t, map[string]string{"service_name": "svcA", "cluster": "c1"}, actual[0].Labels,
 		"label columns must stay keyed by the bare Prometheus name")
-	require.Equal(t, "c1", actual[0]["cluster.label.utf8"],
-		"label columns must stay keyed by the bare Prometheus name")
-	require.Equal(t, int64(streams.DefaultShardLayout().BucketFromLabels(ctx.streamLabels[1])), actual[0]["__shard_bucket__.int64"])
+	require.Equal(t, streams.DefaultShardLayout().BucketFromLabels(ctx.streamLabels[1]), actual[0].ShardBucket)
 }
 
 func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
@@ -194,15 +129,15 @@ func TestStatsCalculation_GroupsByShardAndSchema(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, records))
 	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
-	actual := flushAndReadAllStatsTable(t, builder)
+	actual := flushAndReadAllStats(t, builder)
 	require.Len(t, actual, 2)
-	gotShards := make(map[int64]struct{}, len(actual))
+	gotShards := make(map[uint32]struct{}, len(actual))
 	for _, row := range actual {
-		require.Equal(t, "api", row["service_name.label.utf8"])
-		gotShards[row["__shard_bucket__.int64"].(int64)] = struct{}{}
+		require.Equal(t, "api", row.Labels["service_name"])
+		gotShards[row.ShardBucket] = struct{}{}
 	}
-	require.Contains(t, gotShards, int64(firstShard))
-	require.Contains(t, gotShards, int64(streams.DefaultShardLayout().BucketFromLabels(second)))
+	require.Contains(t, gotShards, firstShard)
+	require.Contains(t, gotShards, streams.DefaultShardLayout().BucketFromLabels(second))
 }
 
 func TestStatsCalculation_MissingShardBucket(t *testing.T) {
@@ -257,48 +192,48 @@ func TestStatsCalculation_BasicAggregation(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
 	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
-	actual := flushAndReadAllStatsTable(t, builder)
+	actual := flushAndReadAllStats(t, builder)
 	// We expect 3 aggregates: "", "svcA", and "svcB".
 	require.Len(t, actual, 3)
-	byService := make(map[string]arrowtest.Row, len(actual))
+	byService := make(map[string]stats.Stat, len(actual))
 	for _, row := range actual {
-		byService[row["service_name.label.utf8"].(string)] = row
+		byService[row.Labels["service_name"]] = row
 	}
 
-	require.Equal(t, arrowtest.Row{
-		"object_path.utf8":        "test/path/obj1",
-		"section_index.int64":     int64(0),
-		"sort_schema.utf8":        "label:service_name",
-		"__shard_bucket__.int64":  int64(streams.DefaultShardLayout().BucketFromLabels(ctx.streamLabels[3])),
-		"service_name.label.utf8": "",
-		"min_timestamp.timestamp": time.Unix(50, 0).UTC(),
-		"max_timestamp.timestamp": time.Unix(50, 0).UTC(),
-		"row_count.int64":         int64(1),
-		"uncompressed_size.int64": int64(len(line4)),
+	require.Equal(t, stats.Stat{
+		ObjectPath:       "test/path/obj1",
+		SectionIndex:     0,
+		SortSchema:       "label:service_name",
+		ShardBucket:      streams.DefaultShardLayout().BucketFromLabels(ctx.streamLabels[3]),
+		Labels:           map[string]string{"service_name": ""},
+		MinTimestamp:     time.Unix(50, 0).UnixNano(),
+		MaxTimestamp:     time.Unix(50, 0).UnixNano(),
+		RowCount:         1,
+		UncompressedSize: int64(len(line4)),
 	}, byService[""])
 
-	require.Equal(t, arrowtest.Row{
-		"object_path.utf8":        "test/path/obj1",
-		"section_index.int64":     int64(0),
-		"sort_schema.utf8":        "label:service_name",
-		"__shard_bucket__.int64":  int64(streams.DefaultShardLayout().BucketFromLabels(ctx.streamLabels[1])),
-		"service_name.label.utf8": "svcA",
-		"min_timestamp.timestamp": ts1,
-		"max_timestamp.timestamp": ts2,
-		"row_count.int64":         int64(2),
-		"uncompressed_size.int64": int64(len(line1) + len(line2)),
+	require.Equal(t, stats.Stat{
+		ObjectPath:       "test/path/obj1",
+		SectionIndex:     0,
+		SortSchema:       "label:service_name",
+		ShardBucket:      streams.DefaultShardLayout().BucketFromLabels(ctx.streamLabels[1]),
+		Labels:           map[string]string{"service_name": "svcA"},
+		MinTimestamp:     ts1.UnixNano(),
+		MaxTimestamp:     ts2.UnixNano(),
+		RowCount:         2,
+		UncompressedSize: int64(len(line1) + len(line2)),
 	}, byService["svcA"])
 
-	require.Equal(t, arrowtest.Row{
-		"object_path.utf8":        "test/path/obj1",
-		"section_index.int64":     int64(0),
-		"sort_schema.utf8":        "label:service_name",
-		"__shard_bucket__.int64":  int64(streams.DefaultShardLayout().BucketFromLabels(ctx.streamLabels[2])),
-		"service_name.label.utf8": "svcB",
-		"min_timestamp.timestamp": ts3,
-		"max_timestamp.timestamp": ts3,
-		"row_count.int64":         int64(1),
-		"uncompressed_size.int64": int64(len(line3)),
+	require.Equal(t, stats.Stat{
+		ObjectPath:       "test/path/obj1",
+		SectionIndex:     0,
+		SortSchema:       "label:service_name",
+		ShardBucket:      streams.DefaultShardLayout().BucketFromLabels(ctx.streamLabels[2]),
+		Labels:           map[string]string{"service_name": "svcB"},
+		MinTimestamp:     ts3.UnixNano(),
+		MaxTimestamp:     ts3.UnixNano(),
+		RowCount:         1,
+		UncompressedSize: int64(len(line3)),
 	}, byService["svcB"])
 }
 
@@ -317,20 +252,20 @@ func TestStatsCalculation_MetadataFields(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
 	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
-	actual := flushAndReadAllStatsTable(t, builder)
+	actual := flushAndReadAllStats(t, builder)
 	require.Len(t, actual, 1)
 
 	// Verify metadata fields are set correctly.
-	require.Equal(t, arrowtest.Row{
-		"object_path.utf8":        "test/path/obj1",
-		"section_index.int64":     int64(0),
-		"sort_schema.utf8":        "label:service_name",
-		"__shard_bucket__.int64":  int64(streams.DefaultShardLayout().BucketFromLabels(ctx.streamLabels[1])),
-		"service_name.label.utf8": "svcA",
-		"min_timestamp.timestamp": ts,
-		"max_timestamp.timestamp": ts,
-		"row_count.int64":         int64(1),
-		"uncompressed_size.int64": int64(len([]byte("msg"))),
+	require.Equal(t, stats.Stat{
+		ObjectPath:       "test/path/obj1",
+		SectionIndex:     0,
+		SortSchema:       "label:service_name",
+		ShardBucket:      streams.DefaultShardLayout().BucketFromLabels(ctx.streamLabels[1]),
+		Labels:           map[string]string{"service_name": "svcA"},
+		MinTimestamp:     ts.UnixNano(),
+		MaxTimestamp:     ts.UnixNano(),
+		RowCount:         1,
+		UncompressedSize: int64(len([]byte("msg"))),
 	}, actual[0])
 }
 
@@ -358,9 +293,9 @@ func TestStatsCalculation_IncludesStructuredMetadataBytes(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
 	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
-	actual := flushAndReadAllStatsTable(t, builder)
+	actual := flushAndReadAllStats(t, builder)
 	require.Len(t, actual, 1)
-	require.Equal(t, int64(len("x")+len("0123456789")), actual[0]["uncompressed_size.int64"])
+	require.Equal(t, int64(len("x")+len("0123456789")), actual[0].UncompressedSize)
 }
 
 func TestStatsCalculation_MissingServiceName(t *testing.T) {
@@ -377,9 +312,9 @@ func TestStatsCalculation_MissingServiceName(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch))
 	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
-	actual := flushAndReadAllStatsTable(t, builder)
+	actual := flushAndReadAllStats(t, builder)
 	require.Len(t, actual, 1)
-	require.Equal(t, "", actual[0]["service_name.label.utf8"])
+	require.Equal(t, map[string]string{"service_name": ""}, actual[0].Labels)
 }
 
 func TestStatsCalculation_MultipleBatches(t *testing.T) {
@@ -404,21 +339,21 @@ func TestStatsCalculation_MultipleBatches(t *testing.T) {
 	require.NoError(t, calc.ProcessBatch(context.Background(), ctx, batch2))
 	require.NoError(t, calc.Flush(context.Background(), ctx, builder))
 
-	actual := flushAndReadAllStatsTable(t, builder)
+	actual := flushAndReadAllStats(t, builder)
 	// svcA and svcB
 	require.Len(t, actual, 2)
-	var svcA arrowtest.Row
+	var svcA stats.Stat
 	for _, row := range actual {
-		if row["service_name.label.utf8"] == "svcA" {
+		if row.Labels["service_name"] == "svcA" {
 			svcA = row
 			break
 		}
 	}
-	require.NotNil(t, svcA)
-	require.Equal(t, int64(2), svcA["row_count.int64"])
-	require.Equal(t, time.Unix(10, 0).UTC(), svcA["min_timestamp.timestamp"])
-	require.Equal(t, time.Unix(30, 0).UTC(), svcA["max_timestamp.timestamp"])
-	require.Equal(t, int64(len("first")+len("third batch")), svcA["uncompressed_size.int64"])
+	require.NotEmpty(t, svcA.Labels)
+	require.Equal(t, int64(2), svcA.RowCount)
+	require.Equal(t, time.Unix(10, 0).UnixNano(), svcA.MinTimestamp)
+	require.Equal(t, time.Unix(30, 0).UnixNano(), svcA.MaxTimestamp)
+	require.Equal(t, int64(len("first")+len("third batch")), svcA.UncompressedSize)
 }
 
 func TestStatsCalculation_EmptyBatch(t *testing.T) {
@@ -434,4 +369,33 @@ func TestStatsCalculation_EmptyBatch(t *testing.T) {
 	// No data → builder is empty, Flush returns ErrBuilderEmpty.
 	_, _, err := builder.Flush()
 	require.ErrorIs(t, err, indexobj.ErrBuilderEmpty, "expected builder to be empty after empty batch")
+}
+
+func flushAndReadAllStats(t *testing.T, builder *indexobj.Builder) []stats.Stat {
+	t.Helper()
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, closer.Close()) })
+	return readAllStats(t, obj)
+}
+
+// readAllStats reads the rows of all the stats sections of obj, in section order.
+func readAllStats(t *testing.T, obj *dataobj.Object) []stats.Stat {
+	t.Helper()
+	var all []stats.Stat
+	for _, s := range obj.Sections() {
+		if !stats.CheckSection(s) {
+			continue
+		}
+		sec, err := stats.Open(t.Context(), s)
+		require.NoError(t, err)
+
+		rowReader := stats.NewRowReader(t.Context(), sec, nil)
+		for rowReader.Next() {
+			all = append(all, rowReader.At())
+		}
+		require.NoError(t, rowReader.Err())
+		require.NoError(t, rowReader.Close())
+	}
+	return all
 }
