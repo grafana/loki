@@ -102,6 +102,9 @@ func WithRegionSizeHint(size int64) LoadOption {
 // The loader skips an object whose region is larger than maxRegionBytes. It then reads at most the
 // head of the object, writes nothing to the cache, and returns an error that wraps ErrNotPrefetchable.
 //
+// Every cache call uses a hash of the path of the object as the shard key, so the region item sits on
+// the same cache server as the groups of the object.
+//
 // It is safe for concurrent use.
 type CachedRegionLoader struct {
 	cache cache.Cache
@@ -257,7 +260,7 @@ func (l *CachedRegionLoader) storeRegion(ctx context.Context, path string, regio
 	unhashedKey, hashedKey := prefetchedRangesID{Kind: kindRegion}.cacheKey(path)
 
 	l.cacheStores.Inc()
-	if err := l.cache.Store(ctx, []string{hashedKey}, [][]byte{encodeCacheItem(region, unhashedKey, l.codec, l.encoder)}); err != nil {
+	if err := l.cache.Store(ctx, []string{hashedKey}, [][]byte{encodeCacheItem(region, unhashedKey, l.codec, l.encoder)}, cache.WithShardKey(shardKey(path))); err != nil {
 		l.cacheStoreFailures.Inc()
 		l.warn("data object metadata region store failed", path, err)
 	}
@@ -316,7 +319,7 @@ func (l *CachedRegionLoader) loadFromStorageOrCache(ctx context.Context, req Pre
 // an error when the item does not decode. It warns about an item that is malformed or corrupt.
 func (l *CachedRegionLoader) loadFromCache(ctx context.Context, path string) ([]byte, error) {
 	unhashedKey, hashedKey := prefetchedRangesID{Kind: kindRegion}.cacheKey(path)
-	found, bufs, _, err := l.cache.Fetch(ctx, []string{hashedKey})
+	found, bufs, _, err := l.cache.Fetch(ctx, []string{hashedKey}, cache.WithShardKey(shardKey(path)))
 	recordPrefetchCacheLookup(ctx)
 	if len(found) == 0 {
 		if err != nil {

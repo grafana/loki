@@ -77,6 +77,9 @@ var failureReasons = []string{
 // CachedPrefetcher is a Prefetcher that keeps the metadata of an object in a cache, as one cache item for
 // each group of prefetched ranges that a query can read.
 //
+// Every cache call uses a hash of the path of the object as the shard key. All the items of an object
+// then sit on one cache server, so a lookup reads from one server and fails less often.
+//
 // It is safe for concurrent use.
 type CachedPrefetcher struct {
 	cache cache.Cache
@@ -338,7 +341,7 @@ func (p *CachedPrefetcher) fetchMetadataRangesFromCache(ctx context.Context, pat
 		askedByKey[hashedKey] = askedGroup{id: id, unhashedKey: unhashedKey}
 	}
 
-	found, bufs, _, fetchErr := p.cache.Fetch(ctx, keys)
+	found, bufs, _, fetchErr := p.cache.Fetch(ctx, keys, cache.WithShardKey(shardKey(path)))
 	recordPrefetchCacheLookup(ctx)
 	if fetchErr != nil && ctx.Err() == nil {
 		p.warn("data object metadata prefetcher lookup failed", path, fetchErr)
@@ -486,7 +489,7 @@ func (p *CachedPrefetcher) fillMetadataRangesCache(ctx context.Context, path str
 	}
 
 	// A failed write costs a later miss. It does not fail the load.
-	if err := p.cache.Store(ctx, keys, values); err != nil {
+	if err := p.cache.Store(ctx, keys, values, cache.WithShardKey(shardKey(path))); err != nil {
 		p.warn("data object metadata prefetcher fill failed", path, err)
 	}
 	return written
