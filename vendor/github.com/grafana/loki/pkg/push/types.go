@@ -690,7 +690,6 @@ func (m *LabelAdapter) Unmarshal(dAtA []byte) error {
 
 // MemorySize returns the approximate number of bytes this request occupies on
 // the Go heap, as opposed to Size which returns the protobuf encoded size.
-// It does not use reflection.
 func (m *PushRequest) MemorySize() int {
 	if m == nil {
 		return 0
