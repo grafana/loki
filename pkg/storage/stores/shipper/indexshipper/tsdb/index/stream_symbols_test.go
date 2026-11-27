@@ -1,6 +1,7 @@
 package index
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"testing"
@@ -119,6 +120,107 @@ func TestStreamSymbols_LookupMatchesMmapPastCacheEviction(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, mmapResolvedSymbol, streamResolvedSymbol)
 			}
+		})
+	}
+}
+
+// writeSymbolCountFixture builds an index whose symbol table holds exactly
+// numSymbols symbols: the label name "id" and numSymbols-1 distinct values.
+func writeSymbolCountFixture(t testing.TB, format, numSymbols int) string {
+	t.Helper()
+
+	series := make([]seriesFixture, 0, numSymbols-1)
+	for i := range numSymbols - 1 {
+		series = append(series, seriesFixture{
+			ls:     labels.FromStrings("id", fmt.Sprintf("v%05d", i)),
+			chunks: []ChunkMeta{{Checksum: 1, MinTime: 0, MaxTime: 10, KB: 1, Entries: 1}},
+		})
+	}
+	return writeIndexFixture(t, format, series)
+}
+
+// labelValueOrdinals returns up to limit ordinals in s that are not label names, lowest first.
+func labelValueOrdinals(s *streamSymbols, limit int) []uint32 {
+	var ordinals []uint32
+	for i := 0; i < s.size && len(ordinals) < limit; i++ {
+		if _, ok := s.labelNameSymbols[uint32(i)]; !ok {
+			ordinals = append(ordinals, uint32(i))
+		}
+	}
+	return ordinals
+}
+
+// BenchmarkStreamSymbols measures, by the number of symbols in an index:
+//   - new: building a reader's streamSymbols. B/op is what each open index
+//     file holds for its symbols, including the label value cache if it is
+//     allocated up front.
+//   - new_lookup: building a streamSymbols and looking up one label value, so
+//     the cache is allocated.
+//   - hit: label value lookups served from the cache.
+//   - miss: lookups of two ordinals that share a cache entry, so each one
+//     reads the file. Only an index with more symbols than the cache has them.
+func BenchmarkStreamSymbols(b *testing.B) {
+	for _, numSymbols := range []int{10, 100, 1000, 1024, 10000} {
+		b.Run(fmt.Sprintf("symbols=%d", numSymbols), func(b *testing.B) {
+			r, err := NewStreamFileReader(writeSymbolCountFixture(b, FormatV4, numSymbols), DefaultStreamOptions())
+			require.NoError(b, err)
+			b.Cleanup(func() { require.NoError(b, r.Close()) })
+			symbols := r.symbols
+			first := labelValueOrdinals(symbols, 1)[0]
+
+			for _, lookup := range []bool{false, true} {
+				name := "new"
+				if lookup {
+					name = "new_lookup"
+				}
+				b.Run(name, func(b *testing.B) {
+					b.ReportAllocs()
+					for b.Loop() {
+						s, err := newStreamSymbols(context.Background(), symbols.factory, symbols.off, r.postings.isLabelName)
+						if err != nil {
+							b.Fatal(err)
+						}
+						if lookup {
+							if _, err := s.Lookup(first); err != nil {
+								b.Fatal(err)
+							}
+						}
+					}
+				})
+			}
+
+			b.Run("hit", func(b *testing.B) {
+				// Few enough ordinals that each has its own cache entry.
+				ordinals := labelValueOrdinals(symbols, 64)
+				for _, n := range ordinals {
+					_, err := symbols.Lookup(n)
+					require.NoError(b, err)
+				}
+				b.ReportAllocs()
+				i := 0
+				for b.Loop() {
+					if _, err := symbols.Lookup(ordinals[i%len(ordinals)]); err != nil {
+						b.Fatal(err)
+					}
+					i++
+				}
+			})
+
+			colliding := first + labelValueSymbolsCacheSize
+			if int(colliding) >= symbols.size {
+				return
+			}
+			b.Run("miss", func(b *testing.B) {
+				b.ReportAllocs()
+				ordinals := [2]uint32{first, colliding}
+				i := 0
+				for b.Loop() {
+					if _, err := symbols.Lookup(ordinals[i&1]); err != nil {
+						b.Fatal(err)
+					}
+					i++
+				}
+			})
 		})
 	}
 }

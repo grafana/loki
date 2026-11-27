@@ -8,9 +8,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index/streamenc"
 )
 
+// labelValueSymbolsCacheSize is the most entries a streamSymbols caches.
 // Constant taken from thanos https://github.com/thanos-io/thanos/pull/3557.
 // Research has not been done into whether this is the best number for Loki's indexes.
 const labelValueSymbolsCacheSize = 1024
+
+// labelValueSymbol is an entry in streamSymbols.labelValueSymbolsCache.
+type labelValueSymbol struct {
+	ordinal uint32
+	symbol  string
+}
 
 // streamSymbols is StreamReader's equivalent of Symbols.
 //
@@ -33,16 +40,14 @@ type streamSymbols struct {
 	// make up half of all lookups, so holding them in memory is a good trade-off.
 	labelNameSymbols map[uint32]string
 
-	// labelValueSymbolsCache is a direct cache of label value symbols,
+	// labelValueSymbolsCache is a lazily-initialised cache of label value symbols,
 	// keyed on the low bits of the ordinal.
+	// It holds min(labelValueSymbolsCacheSize, size) entries.
 	// An entry answers for ordinal n only when it holds n and a non-empty
 	// symbol, so the zero value is a miss and a collision costs a re-read
 	// rather than the wrong symbol.
 	labelValueSymbolsMtx   sync.Mutex
-	labelValueSymbolsCache [labelValueSymbolsCacheSize]struct {
-		ordinal uint32
-		symbol  string
-	}
+	labelValueSymbolsCache []labelValueSymbol
 }
 
 // newStreamSymbols scans the symbol section once, validating its CRC,
@@ -93,8 +98,11 @@ func (s *streamSymbols) Lookup(n uint32) (string, error) {
 		return "", fmt.Errorf("unknown symbol offset %d", n)
 	}
 
-	cacheIndex := n % labelValueSymbolsCacheSize
 	s.labelValueSymbolsMtx.Lock()
+	if s.labelValueSymbolsCache == nil {
+		s.labelValueSymbolsCache = make([]labelValueSymbol, min(labelValueSymbolsCacheSize, s.size))
+	}
+	cacheIndex := n % uint32(len(s.labelValueSymbolsCache))
 	if entry := s.labelValueSymbolsCache[cacheIndex]; entry.ordinal == n && entry.symbol != "" {
 		s.labelValueSymbolsMtx.Unlock()
 		return entry.symbol, nil
@@ -107,8 +115,7 @@ func (s *streamSymbols) Lookup(n uint32) (string, error) {
 	}
 
 	s.labelValueSymbolsMtx.Lock()
-	s.labelValueSymbolsCache[cacheIndex].ordinal = n
-	s.labelValueSymbolsCache[cacheIndex].symbol = symbol
+	s.labelValueSymbolsCache[cacheIndex] = labelValueSymbol{ordinal: n, symbol: symbol}
 	s.labelValueSymbolsMtx.Unlock()
 
 	return symbol, nil
