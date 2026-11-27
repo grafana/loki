@@ -81,6 +81,7 @@ func toStage(p Processor) Stage {
 type StageCreationParams struct {
 	logger     log.Logger
 	config     interface{}
+	patternConfig interface{}
 	registerer prometheus.Registerer
 	jobName    *string
 }
@@ -124,7 +125,7 @@ func initCreators() {
 			return newLabelStage(params.logger, params.config)
 		},
 		StageTypeLabelDrop: func(params StageCreationParams) (Stage, error) {
-			return newLabelDropStage(params.config)
+			return newLabelDropStage(params.config, params.patternConfig)
 		},
 		StageTypeTimestamp: func(params StageCreationParams) (Stage, error) {
 			return newTimestampStage(params.config)
