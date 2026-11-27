@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"maps"
 	"math"
+	"regexp"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -734,6 +736,153 @@ func (*emptyEvaluator) Error() error {
 }
 
 func (*emptyEvaluator) Explain(Node) {}
+
+func TestLabelReplaceEvaluator_ShouldKeepOwnLabelsWhenInputsShareAHash(t *testing.T) {
+	collide := func(ls labels.Labels, buf []byte) (uint64, []byte) {
+		_, buf = ls.HashWithoutLabels(buf)
+		return 1, buf
+	}
+
+	tests := map[string]struct {
+		src    string
+		dst    string
+		regex  string
+		hashFn func(labels.Labels, []byte) (uint64, []byte)
+		in     []labels.Labels
+		want   []labels.Labels
+	}{
+		"distinct hashes": {
+			src: "app", regex: "(.*)",
+			in: []labels.Labels{
+				labels.FromStrings("app", "a"),
+				labels.FromStrings("app", "b"),
+				labels.FromStrings("app", "a"),
+			},
+			want: []labels.Labels{
+				labels.FromStrings("app", "a", "dst", "a"),
+				labels.FromStrings("app", "b", "dst", "b"),
+				labels.FromStrings("app", "a", "dst", "a"),
+			},
+		},
+		"colliding hashes": {
+			src: "app", regex: "(.*)", hashFn: collide,
+			in: []labels.Labels{
+				labels.FromStrings("app", "a"),
+				labels.FromStrings("app", "b"),
+			},
+			want: []labels.Labels{
+				labels.FromStrings("app", "a", "dst", "a"),
+				labels.FromStrings("app", "b", "dst", "b"),
+			},
+		},
+		"colliding hashes where no input matches the regex": {
+			src: "app", regex: "^zzz$", hashFn: collide,
+			in: []labels.Labels{
+				labels.FromStrings("app", "a"),
+				labels.FromStrings("app", "b"),
+			},
+			want: []labels.Labels{
+				labels.FromStrings("app", "a"),
+				labels.FromStrings("app", "b"),
+			},
+		},
+		"colliding hashes where only the first input matches the regex": {
+			src: "app", regex: "^(a)$", hashFn: collide,
+			in: []labels.Labels{
+				labels.FromStrings("app", "a"),
+				labels.FromStrings("app", "b"),
+			},
+			want: []labels.Labels{
+				labels.FromStrings("app", "a", "dst", "a"),
+				labels.FromStrings("app", "b"),
+			},
+		},
+		"colliding hashes where only the second input matches the regex": {
+			src: "app", regex: "^(b)$", hashFn: collide,
+			in: []labels.Labels{
+				labels.FromStrings("app", "a"),
+				labels.FromStrings("app", "b"),
+			},
+			want: []labels.Labels{
+				labels.FromStrings("app", "a"),
+				labels.FromStrings("app", "b", "dst", "b"),
+			},
+		},
+		"inputs that differ only in the metric name": {
+			src: model.MetricNameLabel, regex: "(.*)",
+			in: []labels.Labels{
+				labels.FromStrings(model.MetricNameLabel, "a", "app", "x"),
+				labels.FromStrings(model.MetricNameLabel, "b", "app", "x"),
+			},
+			want: []labels.Labels{
+				labels.FromStrings(model.MetricNameLabel, "a", "app", "x", "dst", "a"),
+				labels.FromStrings(model.MetricNameLabel, "b", "app", "x", "dst", "b"),
+			},
+		},
+		"inputs that differ only in the metric name, written to the metric name": {
+			src: "app", dst: model.MetricNameLabel, regex: "(.*)",
+			in: []labels.Labels{
+				labels.FromStrings(model.MetricNameLabel, "a", "app", "x"),
+				labels.FromStrings(model.MetricNameLabel, "b", "app", "x"),
+			},
+			want: []labels.Labels{
+				labels.FromStrings(model.MetricNameLabel, "x", "app", "x"),
+				labels.FromStrings(model.MetricNameLabel, "x", "app", "x"),
+			},
+		},
+		"inputs that differ only in the metric name, read from and written to the metric name": {
+			src: model.MetricNameLabel, dst: model.MetricNameLabel, regex: "(.*)",
+			in: []labels.Labels{
+				labels.FromStrings(model.MetricNameLabel, "a", "app", "x"),
+				labels.FromStrings(model.MetricNameLabel, "b", "app", "x"),
+			},
+			want: []labels.Labels{
+				labels.FromStrings(model.MetricNameLabel, "a", "app", "x"),
+				labels.FromStrings(model.MetricNameLabel, "b", "app", "x"),
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			dst := tc.dst
+			if dst == "" {
+				dst = "dst"
+			}
+			ev := &LabelReplaceEvaluator{
+				expr: &syntax.LabelReplaceExpr{
+					Dst:         dst,
+					Replacement: "$1",
+					Src:         tc.src,
+					Re:          regexp.MustCompile(tc.regex),
+				},
+				hashFn: tc.hashFn,
+			}
+
+			// The second step revisits every input, so it must give the same answers as the first.
+			for step := range 2 {
+				vec := make(promql.Vector, len(tc.in))
+				for i, lbs := range tc.in {
+					vec[i] = promql.Sample{Metric: lbs}
+				}
+				ev.nextEvaluator = &returnVectorEvaluator{vec: vec}
+
+				ok, _, r := ev.Next()
+				require.True(t, ok)
+
+				got := r.SampleVector()
+				require.Len(t, got, len(tc.want), "step %d", step)
+				for i := range tc.want {
+					require.Equal(t, tc.want[i], got[i].Metric, "step %d, series %d", step, i)
+				}
+
+				if tc.hashFn != nil {
+					require.Equal(t, tc.in[0], ev.labelCache[1].in, "the first input should keep the cache slot, step %d", step)
+				}
+			}
+		})
+	}
+}
 
 // returnVectorEvaluator returns elements of vector
 // passed in, everytime it's `Next()` is called. Used for testing.
