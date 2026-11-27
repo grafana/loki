@@ -130,6 +130,14 @@ func TestParseInstantQuery(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("time after the upper bound returns an error that names the time parameter and the value", func(t *testing.T) {
+		r := &http.Request{URL: mustParseURL(`?query={foo="bar"}&time=1700000000000.5`)}
+		require.NoError(t, r.ParseForm())
+
+		_, err := ParseInstantQuery(r)
+		require.EqualError(t, err, `could not parse 'time' parameter: timestamp "1700000000000.5" is out of range [1970-01-01T00:00:00Z, 2262-01-01T00:00:00Z]`)
+	})
 }
 
 func mustParseURL(u string) *url.URL {
