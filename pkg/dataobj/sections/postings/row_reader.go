@@ -1,7 +1,6 @@
 package postings
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -102,8 +101,8 @@ func (r *RowReader) next() (Row, error) {
 // the last Next call returned false.
 //
 // The record does not use the memory of the batch, so it stays valid after
-// later calls to Next. But each of its strings and stream ID bitmaps keeps
-// those values of its whole batch alive. A caller that keeps a few values for
+// later calls to Next. But each of its strings and byte slices keeps the values
+// of its column in its whole batch alive. A caller that keeps a few values for
 // longer than the scan, such as map keys, must copy them.
 func (r *RowReader) At() Row { return r.cur }
 
@@ -162,8 +161,8 @@ func checkRecordBatch(columns []*Column, rb *columnar.RecordBatch) error {
 // or a column that rb does not hold decodes as the zero value. rb must pass
 // [checkRecordBatch], and i must be in the range [0, rb.NumRows()).
 //
-// decodeRow copies strings and stream ID bitmaps into values, so the Row stays
-// valid after the memory of rb is reused.
+// decodeRow copies strings and byte slices into values, so the Row stays valid
+// after the memory of rb is reused.
 func decodeRow(columns []*Column, rb *columnar.RecordBatch, i int, values *rowValues) Row {
 	var row Row
 	for c, col := range columns {
@@ -176,21 +175,19 @@ func decodeRow(columns []*Column, rb *columnar.RecordBatch, i int, values *rowVa
 		case ColumnTypeKind:
 			row.Kind = PostingKind(int64At(arr, i))
 		case ColumnTypeObjectPath:
-			row.ObjectPath = values.string(binaryAt(arr, i))
+			row.ObjectPath = values.string(c, binaryAt(arr, i))
 		case ColumnTypeShardBuckets:
 			row.ShardBuckets = int64At(arr, i)
 		case ColumnTypeSectionIndex:
 			row.SectionIndex = int64At(arr, i)
 		case ColumnTypeColumnName:
-			row.ColumnName = values.string(binaryAt(arr, i))
+			row.ColumnName = values.string(c, binaryAt(arr, i))
 		case ColumnTypeLabelValue:
-			row.LabelValue = values.string(binaryAt(arr, i))
+			row.LabelValue = values.string(c, binaryAt(arr, i))
 		case ColumnTypeStreamIDBitmap:
-			row.StreamIDBitmap = values.bytes(binaryAt(arr, i))
+			row.StreamIDBitmap = values.bytes(c, binaryAt(arr, i))
 		case ColumnTypeBloomFilter:
-			// Copy each bloom filter on its own. They can be tens of kilobytes
-			// each, and a value in rowValues keeps every value of its batch alive.
-			row.BloomFilter = bytes.Clone(binaryAt(arr, i))
+			row.BloomFilter = values.bytes(c, binaryAt(arr, i))
 		case ColumnTypeUncompressedSize:
 			row.UncompressedSize = int64At(arr, i)
 		case ColumnTypeMinTimestamp:
@@ -219,51 +216,59 @@ func binaryAt(arr columnar.Array, i int) []byte {
 }
 
 // rowValues copies strings and byte slices out of the memory of a batch, which
-// the next read reuses. It packs the values of one batch into one buffer, so a
-// row takes no allocation of its own.
+// the next read reuses. It packs the values of each column of one batch into
+// one buffer, so a row takes no allocation of its own.
 //
 // rowValues never writes bytes that it returned. So a value stays valid after
-// later copies and after reset. A retained value keeps the buffer of its batch
-// alive.
+// later copies and after reset.
+//
+// A retained value keeps the buffer of its column in its batch alive, and no
+// other buffer. So a retained object path does not keep the bloom filters of
+// its batch alive.
 type rowValues struct {
-	buf []byte
+	bufs [][]byte // indexed by column position
 }
 
-// reset starts a new buffer with room for the string and stream ID bitmap
-// values of rb. It does not reuse the previous buffer, because rows can still
-// hold values in it.
+// reset starts new buffers with room for the binary values of each column of
+// rb. It does not reuse the previous buffers, because rows can still hold
+// values in them.
 func (v *rowValues) reset(columns []*Column, rb *columnar.RecordBatch) {
-	var size int
-	for i, col := range columns {
-		if col.Type == ColumnTypeBloomFilter {
-			continue
-		}
-		if arr, ok := rb.Column(int64(i)).(*columnar.UTF8); ok {
-			size += arr.DataLen()
+	if cap(v.bufs) < len(columns) {
+		v.bufs = make([][]byte, len(columns))
+	}
+	v.bufs = v.bufs[:len(columns)]
+	for i := range columns {
+		v.bufs[i] = nil
+		if arr, ok := rb.Column(int64(i)).(*columnar.UTF8); ok && arr.DataLen() > 0 {
+			v.bufs[i] = make([]byte, 0, arr.DataLen())
 		}
 	}
-	v.buf = make([]byte, 0, size)
 }
 
-// string returns a copy of b as a string.
-func (v *rowValues) string(b []byte) string {
+// string returns a copy of b, a value of the column at position c, as a
+// string.
+func (v *rowValues) string(c int, b []byte) string {
 	if len(b) == 0 {
 		return ""
 	}
-	value := v.copy(b)
+	value := v.copy(c, b)
 	return unsafe.String(unsafe.SliceData(value), len(value))
 }
 
-// bytes returns a copy of b. The capacity of the copy ends at its length, so
-// an append by the caller cannot overwrite the next value.
-func (v *rowValues) bytes(b []byte) []byte {
-	return v.copy(b)
+// bytes returns a copy of b, a value of the column at position c. The capacity
+// of the copy ends at its length, so an append by the caller cannot overwrite
+// the next value.
+func (v *rowValues) bytes(c int, b []byte) []byte {
+	return v.copy(c, b)
 }
 
-func (v *rowValues) copy(b []byte) []byte {
+// copy appends b to the buffer of the column at position c. c must be in the
+// range of the columns that reset saw.
+func (v *rowValues) copy(c int, b []byte) []byte {
 	// If append grows the buffer, the values returned before stay in the old
 	// buffer. They stay valid, because nothing writes to it again.
-	start := len(v.buf)
-	v.buf = append(v.buf, b...)
-	return v.buf[start:len(v.buf):len(v.buf)]
+	buf := append(v.bufs[c], b...)
+	v.bufs[c] = buf
+	start := len(buf) - len(b)
+	return buf[start:len(buf):len(buf)]
 }

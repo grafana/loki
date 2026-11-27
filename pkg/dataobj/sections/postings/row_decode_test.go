@@ -2,6 +2,7 @@ package postings
 
 import (
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/require"
 
@@ -176,25 +177,59 @@ func TestDecodeRow(t *testing.T) {
 }
 
 func TestRowValues(t *testing.T) {
-	t.Run("returns values that stay valid when the buffer grows or is replaced", func(t *testing.T) {
+	newValues := func(t *testing.T, columns []*Column, arrays ...columnar.Array) *rowValues {
+		t.Helper()
 		var values rowValues
-		values.buf = make([]byte, 0, 1)
+		values.reset(columns, columnar.NewRecordBatch(nil, int64(arrays[0].Len()), arrays))
+		return &values
+	}
 
-		first := values.string([]byte("first"))
-		second := values.bytes([]byte("second"))
-		values.buf = make([]byte, 0)
-		_ = values.string([]byte("third"))
+	t.Run("copies each column into a buffer of its own", func(t *testing.T) {
+		alloc := memory.NewAllocator(nil)
+		values := newValues(t, []*Column{pathColumn, bloomColumn},
+			binaryValues(alloc, str("/a")),
+			binaryValues(alloc, str("bloom")),
+		)
+
+		path := values.string(0, []byte("/a"))
+		bloom := values.bytes(1, []byte("bloom"))
+
+		require.Same(t, &values.bufs[0][0], unsafe.StringData(path))
+		require.Same(t, &values.bufs[1][0], unsafe.SliceData(bloom))
+	})
+
+	t.Run("allocates no buffer for an int64 column or an empty binary column", func(t *testing.T) {
+		alloc := memory.NewAllocator(nil)
+		values := newValues(t, []*Column{kindColumn, pathColumn},
+			int64Values(alloc, kindValue(KindLabel)),
+			binaryValues(alloc, nil),
+		)
+
+		require.Equal(t, [][]byte{nil, nil}, values.bufs)
+	})
+
+	t.Run("returns values that stay valid when the buffer grows or is reset", func(t *testing.T) {
+		alloc := memory.NewAllocator(nil)
+		values := newValues(t, []*Column{pathColumn, bitmapColumn},
+			binaryValues(alloc, str("x")),
+			binaryValues(alloc, str("y")),
+		)
+
+		first := values.string(0, []byte("first"))
+		second := values.bytes(1, []byte("second"))
+		values.reset([]*Column{pathColumn}, columnar.NewRecordBatch(nil, 1, []columnar.Array{binaryValues(alloc, str("third"))}))
+		_ = values.string(0, []byte("third"))
 
 		require.Equal(t, "first", first)
 		require.Equal(t, []byte("second"), second)
 	})
 
 	t.Run("returns bytes that an append cannot use to overwrite the next value", func(t *testing.T) {
-		var values rowValues
-		values.buf = make([]byte, 0, 4)
+		alloc := memory.NewAllocator(nil)
+		values := newValues(t, []*Column{bitmapColumn}, binaryValues(alloc, str("ab"), str("cd")))
 
-		first := values.bytes([]byte("ab"))
-		second := values.bytes([]byte("cd"))
+		first := values.bytes(0, []byte("ab"))
+		second := values.bytes(0, []byte("cd"))
 		_ = append(first, 'X')
 
 		require.Equal(t, []byte("cd"), second)
@@ -202,6 +237,6 @@ func TestRowValues(t *testing.T) {
 
 	t.Run("returns the empty string for an empty value", func(t *testing.T) {
 		var values rowValues
-		require.Empty(t, values.string(nil))
+		require.Empty(t, values.string(0, nil))
 	})
 }
