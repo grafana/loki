@@ -202,9 +202,9 @@ func TestTaskPriorityBefore(t *testing.T) {
 			second: logMergePriority(2),
 		},
 		{
-			name:   "an older window runs first within one level",
-			first:  logMergePriority(1),
-			second: taskPriority{class: priorityLogMerge, level: 1, window: slotsTestWindow.Add(time.Hour)},
+			name:   "a newer window runs first within one level",
+			first:  taskPriority{class: priorityLogMerge, level: 1, window: slotsTestWindow.Add(time.Hour)},
+			second: logMergePriority(1),
 		},
 		{
 			name:   "an earlier planned job runs first within one window",
