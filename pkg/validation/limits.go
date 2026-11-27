@@ -276,6 +276,10 @@ type Limits struct {
 	// objects for the tenant. Zero means the default.
 	DataObjShardFactor ShardFactor `yaml:"dataobj_shard_factor" json:"dataobj_shard_factor" doc:"hidden"`
 
+	// DataObjBloomDenyList names the structured metadata columns that get no
+	// bloom filter in the data object indexes of the tenant.
+	DataObjBloomDenyList dskit_flagext.StringSliceCSV `yaml:"dataobj_bloom_deny_list" json:"dataobj_bloom_deny_list" category:"experimental"`
+
 	// TSDBShardedIndexShardFactor is the number of fingerprint-range files the
 	// compactor splits the tenant's sharded TSDB index copy into.
 	TSDBShardedIndexShardFactor int `yaml:"tsdb_sharded_index_shard_factor" json:"tsdb_sharded_index_shard_factor" category:"experimental" doc:"hidden"`
@@ -632,6 +636,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	l.SortSchema = DefaultSortSchema
 	l.DataObjShardFactor = streams.DefaultShardBuckets
+	_ = l.DataObjBloomDenyList.Set("observed_timestamp")
+	f.Var(&l.DataObjBloomDenyList, "limits.dataobj-bloom-deny-list", "Experimental: Comma-separated names of structured metadata columns that get no bloom filter in the data object index. An empty value denies no column.")
 	f.Var(&l.DataObjShardFactor, "limits.dataobj-shard-factor", fmt.Sprintf("Experimental: Number of stream shard buckets in new data objects. Must be a power of two from 1 to %d.", MaxShardFactor))
 	f.IntVar(&l.TSDBShardedIndexShardFactor, "limits.tsdb-sharded-index-shard-factor", 0, "Experimental: Number of fingerprint-range files the compactor splits the tenant's index into in the sharded_path_prefix of a schema period. 0 and 1 write a single file; larger values must be powers of two.")
 	f.Var(&l.SortSchema, "limits.sort-schema", "Experimental: Ordered, comma-separated sort keys for data objects, as `label:<name>,...`. Only the label type is currently supported. Defaults to "+DefaultSortSchema.String()+".")
@@ -1517,6 +1523,20 @@ func (o *Overrides) DataObjShardLayout(userID string) streams.ShardLayout {
 		return streams.DefaultShardLayout()
 	}
 	return layout
+}
+
+// DataObjBloomDenyList returns the names of the structured metadata columns
+// that get no bloom filter in the data object indexes of userID.
+func (o *Overrides) DataObjBloomDenyList(userID string) []string {
+	list := o.getOverridesForUser(userID).DataObjBloomDenyList
+	trimmed := make([]string, 0, len(list))
+	for _, name := range list {
+		// StringSliceCSV splits on commas and keeps the spaces around a name.
+		if name = strings.TrimSpace(name); name != "" {
+			trimmed = append(trimmed, name)
+		}
+	}
+	return trimmed
 }
 
 // TSDBShardedIndexShardFactor returns the number of fingerprint-range files of

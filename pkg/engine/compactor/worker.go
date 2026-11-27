@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -29,6 +30,8 @@ type WorkerParams struct {
 
 	// IndexobjCfg controls index object construction parameters for compaction.
 	IndexobjCfg logsobj.BuilderBaseConfig
+	// TenantOverrides provides the per-tenant settings of compacted index objects.
+	TenantOverrides executor.TenantOverrides
 	// LogsobjCfg controls log object construction parameters for compaction.
 	LogsobjCfg logsobj.BuilderBaseConfig
 }
@@ -49,6 +52,9 @@ type Worker struct {
 func NewWorker(params WorkerParams) (*Worker, error) {
 	if params.Bucket == nil {
 		return nil, errors.New("dataobj compaction worker: bucket is required")
+	}
+	if params.TenantOverrides == nil {
+		return nil, errors.New("dataobj compaction worker: tenant overrides are required")
 	}
 	if params.ScratchStore == nil {
 		return nil, errors.New("dataobj compaction worker: scratch store is required")
@@ -95,6 +101,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		AdvertiseAddr:        advertiseAddr,
 		Endpoint:             params.Config.Endpoint,
 		IndexobjCfg:          params.IndexobjCfg,
+		TenantOverrides:      params.TenantOverrides,
 		LogsobjCfg:           params.LogsobjCfg,
 		IndexMergeObserver:   wm,
 		NewLogMergeObserver:  wm.logMergeObserver,

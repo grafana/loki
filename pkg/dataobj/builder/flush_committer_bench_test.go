@@ -147,7 +147,7 @@ func newBenchFlush(tb testing.TB, latency benchBucketLatency, concurrency int) *
 		tb.Fatal(err)
 	}
 	indexobjMetrics := indexobj.NewBuilderMetrics(reg)
-	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg))
+	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg), fakeTenantOverrides{})
 	if err != nil {
 		tb.Fatal(err)
 	}

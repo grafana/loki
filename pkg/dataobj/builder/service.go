@@ -65,7 +65,15 @@ func logsobjBuilderConfig(cfg Config) logsobj.BuilderBaseConfig {
 	return logsCfg
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides logsobj.TenantOverrides) (*Service, error) {
+// TenantOverrides provides the per-tenant settings that the [Service] reads.
+type TenantOverrides interface {
+	logsobj.TenantOverrides
+	// DataObjBloomDenyList returns the columns of the tenant that get no bloom
+	// filter in the index.
+	DataObjBloomDenyList(tenant string) []string
+}
+
+func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config, bucket objstore.Bucket, scratchStore scratch.Store, reg prometheus.Registerer, logger log.Logger, overrides TenantOverrides) (*Service, error) {
 	const componentName = "dataobj-builder"
 	logger = log.With(logger, "component", componentName)
 
@@ -146,6 +154,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 		index.NewIndexerMetrics(indexReg),
 		indexobj.NewBuilderMetrics(indexReg),
 		index.NewCalculatorMetrics(indexReg),
+		overrides,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create indexer: %w", err)

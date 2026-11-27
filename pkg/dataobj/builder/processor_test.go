@@ -703,7 +703,7 @@ func newRealStack(t *testing.T) *realStack {
 	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, logsobj.NoTenantOverrides{})
 	require.NoError(t, err)
 	indexobjMetrics := indexobj.NewBuilderMetrics(reg)
-	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg))
+	indexer, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg), fakeTenantOverrides{})
 	require.NoError(t, err)
 	var (
 		uploader  = dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, bucket, logger)
@@ -851,3 +851,9 @@ func newTestMultiWindowRecord(t *testing.T, tenant string, windows []time.Time) 
 	require.NoError(t, err)
 	return &rec
 }
+
+// fakeTenantOverrides is a [index.TenantOverrides] that gives each tenant its own
+// bloom deny list. A tenant that is not in the map has an empty list.
+type fakeTenantOverrides map[string][]string
+
+func (o fakeTenantOverrides) DataObjBloomDenyList(tenant string) []string { return o[tenant] }

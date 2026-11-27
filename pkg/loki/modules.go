@@ -2307,12 +2307,13 @@ func (t *Loki) initDataObjCompactionWorker() (services.Service, error) {
 		// Source log objects live at the unprefixed dataobj root, so the
 		// LogMerge executor reads them through the unprefixed store rather than
 		// the index-prefixed bucket used for index I/O and ToC.
-		DataBucket:   store,
-		ScratchStore: t.scratchStore,
-		IndexobjCfg:  t.Cfg.DataObj.Compaction.IndexobjBuilder,
-		LogsobjCfg:   t.Cfg.DataObj.Compaction.LogsobjBuilder,
-		Logger:       logger,
-		Registerer:   prometheus.DefaultRegisterer,
+		DataBucket:      store,
+		ScratchStore:    t.scratchStore,
+		IndexobjCfg:     t.Cfg.DataObj.Compaction.IndexobjBuilder,
+		TenantOverrides: t.Overrides,
+		LogsobjCfg:      t.Cfg.DataObj.Compaction.LogsobjBuilder,
+		Logger:          logger,
+		Registerer:      prometheus.DefaultRegisterer,
 	})
 	if err != nil {
 		return nil, err

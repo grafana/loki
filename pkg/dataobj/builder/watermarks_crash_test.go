@@ -160,7 +160,7 @@ func (e *crashEnv) run(t *testing.T, records []*kgo.Record, flushEvery, concurre
 	factory, err := logsobj.NewBuilderFactory(cfg.LogsobjBuilder, scratchStore, logsobj.NewBuilderMetrics(), logger, logsobj.NoTenantOverrides{})
 	require.NoError(t, err)
 	indexobjMetrics := indexobj.NewBuilderMetrics(reg)
-	idx, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, e.idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg))
+	idx, err := index.NewSimpleIndexer(cfg.IndexobjBuilder, scratchStore, logger, e.idxBucket, index.NewIndexerMetrics(reg), indexobjMetrics, index.NewCalculatorMetrics(reg), fakeTenantOverrides{})
 	require.NoError(t, err)
 
 	uploader := dataobj_uploader.New(dataobj_uploader.Config{SHAPrefixSize: 2}, e.bucket, logger)

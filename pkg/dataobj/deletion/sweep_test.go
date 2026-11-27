@@ -405,7 +405,7 @@ func requireExists(t *testing.T, bucket objstore.BucketReader, want bool, paths 
 // logPaths are reachable. The index object was last modified at modified.
 func storeReachableIndex(t *testing.T, bucket fileBucket, tenant, indexPath string, logPaths []string, modified time.Time) {
 	t.Helper()
-	builder, err := indexobj.NewBuilder(tenant, metastore.DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	builder, err := indexobj.NewBuilder(tenant, metastore.DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 	require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), nil)))
 	for _, p := range logPaths {

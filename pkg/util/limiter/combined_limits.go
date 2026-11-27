@@ -39,6 +39,7 @@ type CombinedLimits interface {
 	logline_query_limits.Limits
 	SortSchemaLabels(userID string) []string
 	DataObjShardLayout(userID string) streams.ShardLayout
+	DataObjBloomDenyList(userID string) []string
 	CompactionPhases(userID string) (runIndex, runLog bool)
 	DeletionSweepEnabled(userID string) bool
 	PolicyLimitsServiceStreamsExpiry(userID, policy string) (time.Duration, bool)

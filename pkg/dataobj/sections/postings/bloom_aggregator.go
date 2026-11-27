@@ -30,6 +30,12 @@ type bloomPostingEntry struct {
 	MaxTimestamp     int64
 	UncompressedSize int64
 
+	// passAll is true when bloomFilter is the filter that matches every value.
+	// addToFilter then does nothing. Observe still records the stream bitmap and
+	// the time range, because a merge needs equal time ranges for the rows
+	// of one section.
+	passAll bool
+
 	// added holds values already added to bloomFilter, to skip adding them
 	// again. Adding a value twice does not change the filter. added is nil for
 	// columns with a high estimated cardinality, where values rarely repeat.
@@ -37,8 +43,11 @@ type bloomPostingEntry struct {
 }
 
 // addToFilter adds value to the bloom filter of e, unless e knows that the
-// filter already holds it.
+// filter already holds it. It does nothing if the filter matches every value.
 func (e *bloomPostingEntry) addToFilter(value string) {
+	if e.passAll {
+		return
+	}
 	if e.added != nil {
 		if _, ok := e.added[value]; ok {
 			return
@@ -49,6 +58,33 @@ func (e *bloomPostingEntry) addToFilter(value string) {
 		}
 	}
 	e.bloomFilter.Add([]byte(value))
+}
+
+// passAllBloomBytes holds the marshaled filter that matches every value. It is
+// a filter with one bit and one hash function, and the bit is set. Every hash
+// maps to bit 0 of the filter, so Test always returns true.
+var passAllBloomBytes = func() []byte {
+	b, err := passAllBloomFilter.MarshalBinary()
+	if err != nil {
+		panic(fmt.Sprintf("marshaling the pass-all bloom filter: %v", err))
+	}
+	return b
+}()
+
+// passAllBloomFilter is the filter that matches every value. Entries share it,
+// so nothing may add values to it.
+var passAllBloomFilter = func() *bloom.BloomFilter {
+	f := bloom.New(1, 1)
+	f.BitSet().Set(0)
+	return f
+}()
+
+// PassAllBloomFilter returns the marshaled bloom filter that matches every
+// value. A reader never prunes a section with this filter.
+//
+// The caller must not modify the returned slice.
+func PassAllBloomFilter() []byte {
+	return passAllBloomBytes
 }
 
 // BloomFilter returns the bloom filter for this entry.
@@ -132,6 +168,33 @@ func (a *bloomAggregator) PrepareColumn(objectPath string, sectionIndex int64, c
 
 	// Track size estimate for new entry: 6 int64 fields + string sizes + bloom filter capacity.
 	a.estimatedSize += 6*8 + len(objectPath) + len(columnName) + int(entry.bloomFilter.Cap()/8)
+}
+
+// PreparePassAllColumn is like [bloomAggregator.PrepareColumn], but the entry
+// of the column holds the filter that matches every value, and Observe does
+// not add values to it. It does nothing if the column is already prepared.
+func (a *bloomAggregator) PreparePassAllColumn(objectPath string, sectionIndex int64, columnName string, shardBuckets int64) {
+	key := bloomPostingKey{
+		objectPath:   objectPath,
+		sectionIndex: sectionIndex,
+		columnName:   columnName,
+	}
+	if _, ok := a.entries[key]; ok {
+		return
+	}
+
+	a.entries[key] = &bloomPostingEntry{
+		ObjectPath:   objectPath,
+		ShardBuckets: shardBuckets,
+		SectionIndex: sectionIndex,
+		ColumnName:   columnName,
+		bloomFilter:  passAllBloomFilter,
+		passAll:      true,
+		bitmap:       memory.NewBitmap(nil, 0),
+		MinTimestamp: math.MaxInt64,
+		MaxTimestamp: math.MinInt64,
+	}
+	a.estimatedSize += 6*8 + len(objectPath) + len(columnName) + len(passAllBloomBytes)
 }
 
 // Observe records a single observation for a bloom column. Returns an error if

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -48,7 +49,7 @@ func newTestSimpleIndexerWithMetrics(t *testing.T, bucket objstore.Bucket, reg p
 	metrics := NewIndexerMetrics(reg)
 
 	return NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
-		metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
+		metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg), fakeTenantOverrides{})
 }
 
 func TestSimpleIndexer_Index(t *testing.T) {
@@ -301,7 +302,7 @@ func TestSimpleIndexer_MultipleInstances(t *testing.T) {
 	obj := createTestLogObject(t, 1)
 	for i := range 2 {
 		idx, err := NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
-			metrics, builderMetrics, calculatorMetrics)
+			metrics, builderMetrics, calculatorMetrics, fakeTenantOverrides{})
 		require.NoError(t, err)
 
 		_, err = idx.Index(t.Context(), obj, fmt.Sprintf("objects/test-%d", i))
@@ -319,7 +320,7 @@ func TestSimpleIndexer_RejectsInvalidConfig(t *testing.T) {
 	metrics := NewIndexerMetrics(reg)
 
 	_, err := NewSimpleIndexer(logsobj.BuilderBaseConfig{}, nil, log.NewNopLogger(),
-		objstore.NewInMemBucket(), metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
+		objstore.NewInMemBucket(), metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg), fakeTenantOverrides{})
 	require.Error(t, err)
 }
 
@@ -338,4 +339,76 @@ func indexedObjectPaths(t *testing.T, obj *dataobj.Object) []string {
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+// fakeTenantOverrides is a [TenantOverrides] that gives each tenant its own
+// bloom deny list. A tenant that is not in the map has an empty list.
+type fakeTenantOverrides map[string][]string
+
+func (o fakeTenantOverrides) DataObjBloomDenyList(tenant string) []string { return o[tenant] }
+
+func TestSimpleIndexer_BloomDenyList(t *testing.T) {
+	overrides := fakeTenantOverrides{"tenant-a": {"observed_timestamp"}}
+
+	for _, tc := range []struct {
+		tenant      string
+		wantPassAll bool
+	}{
+		{tenant: "tenant-a", wantPassAll: true},
+		{tenant: "tenant-b", wantPassAll: false},
+	} {
+		t.Run("indexes the data object of "+tc.tenant, func(t *testing.T) {
+			bucket := objstore.NewInMemBucket()
+			reg := prometheus.NewRegistry()
+			idx, err := NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
+				NewIndexerMetrics(reg), indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg), overrides)
+			require.NoError(t, err)
+
+			// Every line has a real value in both columns.
+			lr := fixtures.NewLogsFixtureBuilder(t)
+			lr.ForStream(`{app="foo"}`).Entry(10, `{observed_timestamp="1", trace_id="1"}`, "hello")
+			obj, closer := fixtures.DataObject(t,
+				fixtures.LogsSection(t, tc.tenant, lr.Logs()),
+				fixtures.StreamsSection(t, tc.tenant, lr.Streams()),
+			)
+			t.Cleanup(func() { closer.Close() })
+
+			res, err := idx.Index(t.Context(), obj, "objects/test")
+			require.NoError(t, err)
+
+			idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
+			require.NoError(t, err)
+
+			matches := func(row postings.Row, value string) bool {
+				var filter bloom.BloomFilter
+				require.NoError(t, filter.UnmarshalBinary(row.BloomFilter))
+				return filter.Test([]byte(value))
+			}
+			seen := map[string]bool{}
+			for _, sec := range idxObj.Sections().Filter(postings.CheckSection) {
+				section, err := postings.Open(t.Context(), sec)
+				require.NoError(t, err)
+				r := postings.NewReader(postings.ReaderOptions{Columns: section.Columns()})
+				require.NoError(t, r.Open(t.Context()))
+				t.Cleanup(func() { _ = r.Close() })
+				rows := postings.NewRowReader(t.Context(), r)
+				for rows.Next() {
+					row := rows.At()
+					if row.Kind != postings.KindBloom {
+						continue
+					}
+					seen[row.ColumnName] = true
+					require.True(t, matches(row, "1"), "column %s must match its own value", row.ColumnName)
+					switch row.ColumnName {
+					case "observed_timestamp":
+						require.Equal(t, tc.wantPassAll, matches(row, "2"))
+					case "trace_id":
+						require.False(t, matches(row, "2"))
+					}
+				}
+				require.NoError(t, rows.Err())
+			}
+			require.Equal(t, map[string]bool{"observed_timestamp": true, "trace_id": true}, seen)
+		})
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -41,6 +42,9 @@ type MergeBuilder struct {
 	layout   streams.Layout
 	postings *postings.MergeBuilder
 
+	// bloomDenyList holds the names of the columns that are not bloom-indexed.
+	bloomDenyList []string
+
 	// wroteStats is true once the builder appended a stats section to the
 	// object it builds.
 	wroteStats bool
@@ -53,7 +57,7 @@ type MergeBuilder struct {
 //
 // NewMergeBuilder returns an error if the provided config is invalid or
 // tenant is empty.
-func NewMergeBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, tenant string, layout streams.Layout) (*MergeBuilder, error) {
+func NewMergeBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, tenant string, layout streams.Layout, bloomDenyList []string) (*MergeBuilder, error) {
 	if tenant == "" {
 		return nil, errors.New("tenant must not be empty")
 	}
@@ -78,6 +82,8 @@ func NewMergeBuilder(cfg logsobj.BuilderBaseConfig, scratchStore scratch.Store, 
 		stats:    statsBuilder,
 		layout:   layout,
 		postings: postingsBuilder,
+
+		bloomDenyList: bloomDenyList,
 	}, nil
 }
 
@@ -166,6 +172,9 @@ func (b *MergeBuilder) AppendPostingsBloomEntry(tenantID string, entry postings.
 	b.metrics.appendsTotal.Inc()
 	if err := b.checkTenant(tenantID); err != nil {
 		return err
+	}
+	if slices.Contains(b.bloomDenyList, entry.ColumnName) {
+		entry.BloomFilter = postings.PassAllBloomFilter()
 	}
 
 	tenantPostings := b.postings

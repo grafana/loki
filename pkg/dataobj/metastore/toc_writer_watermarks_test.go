@@ -34,7 +34,7 @@ func wmTocPath() string { return TableOfContentsPath(wmTenant, unixTime(0)) }
 func seedWatermarkToC(t *testing.T, bucket objstore.Bucket, indexPaths []string, rows []watermarks.Watermark) {
 	t.Helper()
 
-	b, err := indexobj.NewBuilder(wmTenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	b, err := indexobj.NewBuilder(wmTenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 	for _, p := range indexPaths {
 		require.NoError(t, b.AppendIndexPointer(indexpointers.IndexPointer{Path: p, StartTs: unixTime(10), EndTs: unixTime(20)}))
