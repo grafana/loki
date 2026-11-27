@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.7.11](https://github.com/grafana/loki/compare/v3.7.10...v3.7.11) (2026-11-27)
+
+
+### Bug Fixes
+
+* **compactor:** Prevent FD leak on partial compaction failure [release-3.7.x] ([#26494](https://github.com/grafana/loki/issues/26494)) ([56f8c86](https://github.com/grafana/loki/commit/56f8c86a518e652c21f4d13db10e193b729115d8))
+* **frontend:** Fail requests that cannot be encoded without closing the scheduler stream [release-3.7.x] ([#26770](https://github.com/grafana/loki/issues/26770)) ([73a0f23](https://github.com/grafana/loki/commit/73a0f23cee8876fa743043dce6b3b47da9f41127))
+* **loghttp:** Reject times before 1970 or after the int64 nanosecond limit [release-3.7.x] ([#26760](https://github.com/grafana/loki/issues/26760)) ([5aec99d](https://github.com/grafana/loki/commit/5aec99d48641ae7832a0dc2182b4e2376e608ef6))
+* **pattern:** Drain aggregation Push buffer on Stop [release-3.7.x] ([#26674](https://github.com/grafana/loki/issues/26674)) ([3f0f973](https://github.com/grafana/loki/commit/3f0f973f2185acbf6320bbafd1f5e0a35fcfeed5))
+* **pattern:** Retry 429 and 5xx pushes and drop other client errors [release-3.7.x] ([#26670](https://github.com/grafana/loki/issues/26670)) ([e592f10](https://github.com/grafana/loki/commit/e592f10c5d739b22128212d3708b82fdf198fe5f))
+* **querier:** Reconnect query workers without backoff after a canceled query [release-3.7.x] ([#26667](https://github.com/grafana/loki/issues/26667)) ([dcc02cc](https://github.com/grafana/loki/commit/dcc02cc4cb985ad0b6dd966692689c84eecb414f))
+* **security/HIGH/:** Update module github.com/containerd/containerd/v2 to v2.2.10 [SECURITY] (release-3.7.x) ([#26620](https://github.com/grafana/loki/issues/26620)) ([bbe20a8](https://github.com/grafana/loki/commit/bbe20a849cfa134d3803fa497783f316e8c91007))
+
 ## [3.7.10](https://github.com/grafana/loki/compare/v3.7.9...v3.7.10) (2026-11-13)
 
 
