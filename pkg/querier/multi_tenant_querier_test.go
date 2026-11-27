@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/testutil"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
@@ -1109,4 +1111,87 @@ func TestMultiTenantQuerierPatterns(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Regression test: the multi-tenant querier passes the same request to the
+// single-tenant querier once per tenant. The single-tenant querier must not
+// narrow that shared request to the store interval, otherwise every tenant
+// after the first skips the ingesters and loses its most recent data.
+func TestMultiTenantQuerier_QueriesIngestersForEveryTenant(t *testing.T) {
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	conf := mockQuerierConfig()
+	conf.QueryIngestersWithin = time.Hour
+	conf.IngesterQueryStoreMaxLookback = time.Hour
+
+	// Ingesters and store return no data, so the mocks can be shared by all tenants.
+	newQuerierWithEmptyMocks := func(t *testing.T) (*querierClientMock, *MultiTenantQuerier) {
+		queryClient := newQueryClientMock()
+		queryClient.On("Recv").Return(nil, io.EOF)
+		querySampleClient := newQuerySampleClientMock()
+		querySampleClient.On("Recv").Return(nil, io.EOF)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
+		ingesterClient.On("QuerySample", mock.Anything, mock.Anything, mock.Anything).Return(querySampleClient, nil)
+
+		store := newStoreMock()
+		store.On("SelectLogs", mock.Anything, mock.Anything).Return(iter.NoopEntryIterator, nil)
+		store.On("SelectSamples", mock.Anything, mock.Anything).Return(iter.NoopSampleIterator, nil)
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+		return ingesterClient, NewMultiTenantQuerier(querier, log.NewNopLogger())
+	}
+
+	end := time.Now()
+	start := end.Add(-6 * time.Hour)
+	ctx := user.InjectOrgID(context.Background(), "1|2")
+
+	t.Run("SelectLogs", func(t *testing.T) {
+		ingesterClient, multiTenantQuerier := newQuerierWithEmptyMocks(t)
+
+		selector := `{app="foo"}`
+		req := &logproto.QueryRequest{
+			Selector:  selector,
+			Limit:     1000,
+			Start:     start,
+			End:       end,
+			Direction: logproto.FORWARD,
+			Plan:      testutil.MustPlan(selector),
+		}
+		it, err := multiTenantQuerier.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: req})
+		require.NoError(t, err)
+		defer it.Close()
+
+		ingesterClient.AssertNumberOfCalls(t, "Query", 2)
+		require.Equal(t, start, req.Start)
+		require.Equal(t, end, req.End)
+	})
+
+	t.Run("SelectSamples", func(t *testing.T) {
+		ingesterClient, multiTenantQuerier := newQuerierWithEmptyMocks(t)
+
+		selector := `count_over_time({app="foo"}[1m])`
+		req := &logproto.SampleQueryRequest{
+			Selector: selector,
+			Start:    start,
+			End:      end,
+			Plan:     testutil.MustPlan(selector),
+		}
+		it, err := multiTenantQuerier.SelectSamples(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+		require.NoError(t, err)
+		defer it.Close()
+
+		ingesterClient.AssertNumberOfCalls(t, "QuerySample", 2)
+		require.Equal(t, start, req.Start)
+		require.Equal(t, end, req.End)
+	})
 }
