@@ -95,9 +95,14 @@ func newCoordinator(
 	}
 	logger := log.With(baseLogger, "component", "window-scanner")
 	pairLogger := log.With(baseLogger, "component", "pair-planner")
-	run := func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
-		return runPlan(ctx, logger, runner, opts, plan)
+	// runWith returns a run function that logs the workflow of each plan with
+	// logger, so the lines of a job carry the component of its dispatcher.
+	runWith := func(logger log.Logger) runFunc {
+		return func(ctx context.Context, opts workflow.Options, plan *physical.Plan) ([]v2.ResultArtifact, error) {
+			return runPlan(ctx, logger, runner, opts, plan)
+		}
 	}
+	run := runWith(logger)
 	metrics := newCoordinatorMetrics(reg)
 	c := &coordinator{
 		cfg:             cfg,
@@ -106,7 +111,7 @@ func newCoordinator(
 		indexBucket:     indexBucket,
 		indexDispatcher: newPlanDispatcher(logger, run, cfg.MaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		logDispatcher:   newPlanDispatcher(logger, run, cfg.LogMaxRunningCompactionTasks, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
-		pairDispatcher:  newPlanDispatcher(pairLogger, run, 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
+		pairDispatcher:  newPlanDispatcher(pairLogger, runWith(pairLogger), 0, cfg.TaskMaxRetries, cfg.taskRetryBackoff(), metrics.taskAttemptsTotal),
 		publisher: &tocPublisher{
 			writer:  metastoreWriter,
 			timeout: cfg.ToCConsolidateTimeout,
@@ -119,7 +124,8 @@ func newCoordinator(
 		logMergePlanningStrategy: logMergePlanningStrategy,
 	}
 	if cfg.DeletionSweep.Enabled {
-		c.sweeps = newSweepScheduler(cfg.DeletionSweep, log.With(baseLogger, "component", "deletion-sweep-scheduler"), dataBucket, limits, run, metrics.taskAttemptsTotal)
+		sweepLogger := log.With(baseLogger, "component", "deletion-sweep-scheduler")
+		c.sweeps = newSweepScheduler(cfg.DeletionSweep, sweepLogger, dataBucket, limits, runWith(sweepLogger), metrics.taskAttemptsTotal)
 	}
 	return c, nil
 }
