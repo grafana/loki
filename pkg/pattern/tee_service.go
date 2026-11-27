@@ -429,7 +429,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 
 					var client ring_client.PoolClient
 					client, err = ts.ringClient.GetClientFor(addr)
-					if err != nil {
+					if err == nil {
 						ctx, cancel := context.WithTimeout(
 							user.InjectOrgID(ctx, clientRequest.tenant),
 							ts.cfg.ClientConfig.RemoteTimeout,

@@ -2,6 +2,7 @@ package pattern
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"slices"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -462,4 +464,67 @@ func TestPatternTee_MaxBufferedBytes(t *testing.T) {
 		require.Contains(t, tenantBuf, buffered(s4))
 	})
 
+}
+
+// fallbackRingClient returns a different pool client, or lookup error, per address.
+type fallbackRingClient struct {
+	fakeRingClient
+	clients    map[string]ring_client.PoolClient
+	lookupErrs map[string]error
+}
+
+func (f *fallbackRingClient) GetClientFor(addr string) (ring_client.PoolClient, error) {
+	if err := f.lookupErrs[addr]; err != nil {
+		return nil, err
+	}
+	return f.clients[addr], nil
+}
+
+func TestPatternTee_FallbackAfterOwnerPushFails(t *testing.T) {
+	cfg := Config{}
+	cfg.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+	cfg.Enabled = true
+
+	owner := &mockPoolClient{}
+	owner.On("Push", mock.Anything, mock.Anything).Return(&logproto.PushResponse{}, errors.New("owner unavailable"))
+	fallback := &mockPoolClient{}
+	fallback.On("Push", mock.Anything, mock.Anything).Return(&logproto.PushResponse{}, nil)
+
+	instances := ring.ReplicationSet{Instances: []ring.InstanceDesc{
+		{Id: "owner", Addr: "ingester0"},
+		{Id: "unreachable", Addr: "ingester1"},
+		{Id: "healthy", Addr: "ingester2"},
+	}}
+	fakeRing := &fakeRing{}
+	fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(instances, nil)
+	fakeRing.On("GetReplicationSetForOperation", mock.Anything).Return(ring.ReplicationSet{Instances: instances.Instances[1:]}, nil)
+
+	ringClient := &fallbackRingClient{
+		fakeRingClient: fakeRingClient{ring: fakeRing},
+		clients:        map[string]ring_client.PoolClient{"ingester0": owner, "ingester2": fallback},
+		// A failed client lookup must not be used: its client is nil.
+		lookupErrs: map[string]error{"ingester1": errors.New("no client")},
+	}
+
+	tee, err := NewTeeService(cfg, &fakeLimits{metricAggregationEnabled: true}, ringClient,
+		runtime.DefaultTenantConfigs(), "test", nil, log.NewNopLogger())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	require.NoError(t, tee.Start(ctx))
+
+	tee.Duplicate(ctx, "test-tenant", []distributor.KeyedStream{
+		{HashKey: 123, Stream: *logproto.FromStream(push.Stream{
+			Labels:  `{foo="bar"}`,
+			Entries: []push.Entry{{Timestamp: time.Now(), Line: "foo"}},
+		})},
+	}, nil)
+
+	cancel()
+	tee.WaitUntilDone()
+
+	owner.AssertNumberOfCalls(t, "Push", 1)
+	// The request reaches the first fallback whose client lookup succeeds.
+	fallback.AssertNumberOfCalls(t, "Push", 1)
+	require.Len(t, fallback.req.Streams, 1)
 }
