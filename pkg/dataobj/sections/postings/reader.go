@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -18,6 +19,17 @@ import (
 )
 
 var tracer = otel.Tracer("pkg/dataobj/sections/postings")
+
+// RowReaderStatsTracker is the type of [ReaderOptions.StatsTracker].
+type RowReaderStatsTracker = dataset.RowReaderStatsTracker
+
+// NewOnPagesDownloadedFunc returns a stats tracker for
+// [ReaderOptions.StatsTracker]. It calls fn with the compressed and the
+// uncompressed size of each batch of pages that the reader downloads. It
+// returns nil if fn is nil.
+func NewOnPagesDownloadedFunc(fn func(compressedBytes, uncompressedBytes int64)) RowReaderStatsTracker {
+	return dataset.NewOnPagesDownloadedFunc(fn)
+}
 
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
@@ -85,7 +97,7 @@ type Reader struct {
 	schema *arrow.Schema
 
 	ready bool
-	inner *columnar.ReaderAdapter
+	inner *dataset.RowReader
 
 	alloc *memoryv2.Allocator
 
@@ -139,10 +151,17 @@ func (r *Reader) Open(ctx context.Context) error {
 	return nil
 }
 
-// Read reads up to batchSize rows from the section. At end of section returns
-// (nil, io.EOF). May return a non-nil batch with io.EOF — callers should
-// process the batch before checking the error. Returned batches must be
-// released by the caller after use.
+// Read reads up to batchSize rows from the section. Read returns an error if
+// batchSize is not positive.
+//
+// Read skips the rows that fail the predicates. A batch with a nil error has at
+// least one row. A batch with fewer than batchSize rows does not mean that the
+// section ended. At the end of the section, Read returns an empty batch and
+// io.EOF.
+//
+// A batch that comes with an error has no rows. Read never returns a nil batch
+// with io.EOF. It can return a nil batch with another error. The caller must
+// release every returned batch.
 func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
@@ -156,11 +175,12 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 
 	defer r.alloc.Reclaim()
 
-	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
+	rb, readErr := r.inner.ReadRecordBatch(ctx, r.alloc, batchSize)
 	result, err := arrowconv.ToRecordBatch(rb, r.schema)
 	if err != nil {
 		return nil, fmt.Errorf("convert columnar.RecordBatch to arrow.RecordBatch: %w", err)
 	}
+
 	return result, readErr
 }
 
@@ -177,7 +197,7 @@ func (r *Reader) init(ctx context.Context) error {
 
 	// Compose the dataset from the projected columns plus any additional
 	// columns referenced only by predicates.
-	cols := appendMissingColumns(r.opts.Columns, predicateColumns(r.opts.Predicates))
+	cols := withMissingColumns(r.opts.Columns, predicateColumns(r.opts.Predicates))
 	innerSection := cols[0].Section.inner
 	innerColumns := make([]*columnar.Column, len(cols))
 	for i, c := range cols {
@@ -201,15 +221,18 @@ func (r *Reader) init(ctx context.Context) error {
 		return fmt.Errorf("mapping predicates: %w", err)
 	}
 
+	// Project only the first len(r.opts.Columns) columns of the dataset, so a
+	// batch has one array for each field of the schema. [dataset.RowReader] reads
+	// the other columns only for the predicates.
 	innerOptions := dataset.RowReaderOptions{
 		Dataset:           dset,
-		ProjectedColumns:  dset.Columns(),
+		ProjectedColumns:  dset.Columns()[:len(r.opts.Columns)],
 		Predicates:        preds,
 		PrefetchAllOnOpen: true,
 		StatsTracker:      r.opts.StatsTracker,
 	}
 	if r.inner == nil {
-		r.inner = columnar.NewReaderAdapter(innerOptions)
+		r.inner = dataset.NewRowReader(innerOptions)
 	} else {
 		r.inner.Reset(innerOptions)
 	}
@@ -221,19 +244,25 @@ func (r *Reader) init(ctx context.Context) error {
 	return nil
 }
 
-// appendMissingColumns appends columns from src to dst that are not already
-// present, de-duplicating by pointer identity.
-func appendMissingColumns(dst, src []*Column) []*Column {
-	exists := make(map[*Column]struct{}, len(dst))
-	for _, col := range dst {
+// withMissingColumns returns the columns of base followed by the columns of src
+// that base does not hold. It compares columns by pointer. It does not modify
+// base.
+func withMissingColumns(base, src []*Column) []*Column {
+	exists := make(map[*Column]struct{}, len(base))
+	for _, col := range base {
 		exists[col] = struct{}{}
 	}
+
+	// A caller can pass a prefix of [Section.Columns]. The array of that slice
+	// belongs to the section. An append in place would overwrite the columns
+	// after the prefix.
+	out := slices.Clone(base)
 	for _, col := range src {
 		if _, ok := exists[col]; !ok {
-			dst = append(dst, col)
+			out = append(out, col)
 		}
 	}
-	return dst
+	return out
 }
 
 // Close closes the Reader and releases any resources it holds.

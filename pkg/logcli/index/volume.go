@@ -26,6 +26,9 @@ func do(q *volume.Query, rangeQuery bool, c client.Client, out output.LogOutput,
 	}
 
 	resultsPrinter := print.NewQueryResultPrinter(nil, nil, q.Quiet, 0, false, false)
+	if q.ShowWarnings {
+		resultsPrinter.PrintWarnings(resp.Warnings)
+	}
 
 	if statistics {
 		resultsPrinter.PrintStats(resp.Data.Statistics)

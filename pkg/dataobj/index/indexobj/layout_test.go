@@ -154,7 +154,7 @@ func TestBuilder_SetLayout(t *testing.T) {
 	ts := time.Unix(10, 0).UTC()
 	newBuilder := func(t *testing.T) *Builder {
 		t.Helper()
-		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil))
+		b, err := NewBuilder(testTenant, testBuilderConfig, nil, NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 		return b
 	}

@@ -10,8 +10,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -19,8 +21,12 @@ import (
 type WorkerParams struct {
 	Config WorkerConfig
 
-	Bucket       objstore.Bucket
-	DataBucket   objstore.Bucket // unprefixed bucket for reading source log objects; nil falls back to Bucket
+	// IndexBucket is the index storage. It is prefixed with
+	// metastore.IndexStoragePrefix and holds the ToCs and the index objects.
+	IndexBucket objstore.Bucket
+	// DataBucket is the root of the data object storage. It holds the log
+	// objects.
+	DataBucket   objstore.Bucket
 	ScratchStore scratch.Store
 
 	Logger     log.Logger
@@ -28,6 +34,8 @@ type WorkerParams struct {
 
 	// IndexobjCfg controls index object construction parameters for compaction.
 	IndexobjCfg logsobj.BuilderBaseConfig
+	// TenantOverrides provides the per-tenant settings of compacted index objects.
+	TenantOverrides executor.TenantOverrides
 	// LogsobjCfg controls log object construction parameters for compaction.
 	LogsobjCfg logsobj.BuilderBaseConfig
 }
@@ -46,8 +54,14 @@ type Worker struct {
 // Config.Validate() so that planner-only deployments (which keep the
 // worker fields at their defaults) validate cleanly.
 func NewWorker(params WorkerParams) (*Worker, error) {
-	if params.Bucket == nil {
-		return nil, errors.New("dataobj compaction worker: bucket is required")
+	if params.IndexBucket == nil {
+		return nil, errors.New("dataobj compaction worker: index bucket is required")
+	}
+	if params.DataBucket == nil {
+		return nil, errors.New("dataobj compaction worker: data bucket is required")
+	}
+	if params.TenantOverrides == nil {
+		return nil, errors.New("dataobj compaction worker: tenant overrides are required")
 	}
 	if params.ScratchStore == nil {
 		return nil, errors.New("dataobj compaction worker: scratch store is required")
@@ -83,7 +97,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 
 	inner, err := engine.NewWorker(engine.WorkerParams{
 		Logger:       log.With(logger, "component", "dataobj-compaction-worker"),
-		Bucket:       params.Bucket,
+		IndexBucket:  params.IndexBucket,
 		DataBucket:   params.DataBucket,
 		ScratchStore: params.ScratchStore,
 		Config: engine.WorkerConfig{
@@ -91,12 +105,14 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 			SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 			SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 		},
-		AdvertiseAddr:       advertiseAddr,
-		Endpoint:            params.Config.Endpoint,
-		IndexobjCfg:         params.IndexobjCfg,
-		LogsobjCfg:          params.LogsobjCfg,
-		IndexMergeObserver:  wm,
-		NewLogMergeObserver: wm.logMergeObserver,
+		AdvertiseAddr:        advertiseAddr,
+		Endpoint:             params.Config.Endpoint,
+		IndexobjCfg:          params.IndexobjCfg,
+		TenantOverrides:      params.TenantOverrides,
+		LogsobjCfg:           params.LogsobjCfg,
+		IndexMergeObserver:   wm,
+		NewLogMergeObserver:  wm.logMergeObserver,
+		DeletionSweepMetrics: deletion.NewSweepMetrics(registerer),
 	}, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("dataobj compaction worker: construct engine worker: %w", err)

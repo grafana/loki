@@ -40,22 +40,13 @@ func (c *Context) executeLogMerge(node *physical.LogMerge) Pipeline {
 	})
 }
 
-// dataObjectBucket returns the bucket for reading source log objects and writing
-// compacted log objects. Both live at the unprefixed dataobj root (the objects/
-// namespace), not under the index-storage prefix that c.bucket carries, so it
-// prefers dataBucket and falls back to bucket when dataBucket is unset (e.g.
-// tests that share a single bucket).
-func (c *Context) dataObjectBucket() objstore.Bucket {
-	if c.dataBucket != nil {
-		return c.dataBucket
-	}
-	return c.bucket
-}
-
 func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge) ([]v2.ResultArtifact, error) {
 	start := time.Now()
-	if c.bucket == nil {
-		return nil, errors.New("no object store bucket configured")
+	if c.indexBucket == nil {
+		return nil, errors.New("LogMerge: no index bucket configured")
+	}
+	if c.dataBucket == nil {
+		return nil, errors.New("LogMerge: no data object bucket configured")
 	}
 
 	inputs, err := c.prepareLogMergeInputs(ctx, node)
@@ -67,7 +58,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 		return nil, err
 	}
 
-	indexBuilder, err := indexobj.NewBuilder(node.Tenant, c.indexobjCfg, c.scratchStore, indexobj.NewBuilderMetrics(nil))
+	indexBuilder, err := indexobj.NewBuilder(node.Tenant, c.indexobjCfg, c.scratchStore, indexobj.NewBuilderMetrics(nil), c.tenantOverrides.DataObjBloomDenyList(node.Tenant))
 	if err != nil {
 		return nil, fmt.Errorf("creating index builder: %w", err)
 	}
@@ -93,7 +84,7 @@ func (c *Context) doLogObjectMerge(ctx context.Context, node *physical.LogMerge)
 	)
 	batchRecords := 1000
 	observeBatch := func() {
-		c.logMergeObserver.ObserveLogMergeInputBytes(inputBytesBatch)
+		c.logMergeObserver.ObserveLogMergeInputBytesUncompressed(inputBytesBatch)
 		inputBytesTotal += inputBytesBatch
 	}
 	for res := range merged {
@@ -230,7 +221,6 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 			set[sec.SectionIndex] = struct{}{}
 		}
 	}
-	srcBucket := c.dataObjectBucket()
 	keyRange, err := sortPrefixRange(node.KeyRange)
 	if err != nil {
 		return nil, fmt.Errorf("invalid LogMerge task: %w", err)
@@ -240,7 +230,7 @@ func (c *Context) collectLogSources(ctx context.Context, node *physical.LogMerge
 	sources := make([]*logSource, 0, len(paths))
 	for _, path := range paths {
 		want := wanted[path]
-		obj, err := dataobj.FromBucket(ctx, srcBucket, path, 1<<20) // 1MB
+		obj, err := dataobj.FromBucket(ctx, c.dataBucket, path, 1<<20) // 1MB
 		if err != nil {
 			return nil, fmt.Errorf("opening object %q: %w", path, err)
 		}
@@ -431,6 +421,9 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 		index int64
 	}
 	seen := make(map[sectionID]struct{})
+	tracker := sortmerge.NewOnPagesDownloadedFunc(func(compressedBytes, _ int64) {
+		c.logMergeObserver.ObserveLogMergeInputBytesCompressed(compressedBytes)
+	})
 	for _, ref := range node.Runs {
 		var run sortmerge.Run
 		for _, section := range ref.Sections {
@@ -455,7 +448,12 @@ func (c *Context) prepareLogMergeInputs(ctx context.Context, node *physical.LogM
 			if len(source.streams) == 0 && len(source.droppedStreamIDs) > 0 {
 				continue
 			}
-			run = append(run, sortmerge.RemappedSection{Section: sec, Remap: source.remap, DropStreamIDs: source.droppedStreamIDs})
+			run = append(run, sortmerge.RemappedSection{
+				Section:       sec,
+				Remap:         source.remap,
+				DropStreamIDs: source.droppedStreamIDs,
+				StatsTracker:  tracker,
+			})
 		}
 		if len(run) > 0 {
 			inputs.runs = append(inputs.runs, run)
@@ -484,8 +482,8 @@ type logObjectWriter struct {
 	stats logMergeStats
 }
 
-// fixedLayout gives every tenant the same layout, so the output builder
-// writes the layout of the source objects instead of the tenant overrides.
+// fixedLayout gives the tenant the layout of the source objects, so the output
+// builder does not use the tenant overrides.
 type fixedLayout struct{ layout streams.Layout }
 
 func (l fixedLayout) SortSchemaLabels(string) []string { return l.layout.SchemaLabels() }
@@ -516,7 +514,7 @@ func (w *logObjectWriter) startNewObject() error {
 	overrides := fixedLayout{layout: w.layout}
 
 	sizeLeveled := dataobj.WithSizeLeveledCompaction(dataobj.SizeLeveledCompaction{Level: w.node.OutputLevel})
-	builder, err := logsobj.NewBuilder(cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides, sizeLeveled)
+	builder, err := logsobj.NewBuilder(w.node.Tenant, cfg, w.c.scratchStore, w.builderMetrics, w.c.logger, overrides, sizeLeveled)
 	if err != nil {
 		return err
 	}
@@ -544,7 +542,7 @@ func (w *logObjectWriter) add(ctx context.Context, rec logs.Record) error {
 
 	// There's no equivalent for ingestion time during compaction, so use the current time.
 	ingestionTime := time.Now()
-	err := w.logsBuilder.AppendRecord(w.node.Tenant, gs.Labels, rec, ingestionTime)
+	err := w.logsBuilder.AppendRecord(gs.Labels, rec, ingestionTime)
 	if err != nil {
 		return err
 	}

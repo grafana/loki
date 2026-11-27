@@ -67,6 +67,10 @@ type Compressor struct {
 	// This allows us to quickly reset the table for reuse,
 	// without having to zero everything.
 	inUse [htSize / 32]uint32
+
+	// Dictionary state, used only by CompressBlockWithDict (see block_dict.go).
+	dict     []byte
+	dictData *dictData
 }
 
 // Get returns the position of a presumptive match for the hash h.

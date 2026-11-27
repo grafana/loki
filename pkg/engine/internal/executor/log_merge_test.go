@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/facette/natsort"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/labels"
@@ -26,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
@@ -106,30 +109,39 @@ func buildMultiSectionSourceLogObject(t *testing.T, bucket objstore.Bucket, path
 func buildSourceLogObjectWithConfig(t testing.TB, bucket objstore.Bucket, path string, cfg logsobj.BuilderBaseConfig, shardLayout streams.ShardLayout, sortSchema []string, byTenant map[string][]testStream) {
 	t.Helper()
 
-	b, err := logsobj.NewBuilder(cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides{sortSchema: sortSchema, shardLayout: shardLayout})
-	require.NoError(t, err)
+	// A logs builder holds one tenant, so the helper builds one object for each
+	// tenant and merges them. The merged object lists the streams sections of
+	// all tenants first, then their logs sections, in natural tenant order.
+	tenants := slices.Collect(maps.Keys(byTenant))
+	natsort.Sort(tenants)
 
-	for tenant, streamSet := range byTenant {
-		for _, s := range streamSet {
+	var perTenant []*dataobj.Object
+	for _, tenant := range tenants {
+		b, err := logsobj.NewBuilder(tenant, cfg, scratch.NewMemory(), logsobj.NewBuilderMetrics(), log.NewNopLogger(), sortSchemaOverrides{sortSchema: sortSchema, shardLayout: shardLayout})
+		require.NoError(t, err)
+
+		for _, s := range byTenant[tenant] {
 			require.NotEmpty(t, s.entries, "test stream must have at least one entry")
-			require.NoError(t, b.Append(tenant, logproto.Stream{
+			require.NoError(t, b.Append(logproto.Stream{
 				Labels:  s.labels,
 				Entries: s.entries,
 			}, s.entries[0].Timestamp))
 		}
+
+		sorted, sortedCloser, err := b.FlushAndSort(t.Context())
+		require.NoError(t, err)
+		defer sortedCloser.Close()
+		perTenant = append(perTenant, sorted)
 	}
 
-	// FlushAndSort sorts the objects of one tenant. An object of several
-	// tenants, which older builders wrote, is only flushed.
-	flush := b.FlushAndSort
-	if len(byTenant) > 1 {
-		flush = func(context.Context) (*dataobj.Object, io.Closer, error) { return b.Flush() }
+	if len(perTenant) == 1 {
+		require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, perTenant[0]))
+		return
 	}
-	sorted, sortedCloser, err := flush(t.Context())
-	require.NoError(t, err)
-	defer sortedCloser.Close()
 
-	require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, sorted))
+	merged, mergedCloser := fixtures.MergeObjects(t, perTenant...)
+	defer mergedCloser.Close()
+	require.NoError(t, uploadObjectToBucket(t.Context(), bucket, path, merged))
 }
 
 // sourceLogRuns gives each object its own run; overlapping objects cannot be
@@ -216,15 +228,16 @@ func TestCollectLogSources_ExcludesOtherTenants(t *testing.T) {
 
 	// One multi-tenant object: only tenant T's sections should be collected.
 	buildSourceLogObject(t, bucket, "multi", sortSchema, map[string][]testStream{
-		tenant:  {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
-		"other": {{labels: `{app="z"}`, entries: linesAt(base, 3)}},
+		tenant:    {{labels: `{app="a"}`, entries: linesAt(base, 3)}},
+		"A-other": {{labels: `{app="z"}`, entries: linesAt(base, 3)}},
 	})
 
-	// Reference tenant T's actual logs section index. Sections are ordered by
-	// natsorted tenant name, so "other" may precede "T"; a task's refs always
-	// name the tenant's own section indices, never another tenant's.
+	// Reference the logs section index of tenant T. Sections are ordered by
+	// natsorted tenant name, so the logs section of "A-other" comes first on
+	// purpose and T's section has index 1. A task names the section indexes of
+	// its tenant in the whole object, not indexes within the tenant.
 	tIdxs := logsSectionIndexesForTenant(ctx, t, bucket, "multi", tenant)
-	require.NotEmpty(t, tIdxs)
+	require.Equal(t, []int{1}, tIdxs, "the logs section of the other tenant must come first")
 	refs := make([]*compactionv2pb.SectionRef, 0, len(tIdxs))
 	for _, idx := range tIdxs {
 		refs = append(refs, &compactionv2pb.SectionRef{ObjectPath: "multi", SectionIndex: int64(idx)})
@@ -608,16 +621,21 @@ func TestDoLogObjectMerge_DeduplicatesConflictingSourceStreamOrder(t *testing.T)
 }
 
 type recordingLogMergeObserver struct {
-	stats      []LogMergeObservedStats
-	inputBytes []int64
+	stats                []LogMergeObservedStats
+	inputBytes           []int64
+	compressedInputBytes []int64
 }
 
 func (o *recordingLogMergeObserver) ObserveLogMerge(_ string, stats LogMergeObservedStats, _ time.Duration) {
 	o.stats = append(o.stats, stats)
 }
 
-func (o *recordingLogMergeObserver) ObserveLogMergeInputBytes(bytes int64) {
+func (o *recordingLogMergeObserver) ObserveLogMergeInputBytesUncompressed(bytes int64) {
 	o.inputBytes = append(o.inputBytes, bytes)
+}
+
+func (o *recordingLogMergeObserver) ObserveLogMergeInputBytesCompressed(bytes int64) {
+	o.compressedInputBytes = append(o.compressedInputBytes, bytes)
 }
 
 func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
@@ -657,6 +675,10 @@ func TestDoLogObjectMerge_ReportsInputBytesAndDuplicates(t *testing.T) {
 	require.Equal(t, logMergeOutcomeSuccess, observer.stats[0].Outcome)
 	require.Equal(t, int64(len("line1")+len("line1")+len("line22")), observer.stats[0].InputBytes)
 	require.Equal(t, 1, observer.stats[0].DuplicateRecords)
+
+	wantCompressedBytes := logsPageBytes(t, dataBucket, tenant, "objA", "objB")
+	require.Positive(t, wantCompressedBytes)
+	require.Equal(t, wantCompressedBytes, totalBytes(observer.compressedInputBytes), "the merge reads every source page")
 }
 
 func TestDoLogObjectMerge_CountsDuplicatesByStreamLabels(t *testing.T) {
@@ -1175,6 +1197,20 @@ func TestDoLogObjectMerge(t *testing.T) {
 		}
 		return got
 	}
+
+	t.Run("returns an error when the index bucket is nil", func(t *testing.T) {
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.indexBucket = nil
+		_, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant})
+		require.ErrorContains(t, err, "LogMerge: no index bucket configured")
+	})
+
+	t.Run("returns an error when the data bucket is nil", func(t *testing.T) {
+		c := newTestExecutorContext(t, objstore.NewInMemBucket())
+		c.dataBucket = nil
+		_, err := c.doLogObjectMerge(ctx, &physical.LogMerge{Tenant: tenant})
+		require.ErrorContains(t, err, "LogMerge: no data object bucket configured")
+	})
 
 	for _, buckets := range []uint32{1, 8, streams.DefaultShardBuckets, 256} {
 		t.Run(fmt.Sprintf("splits shared sections across tasks without losing or duplicating records with a shard bucket count of %d", buckets), func(t *testing.T) {
@@ -1957,7 +1993,7 @@ func TestLogObjectWriter_StartNewObject(t *testing.T) {
 		require.NoError(t, w.startNewObject())
 
 		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		require.NoError(t, w.logsBuilder.Append("T", logproto.Stream{
+		require.NoError(t, w.logsBuilder.Append(logproto.Stream{
 			Labels:  `{cluster="c1"}`,
 			Entries: []push.Entry{{Timestamp: now, Line: "line"}},
 		}, now))
@@ -2012,5 +2048,73 @@ func testLogsBuilderConfig(targetPageSize, targetSectionSize flagext.Bytes) logs
 		BufferSize:                2048 * 8,
 		SectionStripeMergeLimit:   2,
 		EstimatedCompressionRatio: 8,
+	}
+}
+
+// logsPageBytes returns the total compressed size of the pages in the logs sections of
+// tenant in the objects at paths.
+func logsPageBytes(t *testing.T, bucket objstore.Bucket, tenant string, paths ...string) int64 {
+	t.Helper()
+	var total int64
+	for _, path := range paths {
+		obj, err := dataobj.FromBucket(t.Context(), bucket, path, 0)
+		require.NoError(t, err)
+		for _, section := range obj.Sections().Filter(logs.CheckSection) {
+			if section.Tenant != tenant {
+				continue
+			}
+			opened, err := logs.Open(t.Context(), section)
+			require.NoError(t, err)
+			sectionStats, err := logs.ReadStats(t.Context(), opened)
+			require.NoError(t, err)
+			for _, column := range sectionStats.Columns {
+				for _, page := range column.Pages {
+					total += int64(page.CompressedSize)
+				}
+			}
+		}
+	}
+	return total
+}
+
+func TestDoLogObjectMerge_BloomDenyList(t *testing.T) {
+	ctx := context.Background()
+	overrides := fakeTenantOverrides{"tenant-a": {"observed_timestamp"}}
+
+	for _, tc := range []struct {
+		tenant      string
+		wantPassAll bool
+	}{
+		{tenant: "tenant-a", wantPassAll: true},
+		{tenant: "tenant-b", wantPassAll: false},
+	} {
+		t.Run("indexes the compacted objects of "+tc.tenant, func(t *testing.T) {
+			dataBucket := objstore.NewInMemBucket()
+			indexBucket := objstore.NewInMemBucket()
+			base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+			// Every line has a real value in both columns.
+			entries := linesAt(base, 2)
+			for i := range entries {
+				entries[i].StructuredMetadata = push.LabelsAdapter{
+					{Name: "observed_timestamp", Value: "1"},
+					{Name: "trace_id", Value: "1"},
+				}
+			}
+			buildSourceLogObject(t, dataBucket, "objA", []string{"label:app"}, map[string][]testStream{
+				tc.tenant: {{labels: `{app="x"}`, entries: entries}},
+			})
+
+			c := newTestExecutorContext(t, indexBucket)
+			c.dataBucket = dataBucket
+			c.tenantOverrides = overrides
+			arts, err := oneArtifact(t)(c.doLogObjectMerge(ctx, &physical.LogMerge{
+				Tenant: tc.tenant,
+				Runs:   sourceLogRuns(t, dataBucket, tc.tenant, "objA"),
+			}))
+			require.NoError(t, err)
+
+			requireBloomFilters(t, readAllPostingsRowsFromBucket(ctx, t, indexBucket, arts.Path), tc.wantPassAll)
+		})
 	}
 }

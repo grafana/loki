@@ -74,6 +74,14 @@ The following changes affect rolling back to Loki 3.x:
 
 A `logfmt` parser with label extraction expressions, for example `| logfmt foo, bar`, sets an empty label for a name that the log line does not contain. Loki used to set the empty label even when an earlier stage extracting or setting labels, for example `| json`, had already extracted a value with that name, so the empty value replaced the extracted value. Loki now keeps the value of the earlier stage.
 
+### `GET` on `/flush` and `/ingester/shutdown` can be turned off
+
+The ingester's `/flush` and `/ingester/shutdown` endpoints change its state, but they also accept `GET` requests, so a crawler or a read-only client can flush or shut down an ingester.
+The new option `-ingester.get-request-for-flush-and-shutdown-enabled` (`ingester.get_request_for_flush_and_shutdown_enabled`) controls whether these endpoints accept `GET`.
+It defaults to `true`, so the behavior doesn't change.
+Set it to `false` to accept only `POST`.
+Kubernetes `httpGet` lifecycle hooks send `GET` requests, so keep the option enabled if a `preStop` hook calls `/ingester/shutdown`.
+
 ### `max_query_bytes_read` counts the data that split metric queries read again
 
 The query-frontend splits a metric range query by time. Each split of a range aggregation, for example `count_over_time({app="foo"}[1h])`, also reads the range vector interval before it, so the splits read some data more than once. The `max_query_bytes_read` estimate now includes this data, also for the full query range that a client sends in the `X-Loki-Query-Limits-Context` header. Metric queries with a long range vector, for example `[1h]` or `[6h]`, can now exceed the limit when they did not before.
@@ -245,10 +253,19 @@ The per-tenant setting `enable_multi_variant_queries` (`-limits.enable-multi-var
 
 #### Breaking change: Limit allowed S3 storage classes
 
-Loki now rejects S3 storage classes other than `STANDARD`, `STANDARD_IA`, and `REDUCED_REDUNDANCY`, such as `GLACIER`, `DEEP_ARCHIVE`, `ONEZONE_IA`, and others.
-If you have been using such classes, you must switch to a supported class before upgrading.
+Loki now rejects S3 storage classes such as `GLACIER`, `DEEP_ARCHIVE`, `ONEZONE_IA`, and others.
+Only `STANDARD`, `STANDARD_IA`, `GLACIER_IR`, `INTELLIGENT_TIERING`, and `REDUCED_REDUNDANCY` are supported.
+If you have been using any other class, you must switch to a supported class before upgrading.
 
 `REDUCED_REDUNDANCY` is only intended for use with MinIO.
+
+{{< admonition type="note" >}}
+Grafana Labs has only tested Loki with the `STANDARD` and `STANDARD_IA` storage classes.
+`GLACIER_IR` and `INTELLIGENT_TIERING` are accepted but untested, so use them at your own risk.
+{{< /admonition >}}
+
+`GLACIER_IR` (Glacier Instant Retrieval) and `INTELLIGENT_TIERING` provide millisecond access, like `STANDARD_IA`.
+If you use `INTELLIGENT_TIERING`, don't enable the optional asynchronous Archive Access or Deep Archive Access tiers on the bucket, because Loki can't read objects in those tiers.
 
 #### Breaking change: Removal of the `row_shards` schema setting
 

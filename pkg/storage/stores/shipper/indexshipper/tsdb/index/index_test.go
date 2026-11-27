@@ -208,7 +208,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	var c []ChunkMeta
 
 	for i := 0; p.Next(); i++ {
-		_, err := ir.Series(p.At(), 0, math.MaxInt64, &l, &c)
+		_, err := ir.Series(p.At(), 0, math.MaxInt64, &l, &c, nil)
 
 		require.NoError(t, err)
 		require.Equal(t, 0, len(c))
@@ -330,7 +330,7 @@ func TestPostingsMany(t *testing.T) {
 		var lbls labels.Labels
 		var metas []ChunkMeta
 		for it.Next() {
-			_, err := ir.Series(it.At(), 0, math.MaxInt64, &lbls, &metas)
+			_, err := ir.Series(it.At(), 0, math.MaxInt64, &lbls, &metas, nil)
 			require.NoError(t, err)
 			got = append(got, lbls.Get("i"))
 		}
@@ -446,7 +446,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 			ref := gotp.At()
 
-			_, err := ir.Series(ref, 0, math.MaxInt64, &lset, &chks)
+			_, err := ir.Series(ref, 0, math.MaxInt64, &lset, &chks, nil)
 			require.NoError(t, err)
 
 			err = mi.Series(expp.At(), &explset, &expchks)
@@ -779,7 +779,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			require.Nil(t, ir.dec.chunksSample[postings.At()])
 
 			// read series so that chunk samples get built
-			_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lset, &chks)
+			_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lset, &chks, nil)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.chunkMetas, chks)

@@ -1,6 +1,7 @@
 // Package deletion finds the data objects of a tenant that no ToC can reach,
 // and records them. A later sweep compares the records to find deletion
-// candidates.
+// candidates. The sweep logs the candidates, and the caller can delete them
+// with DeleteObjects.
 package deletion
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
@@ -69,7 +71,7 @@ func (s *FileListScanner) List(ctx context.Context, tenant string, now time.Time
 
 	start := time.Now()
 	sc := &scan{bucket: s.bucket, cutoff: now.Add(-MinObjectAge)}
-	for _, root := range []string{"objects", path.Join(metastore.IndexStoragePrefix, "indexes")} {
+	for _, root := range []string{"objects", path.Join(metastore.IndexStoragePrefix, dataobj.IndexDirectory)} {
 		dir := tenantDir(root, tenant)
 		if err := sc.listDir(ctx, dir); err != nil {
 			return nil, fmt.Errorf("listing objects in %s: %w", dir, err)

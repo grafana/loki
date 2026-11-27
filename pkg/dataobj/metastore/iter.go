@@ -148,6 +148,18 @@ func forEachIndexPointer(
 						}
 						buf[rIdx].RunID = runID
 					}
+				case indexpointers.ColumnTypeRunLength:
+					values := col.(*array.Int64)
+					for rIdx := range numRows {
+						if col.IsNull(rIdx) {
+							continue
+						}
+						runLength, err := indexpointers.RunLengthFromValue(values.Value(rIdx))
+						if err != nil {
+							return fmt.Errorf("decoding index pointer %d: %w", rIdx, err)
+						}
+						buf[rIdx].RunLength = runLength
+					}
 				case indexpointers.ColumnTypeMinPostingKey:
 					if minPostingKeys != nil {
 						return fmt.Errorf("section has more than one %s column", pointerCol.Type)

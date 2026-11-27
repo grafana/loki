@@ -276,3 +276,11 @@ func (cs *ChunkStats) AddChunk(chk *ChunkMeta, from, through int64) {
 	entries := uint32(float64(chk.Entries) * factor)
 	cs.addRaw(1, kb, entries)
 }
+
+// Stats returns the number, KB and lines of the chunk entries in c.
+func (c ChunkMetas) Stats() (s ChunkStats) {
+	for _, chk := range c {
+		s.addRaw(1, chk.KB, chk.Entries)
+	}
+	return s
+}

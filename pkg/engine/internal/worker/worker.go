@@ -23,6 +23,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
@@ -37,13 +38,12 @@ type Config struct {
 	// Logger for optional log messages.
 	Logger log.Logger
 
-	// Bucket to read stored data from.
-	Bucket objstore.Bucket
+	// IndexBucket is the index storage. It is prefixed with
+	// metastore.IndexStoragePrefix and holds the ToCs and the index objects.
+	IndexBucket objstore.Bucket
 
-	// DataBucket reads source log objects during LogMerge compaction. When the
-	// compaction wiring prefixes Bucket with the index-storage prefix, source
-	// log objects (stored at the unprefixed dataobj root) must be read through
-	// this bucket. Optional; nil falls back to Bucket.
+	// DataBucket is the root of the data object storage. It holds the log
+	// objects.
 	DataBucket objstore.Bucket
 
 	// Dialer to establish connections to scheduler and remote workers.
@@ -79,6 +79,10 @@ type Config struct {
 	// IndexobjCfg is the builder config for compacted index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
+	// TenantOverrides provides the per-tenant settings of compacted index
+	// objects.
+	TenantOverrides executor.TenantOverrides
+
 	// LogsobjCfg is the builder config for compacted log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
 
@@ -92,6 +96,10 @@ type Config struct {
 	// NewLogMergeObserver returns the LogMerge observer for each thread.
 	// Optional; nil disables observation.
 	NewLogMergeObserver executor.NewLogMergeObserverFunc
+
+	// DeletionSweepMetrics is shared by the deletion sweeps of all threads.
+	// Optional. A DeletionSweep task that deletes fails if it is nil.
+	DeletionSweepMetrics *deletion.SweepMetrics
 }
 
 // Worker requests tasks from a set of [scheduler.Scheduler] instances and
@@ -137,6 +145,9 @@ func New(config Config) (*Worker, error) {
 	}
 	if config.SchedulerAddress == nil && config.SchedulerLookupAddress == "" {
 		return nil, errors.New("at least one of scheduler address or lookup address is required")
+	}
+	if config.TenantOverrides == nil {
+		return nil, errors.New("tenant overrides are required")
 	}
 	if config.BuilderMetrics == nil {
 		config.BuilderMetrics = logsobj.NewBuilderMetrics()
@@ -192,16 +203,18 @@ func (w *Worker) run(ctx context.Context) error {
 			logMergeObserver = w.config.NewLogMergeObserver(i)
 		}
 		t := &thread{
-			Logger:         log.With(w.logger, "thread", i),
-			Bucket:         w.config.Bucket,
-			DataBucket:     w.config.DataBucket,
-			ScratchStore:   w.config.ScratchStore,
-			IndexobjCfg:    w.config.IndexobjCfg,
-			LogsobjCfg:     w.config.LogsobjCfg,
-			BuilderMetrics: w.config.BuilderMetrics,
+			Logger:          log.With(w.logger, "thread", i),
+			IndexBucket:     w.config.IndexBucket,
+			DataBucket:      w.config.DataBucket,
+			ScratchStore:    w.config.ScratchStore,
+			IndexobjCfg:     w.config.IndexobjCfg,
+			TenantOverrides: w.config.TenantOverrides,
+			LogsobjCfg:      w.config.LogsobjCfg,
+			BuilderMetrics:  w.config.BuilderMetrics,
 
-			IndexMergeObserver: w.config.IndexMergeObserver,
-			LogMergeObserver:   logMergeObserver,
+			IndexMergeObserver:   w.config.IndexMergeObserver,
+			LogMergeObserver:     logMergeObserver,
+			DeletionSweepMetrics: w.config.DeletionSweepMetrics,
 
 			Metrics:    w.metrics,
 			JobManager: w.jobManager,

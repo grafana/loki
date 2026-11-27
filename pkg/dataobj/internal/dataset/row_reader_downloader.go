@@ -102,6 +102,9 @@ type rowReaderDownloader struct {
 	// It can be used to efficiently read pages from object storage in batches
 	// without downloading an entire section at once.
 	targetCompressedBytes int
+
+	// statsTracker, if set, receives the size of each downloaded batch.
+	statsTracker RowReaderStatsTracker
 }
 
 // defaultTargetDownloadedBytes is the target size in bytes of compressed pages to hold in-memory when
@@ -206,10 +209,14 @@ func (dl *rowReaderDownloader) PrimaryColumns() []Column { return dl.primary }
 func (dl *rowReaderDownloader) SecondaryColumns() []Column { return dl.secondary }
 
 // initColumnPages populates the pages of all columns in the downloader.
+//
+// If the listing fails, initColumnPages returns the error and adds no page to
+// any column. The caller can call it again.
 func (dl *rowReaderDownloader) initColumnPages(ctx context.Context) error {
-	columns := dl.allColumns
-
-	var idx int
+	// List every column before adding any page. processPages appends. A column
+	// that kept its pages after a failed listing would get them twice on the
+	// next call.
+	listed := make([]Pages, 0, len(dl.allColumns))
 
 	for result := range dl.inner.ListPages(ctx, dl.origColumns) {
 		pages, err := result.Value()
@@ -217,8 +224,11 @@ func (dl *rowReaderDownloader) initColumnPages(ctx context.Context) error {
 			return err
 		}
 
-		columns[idx].(*readerColumn).processPages(pages)
-		idx++
+		listed = append(listed, pages)
+	}
+
+	for i, pages := range listed {
+		dl.allColumns[i].(*readerColumn).processPages(pages)
 	}
 
 	return nil
@@ -269,6 +279,16 @@ func (dl *rowReaderDownloader) downloadBatch(ctx context.Context, requestor *rea
 
 		batch[i].data = data
 		i++
+	}
+
+	if dl.statsTracker != nil {
+		var compressed, uncompressed int64
+		for _, page := range batch {
+			desc := page.inner.PageDesc()
+			compressed += int64(desc.CompressedSize)
+			uncompressed += int64(desc.UncompressedSize)
+		}
+		dl.statsTracker.OnPagesDownloaded(compressed, uncompressed)
 	}
 
 	return nil

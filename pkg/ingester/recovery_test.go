@@ -406,7 +406,7 @@ func TestRecoveryRestoresRecordTimestampFromWAL(t *testing.T) {
 			for _, inst := range i.getInstances() {
 				require.NoError(t, inst.forAllStreams(context.Background(), func(s *stream) error {
 					for j := range s.chunks {
-						chunks = append(chunks, &s.chunks[j])
+						chunks = append(chunks, s.chunks[j])
 					}
 					return nil
 				}))

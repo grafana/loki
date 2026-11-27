@@ -1,6 +1,8 @@
 package print
 
 import (
+	"bytes"
+	"log"
 	"reflect"
 	"testing"
 
@@ -139,6 +141,24 @@ func Test_subtract(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPrintWarnings(t *testing.T) {
+	var logs bytes.Buffer
+	prevOutput, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(&logs)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(prevOutput)
+		log.SetFlags(prevFlags)
+	})
+
+	printer := NewQueryResultPrinter(nil, nil, true, 0, false, false)
+	printer.PrintWarnings([]string{"partial results"})
+	printer.PrintWarnings(nil)
+	printer.PrintWarnings([]string{"partial results", "series limit reached", "series limit reached"})
+
+	require.Equal(t, "Warning: partial results\nWarning: series limit reached\n", logs.String())
 }
 
 func mustParseLabels(t *testing.T, s string) loghttp.LabelSet {

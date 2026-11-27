@@ -1595,7 +1595,7 @@ func hang(ctx context.Context, _ string) error {
 func newTOCBytes(t *testing.T, tenant string, pointers ...indexpointers.IndexPointer) []byte {
 	t.Helper()
 
-	builder, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	builder, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 	for _, p := range pointers {
 		require.NoError(t, builder.AppendIndexPointer(p))

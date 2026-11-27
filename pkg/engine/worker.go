@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
@@ -31,13 +32,14 @@ type WorkerConfig struct {
 
 // WorkerParams holds parameters for constructing a new [Worker].
 type WorkerParams struct {
-	Logger log.Logger      // Logger for optional log messages.
-	Bucket objstore.Bucket // Bucket to read stored data from.
+	Logger log.Logger // Logger for optional log messages.
 
-	// DataBucket reads source log objects during LogMerge compaction. When
-	// Bucket is prefixed with the index-storage prefix (compaction wiring),
-	// source log objects live at the unprefixed dataobj root and must be read
-	// through this bucket. Optional; nil falls back to Bucket.
+	// IndexBucket is the index storage. It is prefixed with
+	// metastore.IndexStoragePrefix and holds the ToCs and the index objects.
+	IndexBucket objstore.Bucket
+
+	// DataBucket is the root of the data object storage. It holds the log
+	// objects.
 	DataBucket objstore.Bucket
 
 	Config WorkerConfig // Configuration for the worker.
@@ -56,6 +58,10 @@ type WorkerParams struct {
 	// IndexobjCfg is the builder config for compacted index objects.
 	IndexobjCfg logsobj.BuilderBaseConfig
 
+	// TenantOverrides provides the per-tenant settings of compacted index
+	// objects.
+	TenantOverrides executor.TenantOverrides
+
 	// LogsobjCfg is the builder config for compacted log objects.
 	LogsobjCfg logsobj.BuilderBaseConfig
 
@@ -66,6 +72,10 @@ type WorkerParams struct {
 	// NewLogMergeObserver returns the LogMerge observer for each worker
 	// thread. Optional; nil disables observation.
 	NewLogMergeObserver executor.NewLogMergeObserverFunc
+
+	// DeletionSweepMetrics is shared by the deletion sweeps of all worker
+	// threads. Optional. A DeletionSweep task that deletes fails if it is nil.
+	DeletionSweepMetrics *deletion.SweepMetrics
 }
 
 // Worker requests tasks from a scheduler and executes them. Task results are
@@ -99,6 +109,10 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 		return nil, errors.New("an advertise address must be provided")
 	}
 
+	if params.TenantOverrides == nil {
+		return nil, errors.New("tenant overrides must be provided")
+	}
+
 	listener := wire.NewHTTP2Listener(
 		params.AdvertiseAddr,
 		wire.WithHTTP2ListenerLogger(params.Logger),
@@ -111,9 +125,9 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 	}
 
 	inner, err := worker.New(worker.Config{
-		Logger:     params.Logger,
-		Bucket:     params.Bucket,
-		DataBucket: params.DataBucket,
+		Logger:      params.Logger,
+		IndexBucket: params.IndexBucket,
+		DataBucket:  params.DataBucket,
 
 		Dialer:   dialer,
 		Listener: listener,
@@ -123,13 +137,15 @@ func NewWorker(params WorkerParams, reg prometheus.Registerer) (*Worker, error) 
 
 		NumThreads: params.Config.WorkerThreads,
 
-		ScratchStore:   params.ScratchStore,
-		IndexobjCfg:    params.IndexobjCfg,
-		LogsobjCfg:     params.LogsobjCfg,
-		BuilderMetrics: builderMetrics,
+		ScratchStore:    params.ScratchStore,
+		IndexobjCfg:     params.IndexobjCfg,
+		TenantOverrides: params.TenantOverrides,
+		LogsobjCfg:      params.LogsobjCfg,
+		BuilderMetrics:  builderMetrics,
 
-		IndexMergeObserver:  params.IndexMergeObserver,
-		NewLogMergeObserver: params.NewLogMergeObserver,
+		IndexMergeObserver:   params.IndexMergeObserver,
+		NewLogMergeObserver:  params.NewLogMergeObserver,
+		DeletionSweepMetrics: params.DeletionSweepMetrics,
 	})
 	if err != nil {
 		return nil, err

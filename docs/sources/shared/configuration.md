@@ -1201,13 +1201,15 @@ dataobj:
     [enabled: <boolean> | default = false]
 
     # Experimental: Per-tenant-cycle cap on concurrent IndexMerge tasks
-    # dispatched by the coordinator. 0 means unlimited (one goroutine per task
-    # with no admission throttle).
+    # dispatched by the coordinator. With planner version 2, the per-tenant cap
+    # on concurrent compaction tasks of every kind. 0 means unlimited (one
+    # goroutine per task with no admission throttle).
     # CLI flag: -dataobj.compaction.max-running-compaction-tasks
     [max_running_compaction_tasks: <int> | default = 16]
 
     # Experimental: Per-tenant-cycle cap on concurrent LogMerge tasks dispatched
-    # by the coordinator. 0 means unlimited.
+    # by the coordinator. 0 means unlimited. Planner version 2 ignores this
+    # flag.
     # CLI flag: -dataobj.compaction.logs.max-running-compaction-tasks
     [logs_max_running_compaction_tasks: <int> | default = 16]
 
@@ -1307,10 +1309,21 @@ dataobj:
     # CLI flag: -dataobj.compaction.dry-run
     [dry_run: <boolean> | default = false]
 
-    # Experimental: Plan version hashed into IndexMerge output paths. Bump to
-    # invalidate previously-written outputs after a planner-algorithm change.
-    # CLI flag: -dataobj.compaction.plan-version
-    [plan_version: <int> | default = 1]
+    # Experimental: Planner version of each tenant. Planner version 1 alternates
+    # IndexMerge and LogMerge phases. Planner version 2 merges log and index
+    # pairs: each merge rewrites logs.max-runs-per-task pairs of one size level
+    # into one pair. A LogMerge runs first. An IndexMerge of its outputs follows
+    # only if the LogMerge wrote more than one index. Planner version 2 compacts
+    # only tenants with log compaction enabled. Tenants with only index
+    # compaction enabled get no compaction.
+    # CLI flag: -dataobj.compaction.planner-version
+    [planner_version: <int> | default = 1]
+
+    # Experimental: How often planner version 2 scans the windows of a tenant
+    # and plans new merges. Merges planned by earlier scans keep running between
+    # scans.
+    # CLI flag: -dataobj.compaction.rescan-interval
+    [rescan_interval: <duration> | default = 5m]
 
     scheduler:
       # Experimental: host:port the embedded compaction scheduler advertises to
@@ -1341,9 +1354,9 @@ dataobj:
       [max_concurrent_sweeps: <int> | default = 4]
 
       # Experimental: Log a summary and examples of the deletion candidates,
-      # instead of deleting them. A candidate is an object that no table of
-      # contents (ToC) file could reach in two sweeps, at least 23 hours apart.
-      # Only true is supported.
+      # instead of deleting them. If false, delete the candidates. A candidate
+      # is an object that no table of contents (ToC) file could reach in two
+      # sweeps, at least 23 hours apart.
       # CLI flag: -dataobj.compaction.deletion-sweep.dry-run
       [dry_run: <boolean> | default = true]
 
@@ -4044,6 +4057,14 @@ wal:
 # CLI flag: -ingester.shutdown-marker-path
 [shutdown_marker_path: <string> | default = ""]
 
+# Accept GET requests on the /flush and /ingester/shutdown endpoints. Both
+# endpoints change the ingester's state, so a GET request, for example from a
+# crawler or a read-only client, can flush or shut down the ingester. Set to
+# false to accept only POST requests. Kubernetes httpGet lifecycle hooks send
+# GET requests and need this option enabled.
+# CLI flag: -ingester.get-request-for-flush-and-shutdown-enabled
+[get_request_for_flush_and_shutdown_enabled: <boolean> | default = true]
+
 # Interval at which the ingester ownedStreamService checks for changes in the
 # ring to recalculate owned streams.
 # CLI flag: -ingester.owned-streams-check-interval
@@ -4708,11 +4729,19 @@ shard_streams:
 # Experimental. Whether the dataobj deletion sweep runs for the tenant. A sweep
 # finds the objects of the tenant that no table of contents (ToC) file can
 # reach. An object that two sweeps, at least 23 hours apart, both find
-# unreachable is a deletion candidate. Sweeps log a summary and examples of the
-# candidates, and delete nothing. The sweep also needs
-# -dataobj.compaction.deletion-sweep.enabled.
+# unreachable is a deletion candidate. Sweeps delete the candidates, or only log
+# them if -dataobj.compaction.deletion-sweep.dry-run is true. The sweep also
+# needs -dataobj.compaction.deletion-sweep.enabled.
 # CLI flag: -dataobj-compaction.deletion-sweep.enable
 [dataobj_deletion_sweep_enabled: <boolean> | default = false]
+
+# Experimental. Exclusive upper bound of the uncompressed size of a run that
+# dataobj log compaction writes for the tenant. Log compaction merges runs of a
+# similar size in groups. It merges a group only if the summed size of its runs
+# is below this value, and otherwise keeps the runs as they are. Units are
+# powers of 2, so 1TB is 2^40 bytes. 0 means no maximum.
+# CLI flag: -dataobj-compaction.max-logs-run-size-uncompressed-bytes
+[dataobj_compaction_max_logs_run_size_uncompressed_bytes: <int> | default = 8TB]
 
 # Deprecated: Bloom planning strategy to use in bloom creation. Can be one of:
 # 'split_keyspace_by_factor', 'split_by_series_chunks_size'
@@ -4893,6 +4922,11 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Experimental: Comma-separated names of structured metadata columns that get no
+# bloom filter in the data object index. An empty value denies no column.
+# CLI flag: -limits.dataobj-bloom-deny-list
+[dataobj_bloom_deny_list: <string> | default = "observed_timestamp"]
 ```
 
 ### local_storage_config
@@ -6410,8 +6444,10 @@ http_config:
 [signature_version: <string> | default = "v4"]
 
 # The S3 storage class which objects will use. Supported values are: STANDARD,
-# STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
-# with MinIO.
+# STANDARD_IA, GLACIER_IR, INTELLIGENT_TIERING, REDUCED_REDUNDANCY.
+# REDUCED_REDUNDANCY is only intended for use with MinIO. Grafana Labs has only
+# tested Loki with STANDARD and STANDARD_IA; use GLACIER_IR and
+# INTELLIGENT_TIERING at your own risk.
 # CLI flag: -<prefix>.s3.storage-class
 [storage_class: <string> | default = "STANDARD"]
 
@@ -7291,8 +7327,10 @@ s3:
 
   # The S3 storage class to use, not set by default. Details can be found at
   # https://aws.amazon.com/s3/storage-classes/. Supported values are: STANDARD,
-  # STANDARD_IA, REDUCED_REDUNDANCY. REDUCED_REDUNDANCY is only intended for use
-  # with MinIO.
+  # STANDARD_IA, GLACIER_IR, INTELLIGENT_TIERING, REDUCED_REDUNDANCY.
+  # REDUCED_REDUNDANCY is only intended for use with MinIO. Grafana Labs has
+  # only tested Loki with STANDARD and STANDARD_IA; use GLACIER_IR and
+  # INTELLIGENT_TIERING at your own risk.
   # CLI flag: -<prefix>.s3.storage-class
   [storage_class: <string> | default = ""]
 

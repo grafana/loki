@@ -40,7 +40,7 @@ func TestNewProjectionPlan(t *testing.T) {
 		wantSectionPredicates []string
 
 		// wantNeedReturningLine is true when the unpushed query or a delete may read the line, so
-		// the returned records include it.
+		// the returned rows include it.
 		wantNeedReturningLine bool
 
 		// wantUnpushedExpr is the query without the line filter stages the read applies or that keep
@@ -745,7 +745,7 @@ func TestNewProjectionPlan(t *testing.T) {
 
 		for _, line := range lines {
 			for _, md := range metadata {
-				want, wantOK := wholeStream.Process(0, []byte(line), md)
+				want, wantOK := wholeStream.Process(0, logqllog.UnsafeBytes{UnsafeData: []byte(line)}, md)
 
 				var (
 					got   logqllog.ExtractedSample
@@ -760,7 +760,7 @@ func TestNewProjectionPlan(t *testing.T) {
 					if !plan.needAllMetadata {
 						stored = md.MatchLabels(true, plan.metadataNames...)
 					}
-					got, gotOK = pipelineStream.Process(0, input, stored)
+					got, gotOK = pipelineStream.Process(0, logqllog.UnsafeBytes{UnsafeData: input}, stored)
 				}
 
 				require.Equal(t, wantOK, gotOK, "line %q, metadata %s", line, md)

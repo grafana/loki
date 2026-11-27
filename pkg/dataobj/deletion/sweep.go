@@ -2,10 +2,10 @@ package deletion
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/util"
 )
@@ -36,10 +37,22 @@ const (
 	// SweepScanned means that the sweep scanned and stored a new file list.
 	SweepScanned SweepOutcome = "scanned"
 	// SweepSuperseded means that the sweep scanned, but did not store its list
-	// or log deletion candidates. The stored list was not older than the new
-	// list, or it changed or was removed during the sweep.
+	// or report deletion candidates. The stored list was not older than the
+	// new list, or it changed or was removed during the sweep.
 	SweepSuperseded SweepOutcome = "superseded"
 )
+
+// SweepResult is the result of a sweep.
+type SweepResult struct {
+	Outcome SweepOutcome
+
+	// Candidates are the paths of the deletion candidates, sorted and
+	// relative to the bucket root. Sweep fills it only when it compared its
+	// new list with a stored list and then stored the new list. The caller
+	// logs examples of them with [LogCandidates], or deletes them with
+	// [DeleteObjects].
+	Candidates []string
+}
 
 // errStoredListChanged means that the stored file list changed or was
 // removed after the sweep read its header.
@@ -57,9 +70,13 @@ var sweepWriterBackoff = backoff.Config{
 }
 
 // Sweeper finds the objects of a tenant that no ToC can reach. It stores them
-// in the file list of the tenant, at most once per MinSweepInterval. It logs
-// a summary and examples of the deletion candidates: the objects that were
-// also in the previous file list. It deletes nothing.
+// in the file list of the tenant, at most once per MinSweepInterval. Then it
+// reports the deletion candidates: the objects that were also in the previous
+// file list.
+//
+// Sweeper never deletes an object and logs no example candidates. The caller
+// decides what to do with the candidates: log examples with [LogCandidates],
+// or delete them with [DeleteObjects].
 //
 // Sweeper is safe for concurrent use.
 type Sweeper struct {
@@ -69,9 +86,11 @@ type Sweeper struct {
 	logger  log.Logger
 }
 
-// NewSweeper returns a Sweeper for bucket. bucket is the root of the data
-// object storage. It must report modification times and support conditional
-// writes. See [NewFileListScanner] and [NewFileListWriter].
+// NewSweeper returns a Sweeper for bucket.
+//
+// bucket is the root of the data object storage. It must report modification
+// times and support conditional writes. See [NewFileListScanner] and
+// [NewFileListWriter].
 func NewSweeper(bucket objstore.Bucket, logger log.Logger) (*Sweeper, error) {
 	scanner, err := NewFileListScanner(bucket, logger)
 	if err != nil {
@@ -95,8 +114,12 @@ func NewSweeper(bucket objstore.Bucket, logger log.Logger) (*Sweeper, error) {
 //  3. It compares the new list with the stored list, if one is stored. The
 //     objects in both are the deletion candidates.
 //  4. It stores the new list.
-//  5. It logs a summary and examples of the deletion candidates. It does not
-//     delete them.
+//  5. It logs a summary with the counts of the deletion candidates, and
+//     returns them in SweepResult.Candidates.
+//
+// Sweep neither logs example candidates nor deletes. The caller does that
+// with SweepResult.Candidates: [LogCandidates] for a dry run, and
+// [DeleteObjects] otherwise.
 //
 // Sweep reads the ToCs after the scan. If it read them first, an object that
 // a writer indexed during the scan would look unreachable.
@@ -109,16 +132,19 @@ func NewSweeper(bucket objstore.Bucket, logger log.Logger) (*Sweeper, error) {
 // after a ToC stops listing it. An object is a candidate only if two sweeps,
 // at least MinSweepInterval apart, find it unreachable.
 //
-// Sweep stores the new list before it logs the candidates, so it logs
-// candidates only for a list that it stored.
+// Sweep stores the new list before it returns the candidates, so it returns
+// candidates only for a list that it stored. The new list holds every
+// candidate. So a sweep at least MinSweepInterval later finds a candidate
+// that a delete missed, and returns it again.
 //
-// Sweep returns SweepSuperseded, and logs no candidates, if the stored list
-// is not older than the new list when Sweep writes. It also returns
-// SweepSuperseded if the stored list changed or was removed during the
-// sweep.
+// Sweep returns SweepSuperseded, and no candidates, if the stored list is not
+// older than the new list when Sweep writes. It also returns SweepSuperseded
+// if the stored list changed or was removed during the sweep.
 //
-// Two overlapping sweeps can still both store a list and both log
+// Two overlapping sweeps can still both store a list and both return
 // candidates. Both find their candidates from the same stored list.
+//
+// On an error, Sweep returns an empty SweepResult.
 //
 // Sweep returns an error, and does not scan, if it cannot read the header of
 // the stored list. If the header is malformed, the error wraps
@@ -135,39 +161,39 @@ func NewSweeper(bucket objstore.Bucket, logger log.Logger) (*Sweeper, error) {
 // Storing every object as unreachable would then make every object a
 // deletion candidate. No list is stored, so the next hourly sweep scans
 // again.
-func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (SweepOutcome, error) {
+func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (SweepResult, error) {
 	logger := log.With(s.logger, "tenant", tenant)
 	level.Info(logger).Log("msg", "deletion sweep running")
 	previous, err := s.readStoredHeader(ctx, tenant)
 	if err != nil {
 		logMalformedFileList(logger, tenant, err)
-		return "", err
+		return SweepResult{}, err
 	}
 	if previous != nil && now.Sub(previous.CreatedAt) < MinSweepInterval {
 		level.Debug(logger).Log("msg", "skipped deletion sweep: stored file list is recent", "created_at", previous.CreatedAt.Format(time.RFC3339))
-		return SweepSkipped, nil
+		return SweepResult{Outcome: SweepSkipped}, nil
 	}
 
 	scanned, err := s.scanner.List(ctx, tenant, now)
 	if err != nil {
-		return "", fmt.Errorf("scanning objects of tenant %q: %w", tenant, err)
+		return SweepResult{}, fmt.Errorf("scanning objects of tenant %q: %w", tenant, err)
 	}
 	reachable, reachability, err := metastore.ReachableObjects(ctx, s.bucket, tenant, sweepMaxOpenIndexes)
 	if err != nil {
-		return "", fmt.Errorf("finding reachable objects of tenant %q: %w", tenant, err)
+		return SweepResult{}, fmt.Errorf("finding reachable objects of tenant %q: %w", tenant, err)
 	}
 	unreachablePaths, err := unreachable(scanned, reachable)
 	if err != nil {
-		return "", fmt.Errorf("finding unreachable objects of tenant %q: %w", tenant, err)
+		return SweepResult{}, fmt.Errorf("finding unreachable objects of tenant %q: %w", tenant, err)
 	}
 	list := FileList{Tenant: tenant, CreatedAt: now, Paths: unreachablePaths}
 	if len(scanned) > 0 && len(list.Paths) == len(scanned) {
-		return "", fmt.Errorf("no ToC of tenant %q reaches any of the %d scanned objects, and none of the %d reachable objects is among them", tenant, len(scanned), len(reachable))
+		return SweepResult{}, fmt.Errorf("no ToC of tenant %q reaches any of the %d scanned objects, and none of the %d reachable objects is among them", tenant, len(scanned), len(reachable))
 	}
 
 	// cands is nil if the sweep did not compare with a stored list. A stored
-	// list with no shared objects gives empty candidates, which a dry run
-	// logs.
+	// list with no shared objects gives empty candidates, and the summary
+	// still logs their counts.
 	var cands *candidates
 	switch {
 	case previous == nil:
@@ -177,10 +203,10 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 		switch {
 		case errors.Is(err, errStoredListChanged):
 			level.Info(logger).Log("msg", "deletion sweep superseded: stored file list changed during the sweep")
-			return SweepSuperseded, nil
+			return SweepResult{Outcome: SweepSuperseded}, nil
 		case err != nil:
 			logMalformedFileList(logger, tenant, err)
-			return "", err
+			return SweepResult{}, err
 		}
 		cands = &found
 	}
@@ -188,22 +214,34 @@ func (s *Sweeper) Sweep(ctx context.Context, tenant string, now time.Time) (Swee
 	err = s.writer.Write(ctx, list)
 	switch {
 	case errors.Is(err, ErrSuperseded):
-		return SweepSuperseded, nil
+		return SweepResult{Outcome: SweepSuperseded}, nil
 	case err != nil:
-		return "", fmt.Errorf("storing file list of tenant %q: %w", tenant, err)
+		return SweepResult{}, fmt.Errorf("storing file list of tenant %q: %w", tenant, err)
 	}
 
-	level.Info(logger).Log(
+	summary := []any{
 		"msg", "deletion sweep stored unreachable objects",
 		"scanned", len(scanned),
-		"reachable", len(scanned)-len(list.Paths),
+		"reachable", len(scanned) - len(list.Paths),
 		"unreachable", len(list.Paths),
 		"missing_index_objects", reachability.MissingIndexObjects,
-	)
-	if cands != nil {
-		s.logDryRun(ctx, logger, previous.CreatedAt, list, *cands)
 	}
-	return SweepScanned, nil
+	if cands != nil {
+		summary = append(summary,
+			"previous_list_created_at", cands.previousCreatedAt.Format(time.RFC3339),
+			"previous_list_paths", cands.previousPaths,
+			"candidates", cands.count(),
+			"log_objects", len(cands.logObjects),
+			"index_objects", len(cands.indexObjects),
+		)
+	}
+	level.Info(logger).Log(summary...)
+	if cands == nil {
+		return SweepResult{Outcome: SweepScanned}, nil
+	}
+	paths := slices.Concat(cands.indexObjects, cands.logObjects)
+	slices.Sort(paths)
+	return SweepResult{Outcome: SweepScanned, Candidates: paths}, nil
 }
 
 // logMalformedFileList logs err at error level if it wraps
@@ -253,55 +291,8 @@ func (s *Sweeper) findStoredCandidates(ctx context.Context, previous fileListHea
 	if err != nil {
 		return candidates{}, fmt.Errorf("comparing with stored file list of tenant %q: %w", previous.Tenant, err)
 	}
+	cands.previousCreatedAt = previous.CreatedAt
 	return cands, nil
-}
-
-// logDryRun logs a summary of the deletion candidates that a sweep would
-// delete. It also logs one line for each example candidate, with its last
-// modification time and size. An operator uses these lines to check the
-// candidates by hand.
-//
-// If logDryRun cannot pick the examples or read the attributes of an
-// example, it logs the error instead. The list is already stored, so the
-// error does not fail the sweep.
-func (s *Sweeper) logDryRun(ctx context.Context, logger log.Logger, previousCreatedAt time.Time, list FileList, cands candidates) {
-	level.Info(logger).Log(
-		"msg", "deletion sweep dry run: would delete objects",
-		"previous_list_created_at", previousCreatedAt.Format(time.RFC3339),
-		"list_created_at", list.CreatedAt.Format(time.RFC3339),
-		"previous_list_paths", cands.previousPaths,
-		"list_paths", len(list.Paths),
-		"candidates", cands.count(),
-		"log_objects", len(cands.logObjects),
-		"index_objects", len(cands.indexObjects),
-	)
-
-	logObjects, indexObjects, err := cands.examples(rand.Reader)
-	if err != nil {
-		level.Warn(logger).Log("msg", "deletion sweep dry run: cannot pick example candidates", "err", err)
-		return
-	}
-	s.logExamples(ctx, logger, "index", indexObjects)
-	s.logExamples(ctx, logger, "log", logObjects)
-}
-
-// logExamples logs one line for each path, with its last modification time
-// and size.
-func (s *Sweeper) logExamples(ctx context.Context, logger log.Logger, kind string, paths []string) {
-	for _, p := range paths {
-		attrs, err := s.bucket.Attributes(ctx, p)
-		if err != nil {
-			level.Warn(logger).Log("msg", "deletion sweep dry run: candidate", "kind", kind, "path", p, "err", err)
-			continue
-		}
-		level.Info(logger).Log(
-			"msg", "deletion sweep dry run: candidate",
-			"kind", kind,
-			"path", p,
-			"last_modified", attrs.LastModified.UTC().Format(time.RFC3339),
-			"size", attrs.Size,
-		)
-	}
 }
 
 // ListCompactedTenants returns the tenants that have a directory of compacted
@@ -313,7 +304,7 @@ func (s *Sweeper) logExamples(ctx context.Context, logger log.Logger, kind strin
 // tenant ID, and logs it.
 func ListCompactedTenants(ctx context.Context, bucket objstore.BucketReader, logger log.Logger) (map[string]struct{}, error) {
 	tenants := make(map[string]struct{})
-	for _, root := range []string{"objects", path.Join(metastore.IndexStoragePrefix, "indexes")} {
+	for _, root := range []string{"objects", path.Join(metastore.IndexStoragePrefix, dataobj.IndexDirectory)} {
 		dir := tenantsDir(root)
 		err := bucket.Iter(ctx, dir, func(name string) error {
 			if !strings.HasSuffix(name, objstore.DirDelim) {

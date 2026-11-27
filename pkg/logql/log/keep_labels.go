@@ -10,7 +10,7 @@ func NewKeepLabels(labels []NamedLabelMatcher) *KeepLabels {
 	return &KeepLabels{labels: labels}
 }
 
-func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte, bool) {
+func (kl *KeepLabels) Process(_ int64, line UnsafeBytes, lbls *LabelsBuilder) (UnsafeBytes, bool) {
 	if len(kl.labels) == 0 {
 		return line, true
 	}

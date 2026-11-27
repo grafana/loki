@@ -185,6 +185,7 @@ func (c *postingsCache) cachedPostings(ctx context.Context, key string, compute 
 		return nil, err
 	}
 	refs, err := index.ExpandPostings(postings)
+	postings.Close()
 	if err != nil {
 		return nil, err
 	}

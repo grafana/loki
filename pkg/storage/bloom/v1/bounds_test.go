@@ -5,6 +5,7 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -35,6 +36,18 @@ func Test_ParseBoundsFromAddr(t *testing.T) {
 	bounds, err := ParseBoundsFromAddr("a-7d0")
 	assert.NoError(t, err)
 	assert.Equal(t, NewBounds(10, 2000), bounds)
+}
+
+func Test_ParseBoundsFromAddr_Invalid(t *testing.T) {
+	t.Parallel()
+	for _, addr := range []string{"", "a", "a7d0", "a-b-c", "zz-7d0", "a-zz"} {
+		t.Run(addr, func(t *testing.T) {
+			require.NotPanics(t, func() {
+				_, err := ParseBoundsFromAddr(addr)
+				require.Error(t, err)
+			})
+		})
+	}
 }
 
 func Test_ParseBoundsFromParts(t *testing.T) {

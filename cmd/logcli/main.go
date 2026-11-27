@@ -40,6 +40,7 @@ var (
 		Bool()
 	logLevel   = app.Flag("log.level", "Log level").Default("error").Enum("error", "warning", "info", "debug")
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
+	warnings   = app.Flag("warnings", "Show query warnings").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").
 			Default("default").
 			Short('o').
@@ -570,9 +571,8 @@ func formatLogQL(r io.Reader, w io.Writer) error {
 		return fmt.Errorf("failed to parse the query: %w", err)
 	}
 
-	fmt.Fprintf(w, "%s\n", syntax.Prettify(expr))
-
-	return nil
+	_, err = fmt.Fprintf(w, "%s\n", syntax.Prettify(expr))
+	return err
 }
 
 func newQueryClient(app *kingpin.Application) client.Client {
@@ -702,6 +702,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 			}
 		}
 		q.Quiet = *quiet
+		q.ShowWarnings = *warnings
 
 		return nil
 	})
@@ -806,6 +807,7 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 		q.End = mustParse(to, defaultEnd)
 
 		q.Quiet = *quiet
+		q.ShowWarnings = *warnings
 
 		return nil
 	})

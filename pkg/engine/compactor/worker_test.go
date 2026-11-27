@@ -33,11 +33,13 @@ func validWorkerCfg() WorkerConfig {
 // attempts DNS-SRV lookup, finds no scheduler, and shuts down cleanly.
 func TestWorker_BootShutdown(t *testing.T) {
 	w, err := NewWorker(WorkerParams{
-		Config:       validWorkerCfg(),
-		Bucket:       objstore.NewInMemBucket(),
-		ScratchStore: scratch.NewMemory(),
-		Logger:       log.NewNopLogger(),
-		Registerer:   prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          validWorkerCfg(),
+		IndexBucket:     objstore.NewInMemBucket(),
+		DataBucket:      objstore.NewInMemBucket(),
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.NoError(t, err)
 	require.NotNil(t, w)
@@ -60,18 +62,32 @@ func TestWorker_BootShutdown(t *testing.T) {
 	require.Equal(t, services.Terminated, svc.State())
 }
 
-// TestNewWorker_RequiresBucket pins the constructor invariant: the
-// worker is useless without a bucket.
-func TestNewWorker_RequiresBucket(t *testing.T) {
-	_, err := NewWorker(WorkerParams{
-		Config:       validWorkerCfg(),
-		Bucket:       nil,
-		ScratchStore: scratch.NewMemory(),
-		Logger:       log.NewNopLogger(),
-		Registerer:   prometheus.NewRegistry(),
+func TestNewWorker_RequiresBuckets(t *testing.T) {
+	newParams := func() WorkerParams {
+		return WorkerParams{
+			TenantOverrides: fakeTenantOverrides{},
+			Config:          validWorkerCfg(),
+			IndexBucket:     objstore.NewInMemBucket(),
+			DataBucket:      objstore.NewInMemBucket(),
+			ScratchStore:    scratch.NewMemory(),
+			Logger:          log.NewNopLogger(),
+			Registerer:      prometheus.NewRegistry(),
+		}
+	}
+
+	t.Run("returns an error when the index bucket is nil", func(t *testing.T) {
+		params := newParams()
+		params.IndexBucket = nil
+		_, err := NewWorker(params)
+		require.ErrorContains(t, err, "index bucket is required")
 	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "bucket")
+
+	t.Run("returns an error when the data bucket is nil", func(t *testing.T) {
+		params := newParams()
+		params.DataBucket = nil
+		_, err := NewWorker(params)
+		require.ErrorContains(t, err, "data bucket is required")
+	})
 }
 
 // TestNewWorker_RequiresSchedulerLookupAddress pins the worker-side
@@ -81,11 +97,13 @@ func TestNewWorker_RequiresSchedulerLookupAddress(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.SchedulerLookupAddress = ""
 	_, err := NewWorker(WorkerParams{
-		Config:       cfg,
-		Bucket:       objstore.NewInMemBucket(),
-		ScratchStore: scratch.NewMemory(),
-		Logger:       log.NewNopLogger(),
-		Registerer:   prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          cfg,
+		IndexBucket:     objstore.NewInMemBucket(),
+		DataBucket:      objstore.NewInMemBucket(),
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "scheduler_lookup_address",
@@ -100,11 +118,13 @@ func TestNewWorker_RequiresAdvertiseAddr(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.AdvertiseAddr = ""
 	_, err := NewWorker(WorkerParams{
-		Config:       cfg,
-		Bucket:       objstore.NewInMemBucket(),
-		ScratchStore: scratch.NewMemory(),
-		Logger:       log.NewNopLogger(),
-		Registerer:   prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          cfg,
+		IndexBucket:     objstore.NewInMemBucket(),
+		DataBucket:      objstore.NewInMemBucket(),
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "advertise_addr",
@@ -119,11 +139,13 @@ func TestNewWorker_RequiresEndpoint(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.Endpoint = ""
 	_, err := NewWorker(WorkerParams{
-		Config:       cfg,
-		Bucket:       objstore.NewInMemBucket(),
-		ScratchStore: scratch.NewMemory(),
-		Logger:       log.NewNopLogger(),
-		Registerer:   prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          cfg,
+		IndexBucket:     objstore.NewInMemBucket(),
+		DataBucket:      objstore.NewInMemBucket(),
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "endpoint",
@@ -137,13 +159,21 @@ func TestNewWorker_InvalidAdvertiseAddr(t *testing.T) {
 	cfg := validWorkerCfg()
 	cfg.AdvertiseAddr = "not-a-valid-host:port:::"
 	_, err := NewWorker(WorkerParams{
-		Config:       cfg,
-		Bucket:       objstore.NewInMemBucket(),
-		ScratchStore: scratch.NewMemory(),
-		Logger:       log.NewNopLogger(),
-		Registerer:   prometheus.NewRegistry(),
+		TenantOverrides: fakeTenantOverrides{},
+		Config:          cfg,
+		IndexBucket:     objstore.NewInMemBucket(),
+		DataBucket:      objstore.NewInMemBucket(),
+		ScratchStore:    scratch.NewMemory(),
+		Logger:          log.NewNopLogger(),
+		Registerer:      prometheus.NewRegistry(),
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "resolve worker advertise address",
 		"error must mention the resolution step for operator clarity, got: %v", err)
 }
+
+// fakeTenantOverrides is a executor tenant overrides that gives each tenant its own
+// bloom deny list. A tenant that is not in the map has an empty list.
+type fakeTenantOverrides map[string][]string
+
+func (o fakeTenantOverrides) DataObjBloomDenyList(tenant string) []string { return o[tenant] }

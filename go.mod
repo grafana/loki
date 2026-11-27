@@ -60,9 +60,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
-	github.com/grafana/dskit v0.0.0-20261118194849-a94746663b7a
-	github.com/grafana/gomemcache v0.0.0-20261112174412-3f2aa5dee9f7
-	github.com/grafana/jsonparser v0.0.0-20250909130937-5f438463be34
+	github.com/grafana/dskit v0.0.0-20261126092325-91e4d6e9ad64
+	github.com/grafana/gomemcache v0.0.0-20261125152902-0d86d0d01144
 	github.com/grafana/loki/pkg/push v0.0.0-20261021195341-fdeb199c5b0a
 	github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4
@@ -71,7 +70,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v0.0.0-20241024143830-7723fd131a64
 	github.com/json-iterator/go v1.1.12
-	github.com/klauspost/compress v1.20.4
+	github.com/klauspost/compress v1.20.5
 	github.com/klauspost/pgzip v1.3.0
 	github.com/mattn/go-ieproxy v0.0.12
 	github.com/minio/minio-go/v7 v7.4.1
@@ -79,7 +78,6 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.1-0.20231216201459-8508981c8b6c
 	github.com/moby/moby/v2 v2.0.0-beta.31
-	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee
 	github.com/ncw/swift/v2 v2.0.5
 	github.com/oklog/run v1.2.0
 	github.com/oklog/ulid/v2 v2.1.2
@@ -87,7 +85,7 @@ require (
 	github.com/parquet-go/bitpack v1.1.0
 	github.com/parquet-go/parquet-go v0.32.1
 	// github.com/pierrec/lz4 v2.0.5+incompatible
-	github.com/pierrec/lz4/v4 v4.1.33
+	github.com/pierrec/lz4/v4 v4.1.34
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_golang/exp v0.0.0-20261019101427-217707f26b14
@@ -288,6 +286,7 @@ require (
 	github.com/moby/moby/api v1.57.0 // indirect
 	github.com/moby/sys/userns v0.2.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
@@ -428,3 +427,5 @@ replace github.com/twmb/franz-go/pkg/kadm => github.com/twmb/franz-go/pkg/kadm v
 
 // See comment above for github.com/twmb/franz-go.
 replace github.com/twmb/franz-go/pkg/kmsg => github.com/twmb/franz-go/pkg/kmsg v1.15.0
+
+replace github.com/buger/jsonparser => github.com/grafana/jsonparser v0.0.0-20261127111657-0e8bf9e99bdb

@@ -38,7 +38,7 @@ The results cache is really a set of six independently configurable caches under
 
 If a per-query-type cache is enabled but its cache config is left empty, Loki falls back to the `results_cache` configuration for that query type. This means you only need to configure `results_cache` to get caching for all query types, and you only need to give a query type its own cache config if you want it to use a different Memcached, Redis, or embedded cache instance. For details of each supported request type, refer to the [Components section](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/components).
 
-The index lookup cache and the write dedupe cache were removed together with support for the legacy BoltDB index storage. For details, refer to the [upgrade guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/). TSDB, the only index type Loki now supports, doesn't use an index cache; for more information, refer to [Index Caching not required](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/#index-caching-not-required).
+The index lookup cache and the write dedupe cache were removed together with support for the legacy BoltDB index storage. For details, refer to the [upgrade guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/upgrade/). TSDB, the only index type Loki now supports, does not require an index cache for normal operation; for more information, refer to [Index caching not required](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/#index-caching-not-required).
 
 ### Chunks cache
 

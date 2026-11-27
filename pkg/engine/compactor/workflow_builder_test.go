@@ -194,18 +194,32 @@ func TestBuildLogMergePlan(t *testing.T) {
 }
 
 func TestBuildDeletionSweepPlan(t *testing.T) {
-	t.Run("returns a plan with one DeletionSweep root for the tenant", func(t *testing.T) {
-		root, err := buildDeletionSweepPlan("t1").Root()
-		require.NoError(t, err)
-		require.IsType(t, &physical.DeletionSweep{}, root)
-		require.Equal(t, "t1", root.(*physical.DeletionSweep).Tenant)
+	t.Run("returns a plan with one DeletionSweep root for the tenant that deletes only when deleteCandidates is true", func(t *testing.T) {
+		for _, deleteCandidates := range []bool{false, true} {
+			root, err := buildDeletionSweepPlan("t1", deleteCandidates).Root()
+			require.NoError(t, err)
+			require.Equal(t, &physical.DeletionSweep{NodeID: root.ID(), Tenant: "t1", Delete: deleteCandidates}, root)
+		}
 	})
 
 	t.Run("mints a fresh NodeID for every build", func(t *testing.T) {
-		n1, err := buildDeletionSweepPlan("t1").Root()
+		n1, err := buildDeletionSweepPlan("t1", false).Root()
 		require.NoError(t, err)
-		n2, err := buildDeletionSweepPlan("t1").Root()
+		n2, err := buildDeletionSweepPlan("t1", false).Root()
 		require.NoError(t, err)
 		require.NotEqual(t, n1.ID(), n2.ID())
+	})
+}
+
+func TestBuildIndexFilterPlan(t *testing.T) {
+	t.Run("returns a plan with one IndexFilter root that says its source paths are in key order", func(t *testing.T) {
+		root, err := buildIndexFilterPlan("t1", []string{"indexes/a", "indexes/b"}, []string{"logs/a"}).Root()
+		require.NoError(t, err)
+		node, ok := root.(*physical.IndexFilter)
+		require.True(t, ok, "root is %T", root)
+		require.Equal(t, "t1", node.Tenant)
+		require.Equal(t, []string{"indexes/a", "indexes/b"}, node.SourceIndexPaths)
+		require.Equal(t, []string{"logs/a"}, node.ObjectPaths)
+		require.True(t, node.SourcesInKeyOrder)
 	})
 }

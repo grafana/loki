@@ -36,7 +36,7 @@ import (
 func TestWriteEntry(t *testing.T) {
 	t.Run("appends the entry to an existing ToC", func(t *testing.T) {
 		tenantID := "test"
-		tocBuilder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		tocBuilder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 
 		err = tocBuilder.AppendIndexPointer(indexpointers.IndexPointer{Path: "testdata/metastore.obj", StartTs: unixTime(10), EndTs: unixTime(20)})
@@ -419,7 +419,7 @@ func TestTableOfContentsEntryTimeWindow(t *testing.T) {
 func TestRebuildToc(t *testing.T) {
 	t.Run("keeps every pointer of the existing ToC and adds the new entry", func(t *testing.T) {
 		tenantID := "test"
-		builder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		builder, err := indexobj.NewBuilder(tenantID, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 
 		bucket := objstore.NewInMemBucket()
@@ -449,7 +449,7 @@ func TestRebuildToc(t *testing.T) {
 	})
 
 	t.Run("returns an error when the ToC holds a row that starts at the Unix epoch", func(t *testing.T) {
-		source, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		source, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 		require.NoError(t, source.AppendIndexPointer(indexpointers.IndexPointer{Path: "indexes/a", StartTs: unixTime(0), EndTs: unixTime(10)}))
 		obj, closer, err := source.Flush()
@@ -459,7 +459,7 @@ func TestRebuildToc(t *testing.T) {
 		require.NoError(t, err)
 		defer reader.Close()
 
-		target, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		target, err := indexobj.NewBuilder("test", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 		writer := newTableOfContentsWriter(t, objstore.NewInMemBucket())
 		_, err = writer.rebuildToc(context.Background(), target, reader, tocChange{
@@ -1645,7 +1645,7 @@ func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocR
 	}
 
 	for tenant, rows := range rowsByTenant {
-		b, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		b, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 		for _, r := range rows {
 			require.NoError(t, b.AppendIndexPointer(indexpointers.IndexPointer{Path: r.Path, StartTs: time.Unix(r.StartUnix, 0).UTC(), EndTs: time.Unix(r.EndUnix, 0).UTC()}))
@@ -1665,7 +1665,7 @@ func seedToC(t *testing.T, bucket objstore.Bucket, window time.Time, rows []tocR
 // tenant does not have to match the path.
 func uploadToC(t *testing.T, bucket objstore.Bucket, path, tenant string, indexPaths ...string) {
 	t.Helper()
-	b, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	b, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 	for _, indexPath := range indexPaths {
 		require.NoError(t, b.AppendIndexPointer(indexpointers.IndexPointer{Path: indexPath, StartTs: unixTime(10), EndTs: unixTime(20)}))
@@ -1714,7 +1714,7 @@ func runPointer(path string, runID indexpointers.RunID) indexpointers.IndexPoint
 // the given pointers.
 func uploadToCPointers(t *testing.T, bucket objstore.Bucket, path, tenant string, pointers ...indexpointers.IndexPointer) {
 	t.Helper()
-	b, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+	b, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 	for _, pointer := range pointers {
 		require.NoError(t, b.AppendIndexPointer(pointer))
@@ -1766,7 +1766,7 @@ func TestForEachTocPointer(t *testing.T) {
 			{Path: "index/path-1", StartTs: time.Unix(30, 0).UTC(), EndTs: time.Unix(40, 0).UTC()},
 		}
 
-		builder, err := indexobj.NewBuilder("tenant", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		builder, err := indexobj.NewBuilder("tenant", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 		require.NoError(t, builder.AppendWatermark("topic", 3, 99))
 		for _, p := range pointers {
@@ -1788,7 +1788,7 @@ func TestForEachTocPointer(t *testing.T) {
 	})
 
 	t.Run("reads no pointers when the ToC has only a watermarks section", func(t *testing.T) {
-		builder, err := indexobj.NewBuilder("tenant", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		builder, err := indexobj.NewBuilder("tenant", DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 		require.NoError(t, builder.AppendWatermark("topic", 3, 99))
 

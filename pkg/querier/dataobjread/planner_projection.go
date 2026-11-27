@@ -22,7 +22,7 @@ import (
 // It is derived once per query and then applied per section, because whether a filter can be
 // pushed depends on the labels of the streams that section holds.
 type ProjectionPlan struct {
-	// needReturningLine reports whether the returned records should include the log line. It is
+	// needReturningLine reports whether the returned rows should include the log line. It is
 	// true when the unpushed query or a delete may read the line.
 	needReturningLine bool
 
@@ -193,7 +193,7 @@ func NewProjectionPlan(expr syntax.SampleExpr, deletes []syntax.LogSelectorExpr)
 	}
 
 	// The read applies the pushable line filters, and a filter that keeps every line needs no check.
-	// Leave them all out of the unpushed query, so they do not force the read to forward the line.
+	// Leave them all out of the unpushed query, so they do not force the read to return the line.
 	unpushed, err := syntax.WithoutPushableLineFilters(expr)
 	if err != nil {
 		return ProjectionPlan{}, err

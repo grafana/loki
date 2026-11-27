@@ -78,9 +78,9 @@ func (w *moduleService) start(serviceContext context.Context) error {
 	}
 
 	// we don't want to let this service to stop until all dependant services are stopped,
-	// so we use independent context here
+	// so preserve context values without inheriting cancellation or deadlines.
 	level.Info(w.logger).Log("msg", "starting", "module", w.name)
-	err := w.service.StartAsync(context.Background())
+	err := w.service.StartAsync(context.WithoutCancel(serviceContext))
 	if err != nil {
 		return errors.Wrapf(err, "error starting module: %s", w.name)
 	}

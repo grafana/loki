@@ -72,7 +72,10 @@ type SeriesScan interface {
 	// The caller owns the labels written to lbls: they must not alias memory the
 	// implementation later modifies or frees (such as a reused buffer or the index
 	// file), so they stay valid after later calls and after the index is closed.
-	Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error)
+	//
+	// lbls can be nil, indicating the caller only wants the chunks.
+	// If by is non-nil, only the label names it contains are decoded into lbls.
+	Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (uint64, error)
 
 	// ChunkStats returns aggregated chunk statistics for the series
 	// identified by id. lbls follows the same ownership rule as Series.

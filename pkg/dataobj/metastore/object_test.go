@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/go-kit/log"
 	dskitmetrics "github.com/grafana/dskit/metrics"
 	"github.com/grafana/dskit/services"
@@ -50,7 +51,9 @@ const (
 )
 
 var (
-	now = time.Now().UTC()
+	// now is fixed so that test data around it, such as ToC entries for now±1m,
+	// stays inside one ToC window.
+	now = time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
 	// our streams won't use any log lines, therefore leave them out of the Entry structs
 	testStreams = []logproto.Stream{
@@ -90,7 +93,7 @@ type testDataBuilder struct {
 	t      testing.TB
 	bucket objstore.Bucket
 
-	builder  *logsobj.Builder
+	builders map[string]*logsobj.Builder
 	meta     *TableOfContentsWriter
 	uploader *uploader.Uploader
 }
@@ -98,11 +101,12 @@ type testDataBuilder struct {
 // addStreamAndFlush flushes stream into its own object, records it in the
 // tenant's ToCs and returns the object's path.
 func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Stream) string {
-	err := b.builder.Append(tenant, stream, now)
+	builder := b.builderFor(tenant)
+	err := builder.Append(stream, now)
 	require.NoError(b.t, err)
 
-	timeRanges := b.builder.TimeRanges()
-	obj, closer, err := b.builder.FlushAndSort(b.t.Context())
+	timeRanges := []dataobj.TimeRange{builder.TimeRange()}
+	obj, closer, err := builder.FlushAndSort(b.t.Context())
 	require.NoError(b.t, err)
 	defer closer.Close()
 
@@ -230,7 +234,8 @@ func TestObjectMetastore_Sections_StreamMatchers(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
+	}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 	require.NoError(t, err)
 
 	for i, ts := range testStreams {
@@ -353,7 +358,8 @@ func TestObjectMetastore_Sections_PredicateMatchers(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
+	}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 	require.NoError(t, err)
 
 	observeLabelPostings(builder, "test-path", 0, 1, labels.FromStrings("app", "foo"), now.Add(-3*time.Hour), 5)
@@ -624,7 +630,8 @@ func addIndexObject(t *testing.T, bucket objstore.Bucket, lines []indexedLine) s
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
+	}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 	require.NoError(t, err)
 
 	for _, line := range lines {
@@ -1303,7 +1310,8 @@ func TestObjectMetastore_Sections_LabelsByStreamID(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
+	}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 	require.NoError(t, err)
 
 	// Stream 1: app=foo, env=prod
@@ -1430,7 +1438,8 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 		TargetSectionSize:       128,
 		BufferSize:              1024 * 1024,
 		SectionStripeMergeLimit: 2,
-	}, nil, indexobj.NewBuilderMetrics(nil))
+	}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 	require.NoError(t, err)
 
 	// Index a stream with label app=foo
@@ -1527,6 +1536,100 @@ func TestIndexSectionsReader_LabelPredicatesNotFilteredByBlooms(t *testing.T) {
 	}
 }
 
+func TestIndexSectionsReader_BloomDenyList(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), tenantID)
+
+	// Build one index with two data object sections. Both have the stream
+	// app=foo, the structured metadata column observed_timestamp with a
+	// unique value per section, and the column traceID.
+	buildIndex := func(t *testing.T, denyList []string) (*ObjectMetastore, string) {
+		t.Helper()
+		builder, err := indexobj.NewBuilder(tenantID, logsobj.BuilderBaseConfig{
+			TargetPageSize:          1024 * 1024,
+			TargetObjectSize:        10 * 1024 * 1024,
+			TargetSectionSize:       1024 * 1024,
+			BufferSize:              1024 * 1024,
+			SectionStripeMergeLimit: 2,
+		}, nil, indexobj.NewBuilderMetrics(nil),
+			denyList)
+		require.NoError(t, err)
+
+		for section, observed := range []string{"1700000000000000001", "1700000000000000002"} {
+			s := int64(section)
+			observeLabelPostings(builder, "test-path", s, 1, labels.FromStrings("app", "foo"), now.Add(-3*time.Hour), 5)
+			observeBloomPostings(t, builder, "test-path", s, 1, now.Add(-3*time.Hour), "observed_timestamp", observed)
+			observeBloomPostings(t, builder, "test-path", s, 1, now.Add(-3*time.Hour), "traceID", []string{"abcd", "efgh"}[section])
+		}
+
+		obj, closer, err := builder.Flush()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = closer.Close() })
+		return uploadIndexObject(t, obj)
+	}
+
+	sectionsFor := func(t *testing.T, mstore *ObjectMetastore, path string, predicates ...*labels.Matcher) []int64 {
+		t.Helper()
+		resp, err := mstore.IndexSectionsReader(ctx, IndexSectionsReaderRequest{
+			Indexes: []IndexEntry{{Path: path}},
+			SectionsRequest: SectionsRequest{
+				Start:      now.Add(-4 * time.Hour),
+				End:        now.Add(time.Hour),
+				Matchers:   []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "app", "foo")},
+				Predicates: predicates,
+			},
+		})
+		require.NoError(t, err)
+		t.Cleanup(resp.Reader.Close)
+		require.NoError(t, resp.Reader.Open(ctx))
+
+		var sections []int64
+		for {
+			rec, err := resp.Reader.Read(ctx)
+			if err != nil {
+				break
+			}
+			col := rec.Schema().FieldIndices("section.int64")
+			require.Len(t, col, 1)
+			ids := rec.Column(col[0]).(*array.Int64)
+			for i := 0; i < int(rec.NumRows()); i++ {
+				sections = append(sections, ids.Value(i))
+			}
+		}
+		slices.Sort(sections)
+		return slices.Compact(sections)
+	}
+
+	observed := func(value string) *labels.Matcher {
+		return labels.MustNewMatcher(labels.MatchEqual, "observed_timestamp", value)
+	}
+	traceID := func(value string) *labels.Matcher {
+		return labels.MustNewMatcher(labels.MatchEqual, "traceID", value)
+	}
+
+	t.Run("does not prune sections on a denied column, so no matching line is lost", func(t *testing.T) {
+		mstore, path := buildIndex(t, []string{"observed_timestamp"})
+
+		require.Equal(t, []int64{0}, sectionsFor(t, mstore, path, traceID("abcd")), "pruning on other columns must stay on")
+		require.Equal(t, []int64{0, 1}, sectionsFor(t, mstore, path, observed("1700000000000000001")))
+		require.Equal(t, []int64{0, 1}, sectionsFor(t, mstore, path, observed("1700000000000000002")))
+		require.Equal(t, []int64{0, 1}, sectionsFor(t, mstore, path, observed("1700000000000000003")))
+	})
+
+	t.Run("keeps pruning other columns while a denied column is in the same query", func(t *testing.T) {
+		mstore, path := buildIndex(t, []string{"observed_timestamp"})
+
+		require.Equal(t, []int64{1}, sectionsFor(t, mstore, path, observed("1700000000000000001"), traceID("efgh")))
+		require.Empty(t, sectionsFor(t, mstore, path, observed("1700000000000000001"), traceID("not-in-bloom")))
+	})
+
+	t.Run("prunes on the column when the deny list is empty", func(t *testing.T) {
+		mstore, path := buildIndex(t, nil)
+
+		require.Equal(t, []int64{0}, sectionsFor(t, mstore, path, observed("1700000000000000001")))
+		require.Empty(t, sectionsFor(t, mstore, path, observed("1700000000000000003")))
+	})
+}
+
 func TestNewSectionDescriptor(t *testing.T) {
 	t.Run("copies every field of the row and removes duplicate ambiguous names", func(t *testing.T) {
 		start, end := now.Add(-2*time.Hour), now.Add(-1*time.Hour)
@@ -1582,17 +1685,26 @@ func TestDataobjSectionDescriptor_Merge(t *testing.T) {
 	})
 }
 
-func newTestDataBuilder(t testing.TB) *testDataBuilder {
-	bucket := objstore.NewInMemBucket()
-
-	builder, err := logsobj.NewBuilder(logsobj.BuilderBaseConfig{
+// builderFor returns the logs builder of tenant. A logs builder holds one
+// tenant, so the test data builder keeps one for each tenant.
+func (b *testDataBuilder) builderFor(tenant string) *logsobj.Builder {
+	if builder, ok := b.builders[tenant]; ok {
+		return builder
+	}
+	builder, err := logsobj.NewBuilder(tenant, logsobj.BuilderBaseConfig{
 		TargetPageSize:          1024 * 1024,      // 1MB
 		TargetObjectSize:        10 * 1024 * 1024, // 10MB
 		TargetSectionSize:       1024 * 1024,      // 1MB
 		BufferSize:              1024 * 1024,      // 1MB
 		SectionStripeMergeLimit: 2,
 	}, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), logsobj.NoTenantOverrides{})
-	require.NoError(t, err)
+	require.NoError(b.t, err)
+	b.builders[tenant] = builder
+	return builder
+}
+
+func newTestDataBuilder(t testing.TB) *testDataBuilder {
+	bucket := objstore.NewInMemBucket()
 
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
@@ -1606,7 +1718,7 @@ func newTestDataBuilder(t testing.TB) *testDataBuilder {
 	return &testDataBuilder{
 		t:        t,
 		bucket:   bucket,
-		builder:  builder,
+		builders: make(map[string]*logsobj.Builder),
 		meta:     meta,
 		uploader: uploader,
 	}

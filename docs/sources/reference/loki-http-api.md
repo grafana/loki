@@ -178,6 +178,10 @@ The API accepts several formats for timestamps:
 - A floating point number is a Unix timestamp with fractions of a second.
 - A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
+Query endpoints accept times from `1970-01-01T00:00:00Z` to `2262-01-01T00:00:00Z`, and return a 400 error for a time outside this range.
+A floating point number is always a number of seconds.
+For example, a time in milliseconds with a fraction, such as `1700000000000.5`, is out of range.
+
 {{< admonition type="note" >}}
 When using `/api/v1/push`, you must send the timestamp as a string and not a number, otherwise the endpoint will return a 400 error.
 {{< /admonition >}}
@@ -1360,6 +1364,11 @@ waiting for it to complete.
   If omitted, the index is not flushed and the request returns as soon as the flushes are queued.
   Requests without `flush_index` are never rejected because of an index flush in progress.
 
+Loki also accepts `GET` on this endpoint, unless you set
+`-ingester.get-request-for-flush-and-shutdown-enabled` to `false`, in which case
+`GET` returns `405 Method Not Allowed`.
+Use `POST`, because the request changes the ingester's state.
+
 In microservices mode, the `/flush` endpoint is exposed by the ingester.
 
 ## Flush in-memory chunks for a tenant (experimental)
@@ -1490,7 +1499,7 @@ This API endpoint is usually used by Kubernetes-specific scale down automations 
 ## Flush in-memory chunks and shut down
 
 ```bash
-GET, POST /ingester/shutdown
+POST /ingester/shutdown
 ```
 
 `/ingester/shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
@@ -1510,6 +1519,11 @@ It accepts three URL query parameters `flush`, `delete_ring_tokens`, and `termin
 
 This handler, in contrast to the deprecated `/ingester/flush_shutdown` handler, terminates the Loki process by default.
 This behaviour can be changed by setting the `terminate` query parameter to `false`.
+
+Loki also accepts `GET` on this endpoint, unless you set
+`-ingester.get-request-for-flush-and-shutdown-enabled` to `false`, in which case
+`GET` returns `405 Method Not Allowed`.
+Use `POST`, because the request changes the ingester's state.
 
 In microservices mode, the `/ingester/shutdown` endpoint is exposed by the ingester.
 
@@ -1712,7 +1726,7 @@ PUT /loki/api/v1/delete
 Create a new delete request for the authenticated tenant.
 The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
-Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
+Log entry deletion requires the TSDB index store.
 
 Query parameters:
 
@@ -1752,7 +1766,7 @@ GET /loki/api/v1/delete
 List the existing delete requests for the authenticated tenant.
 The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
-Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
+Log entry deletion requires the TSDB index store.
 
 List the existing delete requests using the following API:
 
@@ -1794,9 +1808,9 @@ DELETE /loki/api/v1/delete
 Remove a delete request for the authenticated tenant.
 The [log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) documentation has configuration details.
 
-Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
+Loki allows cancellation of a delete request without the `force` query parameter only while the request is unprocessed and within the `delete_request_cancel_period` set by the YAML configuration or the equivalent command line option when invoking Loki. After that period elapses, or once the request has started or partially completed processing, pass the `force=true` query parameter to the API to cancel it. A delete request that has already been fully processed can no longer be canceled, even with `force=true`.
 
-Log entry deletion is supported when the TSDB index is configured for the index store. It is also supported on the deprecated BoltDB Shipper index, but BoltDB Shipper is being removed in Loki 4.0, so new deployments should use TSDB.
+Log entry deletion requires the TSDB index store.
 
 Cancel a delete request using this compactor endpoint:
 
@@ -1807,10 +1821,7 @@ DELETE /loki/api/v1/delete
 Query parameters:
 
 - `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
-- `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled.
-  {{< admonition type="note" >}}
-  some data from the request may still be deleted and the deleted request will be listed as 'processed'.
-  {{< /admonition >}}
+- `force=<boolean>`: When true, allows cancellation of a delete request that is past the `delete_request_cancel_period` or that has already started processing. The canceled request is removed from the store and will no longer appear in list results. However, any data that the compactor already deleted while processing earlier shards of the request is not restored.
 
 A 204 response indicates success.
 

@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 )
 
 // errInvalidFileMetadata means the ranges are not the file metadata group.
@@ -145,4 +146,17 @@ type prefetchedRangesGroups struct {
 	// ColumnNames lists every structured metadata column of the object, and each has a group. A column
 	// that is not in ColumnNames is a column the object does not have.
 	ColumnNames map[string]struct{}
+}
+
+// shardKey returns the shard key of every cache call for the object at path.
+//
+// A cache that spreads keys over servers places an item by its shard key, and not by its own key. So
+// all the items of the object sit on one server, and a lookup for several groups reads from one
+// server. A store and a lookup of an item must use the same shard key.
+//
+// The shard key is a hash of the path, because the memcached client checks a shard key like an item
+// key: at most 250 bytes, and no whitespace or control character. A path can break both rules. A hash
+// collision is harmless, because the shard key only picks a server. The two objects then share one.
+func shardKey(path string) string {
+	return cache.HashKey(path)
 }

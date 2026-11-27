@@ -1,3 +1,4 @@
+//go:build appengine || appenginevm || tinygo
 // +build appengine appenginevm tinygo
 
 // SYS-REQ-001, SYS-REQ-013, SYS-REQ-014: safe build-tag byte utilities
@@ -8,10 +9,6 @@ import (
 )
 
 // See fastbytes_unsafe.go for explanation on why *[]byte is used (signatures must be consistent with those in that file)
-
-func equalStr(b *[]byte, s string) bool {
-	return string(*b) == s
-}
 
 func parseFloat(b *[]byte) (float64, error) {
 	return strconv.ParseFloat(string(*b), 64)

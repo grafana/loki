@@ -164,6 +164,7 @@ To build binaries to the current folder use:
 
 `go build github.com/klauspost/compress/s2/cmd/s2c && go build github.com/klauspost/compress/s2/cmd/s2d`
 
+With `-safe`, output uses exclusive creation and fails if any directory entry, including a dangling symbolic link, already exists at the destination.
 
 ## s2c
 
@@ -318,11 +319,11 @@ This functionality is disabled with stdin/stdout.
 
 If you wrap a TAR file you can specify `-untar` to make it untar on the destination host.
 
-Files are extracted to the current folder with the path specified in the tar file.
+Files are extracted under the selected destination directory (the current directory by default, or the optional output path).
 
 Note that tar files are not validated before they are wrapped.
 
-For security reasons files that move below the root folder are not allowed.
+Extraction operations are confined to that directory, so archive contents cannot write outside the selected root.
 
 # Performance
 

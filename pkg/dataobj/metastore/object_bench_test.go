@@ -72,7 +72,8 @@ func benchmarkReadSections(b *testing.B, bm readSectionsBenchmarkParams) {
 				TargetSectionSize:       128,
 				BufferSize:              1024 * 1024,
 				SectionStripeMergeLimit: 2,
-			}, nil, indexobj.NewBuilderMetrics(nil))
+			}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 			require.NoError(b, err)
 
 			// Determine which streams to add to this index file
@@ -179,7 +180,8 @@ func BenchmarkSections_PredicateMatchers(b *testing.B) {
 				TargetSectionSize:       128,
 				BufferSize:              1024 * 1024,
 				SectionStripeMergeLimit: 2,
-			}, nil, indexobj.NewBuilderMetrics(nil))
+			}, nil, indexobj.NewBuilderMetrics(nil), nil)
+
 			require.NoError(b, err)
 
 			lbls := labels.New(labels.Label{Name: "app", Value: "foo"})

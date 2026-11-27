@@ -54,7 +54,7 @@ type Contents struct {
 func New(ctx context.Context, t *testing.T, window time.Time, sources []Source) *Scenario {
 	t.Helper()
 	require.Equal(t, window.Truncate(metastore.MetastoreWindowSize), window, "scenario window must be aligned")
-	bucket := objstore.NewInMemBucket()
+	bucket := NewBucket()
 	tocWriter := metastore.NewTableOfContentsWriter(bucket, metastore.DefaultTocWriterBackoffConfig, metastore.DefaultTocBuilderConfig, log.NewNopLogger(), metastore.NewTocWriterMetrics(nil), indexobj.NewBuilderMetrics(nil))
 	seen := make(map[string]struct{}, len(sources))
 	for i, source := range sources {
@@ -86,7 +86,7 @@ func seedSourceIndex(ctx context.Context, t *testing.T, bucket objstore.Bucket, 
 	tenant, err := obj.Tenant()
 	require.NoError(t, err)
 
-	builder, err := indexobj.NewBuilder(tenant, cfg, nil, indexobj.NewBuilderMetrics(nil))
+	builder, err := indexobj.NewBuilder(tenant, cfg, nil, indexobj.NewBuilderMetrics(nil), nil)
 	require.NoError(t, err)
 
 	calculator := dataobjindex.NewCalculator(builder, dataobjindex.NewCalculatorMetrics(nil))
@@ -146,7 +146,7 @@ func (s *Scenario) ReadReachableContents(ctx context.Context, t *testing.T, tena
 		for _, section := range sections.Filter(stats.CheckSection) {
 			opened, err := stats.Open(ctx, section)
 			require.NoError(t, err)
-			rows := stats.NewRowReader(ctx, opened)
+			rows := stats.NewRowReader(ctx, opened, nil)
 			for rows.Next() {
 				row := rows.At()
 				contents.StatsObjectPaths[row.ObjectPath] = true

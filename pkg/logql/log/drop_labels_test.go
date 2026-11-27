@@ -141,7 +141,7 @@ func Test_DropLabels(t *testing.T) {
 			lbls.Reset()
 			lbls.SetErr(tt.err, nil)
 			lbls.SetErrorDetails(tt.errDetails)
-			dropLabels.Process(0, []byte(""), lbls)
+			dropLabels.Process(0, UnsafeBytes{UnsafeData: []byte("")}, lbls)
 			require.Equal(t, tt.want, lbls.LabelsResult().Labels())
 		})
 	}

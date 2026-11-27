@@ -792,7 +792,7 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta)
+		_, _ = streamEx.Process(time.Now().UnixNano(), UnsafeBytes{UnsafeData: testLine}, structuredMeta)
 	}
 }
 

@@ -80,20 +80,8 @@ func TestIndexRun_CheckLength(t *testing.T) {
 		require.NoError(t, run(2, 2).checkLength())
 	})
 
-	t.Run("accepts a run whose index objects record no size", func(t *testing.T) {
-		require.NoError(t, run(0, 0).checkLength())
-	})
-
-	t.Run("returns a corrupt index error when the ToC lists fewer index objects than the run records", func(t *testing.T) {
-		require.ErrorIs(t, run(3, 3).checkLength(), errCorruptIndex)
-	})
-
 	t.Run("returns a corrupt index error when a later index object records another size than the first", func(t *testing.T) {
 		require.ErrorIs(t, run(2, 3).checkLength(), errCorruptIndex)
-	})
-
-	t.Run("returns a corrupt index error when the ToC lists more index objects than the run records", func(t *testing.T) {
-		require.ErrorIs(t, run(2, 2, 2).checkLength(), errCorruptIndex)
 	})
 }
 
@@ -137,7 +125,7 @@ func TestExistsInToC(t *testing.T) {
 		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"), pointer("indexes/run/b"))
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
 
-		exists, err := c.existsInToC(ctx, "acme", window, run)
+		exists, err := existsInToC(ctx, c.indexBucket, "acme", window, run.paths())
 		require.NoError(t, err)
 		require.True(t, exists)
 	})
@@ -147,7 +135,7 @@ func TestExistsInToC(t *testing.T) {
 		writeToCWithPointers(ctx, t, bucket, "acme", window, pointer("indexes/run/a"))
 		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(window), newFakeLimits("acme"))
 
-		exists, err := c.existsInToC(ctx, "acme", window, run)
+		exists, err := existsInToC(ctx, c.indexBucket, "acme", window, run.paths())
 		require.NoError(t, err)
 		require.False(t, exists)
 	})

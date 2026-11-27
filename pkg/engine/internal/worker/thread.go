@@ -22,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
+	"github.com/grafana/loki/v3/pkg/dataobj/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/metrictimer"
@@ -87,19 +88,24 @@ func (s threadState) String() string {
 
 // thread represents a worker thread that executes one task at a time.
 type thread struct {
-	Bucket         objstore.Bucket
-	DataBucket     objstore.Bucket
-	Logger         log.Logger
-	ScratchStore   scratch.Store
-	IndexobjCfg    logsobj.BuilderBaseConfig
-	LogsobjCfg     logsobj.BuilderBaseConfig
-	BuilderMetrics *logsobj.BuilderMetrics
+	IndexBucket     objstore.Bucket
+	DataBucket      objstore.Bucket
+	Logger          log.Logger
+	ScratchStore    scratch.Store
+	IndexobjCfg     logsobj.BuilderBaseConfig
+	TenantOverrides executor.TenantOverrides
+	LogsobjCfg      logsobj.BuilderBaseConfig
+	BuilderMetrics  *logsobj.BuilderMetrics
 
 	// IndexMergeObserver is optional; nil disables observation.
 	IndexMergeObserver executor.IndexMergeObserver
 
 	// LogMergeObserver is optional; nil disables observation.
 	LogMergeObserver executor.LogMergeObserver
+
+	// DeletionSweepMetrics is optional. A DeletionSweep task that deletes
+	// fails if it is nil.
+	DeletionSweepMetrics *deletion.SweepMetrics
 
 	Metrics    *metrics
 	JobManager *jobManager
@@ -211,15 +217,17 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	level.Info(logger).Log(startFields...)
 
 	cfg := executor.Config{
-		Bucket:         t.Bucket,
-		DataBucket:     t.DataBucket,
-		ScratchStore:   t.ScratchStore,
-		IndexobjCfg:    t.IndexobjCfg,
-		LogsobjCfg:     t.LogsobjCfg,
-		BuilderMetrics: t.BuilderMetrics,
+		IndexBucket:     t.IndexBucket,
+		DataBucket:      t.DataBucket,
+		ScratchStore:    t.ScratchStore,
+		IndexobjCfg:     t.IndexobjCfg,
+		TenantOverrides: t.TenantOverrides,
+		LogsobjCfg:      t.LogsobjCfg,
+		BuilderMetrics:  t.BuilderMetrics,
 
-		IndexMergeObserver: t.IndexMergeObserver,
-		LogMergeObserver:   t.LogMergeObserver,
+		IndexMergeObserver:   t.IndexMergeObserver,
+		LogMergeObserver:     t.LogMergeObserver,
+		DeletionSweepMetrics: t.DeletionSweepMetrics,
 
 		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]

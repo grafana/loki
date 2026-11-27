@@ -418,7 +418,7 @@ The `storage_config.aws.storage_class` field (or the equivalent field on a named
 
 **Resolution:**
 
-- **Use a supported storage class**:`STANDARD` or `STANDARD_IA`.
+- **Use a supported storage class**: `STANDARD`, `STANDARD_IA`, `GLACIER_IR`, or `INTELLIGENT_TIERING`. Grafana Labs has only tested `STANDARD` and `STANDARD_IA`; use `GLACIER_IR` and `INTELLIGENT_TIERING` at your own risk.
 
 **Properties:**
 

@@ -23,10 +23,10 @@ func IsEmptyTieredCache(cache Cache) bool {
 	return ok && len(c) == 0
 }
 
-func (t tiered) Store(ctx context.Context, keys []string, bufs [][]byte) error {
+func (t tiered) Store(ctx context.Context, keys []string, bufs [][]byte, opts ...Option) error {
 	var err error
 	for _, c := range []Cache(t) {
-		cacheErr := c.Store(ctx, keys, bufs)
+		cacheErr := c.Store(ctx, keys, bufs, opts...)
 		if cacheErr != nil {
 			err = cacheErr
 		}
@@ -34,7 +34,7 @@ func (t tiered) Store(ctx context.Context, keys []string, bufs [][]byte) error {
 	return err
 }
 
-func (t tiered) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+func (t tiered) Fetch(ctx context.Context, keys []string, opts ...Option) ([]string, [][]byte, []string, error) {
 	found := make(map[string][]byte, len(keys))
 	missing := keys
 	previousCaches := make([]Cache, 0, len(t))
@@ -46,11 +46,11 @@ func (t tiered) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, [
 			passBufs [][]byte
 		)
 
-		passKeys, passBufs, missing, err = c.Fetch(ctx, missing)
+		passKeys, passBufs, missing, err = c.Fetch(ctx, missing, opts...)
 		if err != nil {
 			return passKeys, passBufs, missing, err
 		}
-		err := tiered(previousCaches).Store(ctx, passKeys, passBufs)
+		err := tiered(previousCaches).Store(ctx, passKeys, passBufs, opts...)
 		if err != nil {
 			return passKeys, passBufs, missing, err
 		}

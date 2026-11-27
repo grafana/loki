@@ -114,7 +114,7 @@ func TestReachableObjects(t *testing.T) {
 
 	t.Run("returns the log objects of an index object that the index builder wrote", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		builder, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		builder, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 		require.NoError(t, builder.SetLayout(streams.NewLayout(streams.DefaultShardLayout(), nil)))
 		require.NoError(t, builder.AppendStat("objects/00/in-stats", 0, 0, nil, time.Unix(10, 0), time.Unix(20, 0), 1, 1))
@@ -140,7 +140,7 @@ func TestReachableObjects(t *testing.T) {
 
 	t.Run("returns an error and no paths when an index object holds a watermarks section", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
-		builder, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil))
+		builder, err := indexobj.NewBuilder(tenant, DefaultTocBuilderConfig, nil, indexobj.NewBuilderMetrics(nil), nil)
 		require.NoError(t, err)
 		require.NoError(t, builder.AppendWatermark("topic", 0, 10))
 		uploadObject(t, bucket, "indexes/aa/empty", builder.Flush)

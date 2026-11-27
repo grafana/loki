@@ -429,7 +429,30 @@ func indexLayoutOfRun(ctx context.Context, tenant string, run []openedIndex) (la
 // stats rows of run, and the shard buckets of run.
 //
 // It returns no references and the zero ShardBuckets if run has no stats
-// section for tenant.
+// section for tenant. It returns the errors of [readLogSections].
+func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
+	read, err := readLogSections(ctx, bucket, tenant, run)
+	if err != nil || !read.hasLayout {
+		return nil, indexpointers.ShardBuckets{}, err
+	}
+	return read.sections, indexpointers.NewShardBuckets(read.layout.ShardLayout()), nil
+}
+
+// logSectionsRead is what the stats sections of one index run say about the
+// log sections that the run indexes.
+type logSectionsRead struct {
+	// layout is the stream layout of the run. It has no meaning when
+	// hasLayout is false. A run without a layout has no stats section for
+	// the tenant, and sections is empty.
+	layout    streams.Layout
+	hasLayout bool
+
+	// sections has one bounded reference per log section, sorted by log
+	// object path and section index.
+	sections []v2.Section[logSortPrefix]
+}
+
+// readLogSections reads the stats sections of run for tenant.
 //
 // It returns an error that wraps errCorruptIndex if an index object of run:
 //   - records a run length other than the number of index objects of run,
@@ -437,21 +460,18 @@ func indexLayoutOfRun(ctx context.Context, tenant string, run []openedIndex) (la
 //   - has a layout that cannot be read,
 //   - records no layout while another index object of run does,
 //   - records another layout than another index object of run.
-func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) ([]v2.Section[logSortPrefix], indexpointers.ShardBuckets, error) {
+func readLogSections(ctx context.Context, bucket objstore.Bucket, tenant string, run indexRun) (logSectionsRead, error) {
 	opened, err := openRunObjects(ctx, bucket, tenant, run)
 	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, err
+		return logSectionsRead{}, err
 	}
 	layout, ok, err := indexLayoutOfRun(ctx, tenant, opened)
-	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, err
-	}
-	if !ok {
-		return nil, indexpointers.ShardBuckets{}, nil
+	if err != nil || !ok {
+		return logSectionsRead{}, err
 	}
 	labelNames, err := schemaLabelNames(layout.SchemaLabels())
 	if err != nil {
-		return nil, indexpointers.ShardBuckets{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, run, err)
+		return logSectionsRead{}, fmt.Errorf("parse log sort schema tenant=%s index=%s: %w", tenant, run, err)
 	}
 
 	folder := newLogSectionFolder(labelNames)
@@ -461,11 +481,11 @@ func logSectionRefsFor(ctx context.Context, bucket objstore.Bucket, tenant strin
 				continue
 			}
 			if err := folder.addSection(ctx, section); err != nil {
-				return nil, indexpointers.ShardBuckets{}, fmt.Errorf("read stats section tenant=%s index=%s: %w", tenant, index.path, err)
+				return logSectionsRead{}, fmt.Errorf("read stats section tenant=%s index=%s: %w", tenant, index.path, err)
 			}
 		}
 	}
-	return folder.refs(), indexpointers.NewShardBuckets(layout.ShardLayout()), nil
+	return logSectionsRead{layout: layout, hasLayout: true, sections: folder.refs()}, nil
 }
 
 // logSectionID identifies one section of a logs object.
@@ -482,6 +502,21 @@ type logSectionFolder struct {
 	labelNames []string
 	bySection  map[logSectionID]*v2.Section[logSortPrefix]
 	interned   map[string]string
+
+	// schemaKeys holds one shared schema key and label values slice for
+	// each distinct set of label values, keyed by the schema key.
+	schemaKeys map[string]sharedSchemaKey
+	// scratch holds the label values of the current stats row. sortPrefix
+	// reuses it to avoid an allocation for each row, and keeps no reference
+	// to it.
+	scratch []string
+}
+
+// sharedSchemaKey is a schema key and the label values that encode it, shared
+// by every stats row with those values.
+type sharedSchemaKey struct {
+	key    string
+	labels []string
 }
 
 func newLogSectionFolder(labelNames []string) *logSectionFolder {
@@ -489,7 +524,48 @@ func newLogSectionFolder(labelNames []string) *logSectionFolder {
 		labelNames: labelNames,
 		bySection:  make(map[logSectionID]*v2.Section[logSortPrefix]),
 		interned:   make(map[string]string),
+		schemaKeys: make(map[string]sharedSchemaKey),
+		scratch:    make([]string, len(labelNames)),
 	}
+}
+
+// sortPrefix returns the sort prefix of stat. Rows with the same label values
+// share the schema key string and the label values slice of their prefix. An
+// index run can hold millions of stats rows over few distinct values, and the
+// planner can keep them for many scans.
+func (f *logSectionFolder) sortPrefix(stat stats.Stat) logSortPrefix {
+	if len(f.labelNames) == 0 {
+		return newLogSortPrefix(stat.ShardBucket, nil)
+	}
+	for i, name := range f.labelNames {
+		f.scratch[i] = stat.Labels[name]
+	}
+	encoded := streams.EncodeSchemaKey(f.scratch)
+	shared, ok := f.schemaKeys[encoded]
+	switch {
+	case !ok:
+		// The key of one label is the value itself, which points into the
+		// buffers of a record batch, so the folder keeps a copy.
+		shared = sharedSchemaKey{key: strings.Clone(encoded), labels: f.internedScratch()}
+		f.schemaKeys[shared.key] = shared
+	case !slices.Equal(shared.labels, f.scratch):
+		// Values with a NUL byte can encode to the key of other values. Such
+		// a row shares the key string, but needs its own values.
+		shared = sharedSchemaKey{key: shared.key, labels: f.internedScratch()}
+	}
+	return logSortPrefix{
+		prefix: streams.SortPrefix{ShardBucket: stat.ShardBucket, SchemaKey: shared.key},
+		labels: shared.labels,
+	}
+}
+
+// internedScratch returns a copy of scratch with interned values.
+func (f *logSectionFolder) internedScratch() []string {
+	labels := make([]string, len(f.scratch))
+	for i, value := range f.scratch {
+		labels[i] = intern(f.interned, value)
+	}
+	return labels
 }
 
 // addSection folds every row of section, which must be a stats section.
@@ -498,7 +574,7 @@ func (f *logSectionFolder) addSection(ctx context.Context, section *dataobj.Sect
 	if err != nil {
 		return fmt.Errorf("open stats section: %w", err)
 	}
-	reader := stats.NewRowReader(ctx, statsSection)
+	reader := stats.NewRowReader(ctx, statsSection, nil)
 	defer util.CloseAndHandleError(reader, &err)
 	for reader.Next() {
 		f.add(reader.At())
@@ -513,14 +589,7 @@ func (f *logSectionFolder) addSection(ctx context.Context, section *dataobj.Sect
 // whole LogMerge phase. Without a copy, they keep every batch in memory.
 // Interning copies each distinct value once.
 func (f *logSectionFolder) add(stat stats.Stat) {
-	var labels []string
-	if len(f.labelNames) > 0 {
-		labels = make([]string, len(f.labelNames))
-		for i, name := range f.labelNames {
-			labels[i] = intern(f.interned, stat.Labels[name])
-		}
-	}
-	key := newLogSortPrefix(stat.ShardBucket, labels)
+	key := f.sortPrefix(stat)
 	keySize := v2.KeySize[logSortPrefix]{Key: key, UncompressedSize: uint64(stat.UncompressedSize)}
 
 	path := intern(f.interned, stat.ObjectPath)
@@ -566,6 +635,11 @@ func (f *logSectionFolder) add(stat stats.Stat) {
 func (f *logSectionFolder) refs() []v2.Section[logSortPrefix] {
 	refs := make([]v2.Section[logSortPrefix], 0, len(f.bySection))
 	for _, ref := range f.bySection {
+		// Trim the spare capacity that append left, because the planner can
+		// keep the keys for many scans. A small spare is not worth a copy.
+		if cap(ref.Keys) > len(ref.Keys)+len(ref.Keys)/4 {
+			ref.Keys = slices.Clone(ref.Keys)
+		}
 		refs = append(refs, *ref)
 	}
 	slices.SortFunc(refs, func(a, b v2.Section[logSortPrefix]) int {

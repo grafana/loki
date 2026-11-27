@@ -1,31 +1,11 @@
 package unmarshal
 
 import (
-	"io"
-	"unsafe"
-
-	jsoniter "github.com/json-iterator/go"
+	jsonv1 "encoding/json"
+	"encoding/json/v2"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
-	"github.com/grafana/loki/v3/pkg/logproto"
 )
-
-// DecodePushRequest directly decodes json to a logproto.PushRequest
-func DecodePushRequest(b io.Reader, r *logproto.PushRequest) error {
-	var request loghttp.PushRequest
-
-	dec := jsoniter.NewDecoder(b)
-	dec.DisallowUnknownFields() // return error when parsing unknown field
-	if err := dec.Decode(&request); err != nil {
-		return err
-	}
-
-	*r = logproto.PushRequest{
-		Streams: *(*[]logproto.Stream)(unsafe.Pointer(&request.Streams)), //#nosec G103 -- Just preventing an allocation, safe, there's no chance of an incorrect type cast here. -- nosemgrep: use-of-unsafe-block
-	}
-
-	return nil
-}
 
 // WebsocketReader knows how to read message to a websocket connection.
 type WebsocketReader interface {
@@ -38,5 +18,5 @@ func ReadTailResponseJSON(r *loghttp.TailResponse, reader WebsocketReader) error
 	if err != nil {
 		return err
 	}
-	return jsoniter.Unmarshal(data, r)
+	return json.Unmarshal(data, r, jsonv1.DefaultOptionsV1())
 }

@@ -9,11 +9,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/prometheus/model/labels"
@@ -530,10 +532,10 @@ func TestDoIndexMerge(t *testing.T) {
 		return &physical.IndexMerge{
 			NodeID: ulid.Make(),
 			Tenant: tenant,
-			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
-				{ObjectPath: pathA, SectionIndex: 0},
-				{ObjectPath: pathB, SectionIndex: 0},
-			}}},
+			Runs: []*compactionv2pb.RunRef{
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: pathA, SectionIndex: 0}}},
+				{Sections: []*compactionv2pb.SectionRef{{ObjectPath: pathB, SectionIndex: 0}}},
+			},
 		}
 	}
 	statRow := func(schema string, labels map[string]string) stats.Stat {
@@ -825,6 +827,81 @@ func TestDoIndexMerge(t *testing.T) {
 		require.ErrorContains(t, err, "1 of the 2 referenced sections are not postings sections")
 	})
 
+	disjointRun := func(t *testing.T, bucket objstore.Bucket) []*compactionv2pb.SectionRef {
+		t.Helper()
+		for path, column := range map[string]string{"source/run-a.dat": "app", "source/run-z.dat": "zone"} {
+			buildSourcePostingsObject(t, bucket, tenant, path, []postings.LabelObservation{{
+				ObjectPath: "log-" + column, ColumnName: column, LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			}})
+		}
+		return []*compactionv2pb.SectionRef{{ObjectPath: "source/run-a.dat"}, {ObjectPath: "source/run-z.dat"}}
+	}
+
+	t.Run("reads the index objects of one run as one sequence and merges it with the other runs", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		run := disjointRun(t, bucket)
+		buildSourcePostingsObject(t, bucket, tenant, "source/other.dat", []postings.LabelObservation{{
+			ObjectPath: "log-other", ColumnName: "env", LabelValue: "v", StreamID: 1,
+			Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+		}})
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{
+			{Sections: run},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/other.dat"}}},
+		}}
+
+		_, runs, _, err := newTestExecutorContext(t, bucket).classifyRuns(t.Context(), node)
+		require.NoError(t, err)
+		require.Len(t, postingsSequences(t.Context(), runs, postings.KeySpan{}, nil), 2, "one sequence for each run, not for each index object")
+
+		_, rows, _ := readRows(t, bucket, node)
+		require.Equal(t, []postings.Key{labelKey("app", "v"), labelKey("env", "v"), labelKey("zone", "v")}, postingKeys(rows))
+	})
+
+	t.Run("returns an error when the index objects of one run overlap in key order", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		for _, path := range []string{"source/wide-a.dat", "source/wide-b.dat"} {
+			var observations []postings.LabelObservation
+			for _, column := range []string{"app", "zone"} {
+				observations = append(observations, postings.LabelObservation{
+					ObjectPath: path + "/log", ColumnName: column, LabelValue: "v", StreamID: 1,
+					Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+				})
+			}
+			buildSourcePostingsObject(t, bucket, tenant, path, observations)
+		}
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{
+			{ObjectPath: "source/wide-a.dat"}, {ObjectPath: "source/wide-b.dat"},
+		}}}}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `a row of section 1/2 of the sequence, of object "source/wide-b.dat", sorts below the row before it, of object "source/wide-a.dat"`)
+	})
+
+	t.Run("returns an error when an index object is in two runs", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		run := disjointRun(t, bucket)
+		require.Len(t, run, 2)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{
+			{Sections: run[:1]},
+			{Sections: run},
+		}}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `object "source/run-a.dat" of run 1 appears in more than one place of the runs of the merge, also in run 0`)
+	})
+
+	t.Run("returns an error when the sections of an index object are not next to each other in its run", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		run := disjointRun(t, bucket)
+		node := &physical.IndexMerge{NodeID: ulid.Make(), Tenant: tenant, Runs: []*compactionv2pb.RunRef{
+			{Sections: append(slices.Clone(run), &compactionv2pb.SectionRef{ObjectPath: "source/run-a.dat", SectionIndex: 1})},
+		}}
+
+		_, err := newTestExecutorContext(t, bucket).doIndexMerge(t.Context(), node)
+		require.ErrorContains(t, err, `object "source/run-a.dat" of run 0 appears in more than one place of the runs of the merge, also in run 0`)
+	})
+
 	t.Run("returns an error when a stats source is not a source of the merge", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		node := keySpanSources(t, bucket, layout)
@@ -1070,9 +1147,9 @@ func uploadObjectToBucket(ctx context.Context, bucket objstore.Bucket, path stri
 	return bucket.Upload(ctx, path, io.NopCloser(bytes.NewReader(objBytes)))
 }
 
-// newTestExecutorContext constructs a minimal *Context wired with the bucket,
-// an in-memory scratch store, a default indexobj BuilderBaseConfig, and a
-// no-op logger.
+// newTestExecutorContext constructs a minimal *Context. It uses bucket as both
+// the index bucket and the data bucket. It also sets an in-memory scratch
+// store, a default indexobj BuilderBaseConfig, and a no-op logger.
 func newTestExecutorContext(t testing.TB, bucket objstore.Bucket) *Context {
 	t.Helper()
 
@@ -1086,11 +1163,13 @@ func newTestExecutorContext(t testing.TB, bucket objstore.Bucket) *Context {
 	}
 
 	return &Context{
-		bucket:         bucket,
-		scratchStore:   scratch.NewMemory(),
-		indexobjCfg:    testBuilderCfg,
-		logsobjCfg:     testBuilderCfg,
-		builderMetrics: logsobj.NewBuilderMetrics(),
+		indexBucket:     bucket,
+		dataBucket:      bucket,
+		scratchStore:    scratch.NewMemory(),
+		indexobjCfg:     testBuilderCfg,
+		tenantOverrides: fakeTenantOverrides{},
+		logsobjCfg:      testBuilderCfg,
+		builderMetrics:  logsobj.NewBuilderMetrics(),
 
 		logMergeObserver: nopLogMergeObserver{},
 		logger:           log.NewNopLogger(),
@@ -1276,7 +1355,7 @@ func readStatsRowsFromBucket(ctx context.Context, t *testing.T, bucket objstore.
 
 	require.NotNil(t, sec, "expected stats section in output object")
 
-	reader := stats.NewRowReader(ctx, sec)
+	reader := stats.NewRowReader(ctx, sec, nil)
 	defer reader.Close()
 
 	var rows []stats.Stat
@@ -1334,17 +1413,14 @@ func TestExecuteIndexMerge_PostingsUnion(t *testing.T) {
 		},
 	})
 
-	// Build IndexMerge node with two source objects.
+	// Build IndexMerge node with two source objects. Their key ranges
+	// overlap, so they are two runs.
 	node := &physical.IndexMerge{
 		NodeID: ulid.Make(),
 		Tenant: "tenant",
 		Runs: []*compactionv2pb.RunRef{
-			{
-				Sections: []*compactionv2pb.SectionRef{
-					{ObjectPath: sourceAPath, SectionIndex: 0},
-					{ObjectPath: sourceBPath, SectionIndex: 0},
-				},
-			},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: sourceAPath, SectionIndex: 0}}},
+			{Sections: []*compactionv2pb.SectionRef{{ObjectPath: sourceBPath, SectionIndex: 0}}},
 		},
 	}
 
@@ -1707,7 +1783,7 @@ func TestStatsRowReader_DottedLabelNames(t *testing.T) {
 	require.NotNil(t, sec)
 
 	// Create a reader and read the row
-	reader := stats.NewRowReader(ctx, sec)
+	reader := stats.NewRowReader(ctx, sec, nil)
 	defer reader.Close()
 
 	if !reader.Next() {
@@ -1934,10 +2010,14 @@ func TestExecuteIndexMerge_ContentHashAndRecord(t *testing.T) {
 	require.True(t, sawStats, "output must contain a stats section")
 }
 
-// recordingIndexMergeObserver records every ObserveIndexMergeOutput call.
+// recordingIndexMergeObserver records every ObserveIndexMergeOutput and
+// ObserveIndexMergeInput call.
 type recordingIndexMergeObserver struct {
 	tenants                            []string
 	compressedSizes, uncompressedSizes []int64
+
+	inputTenants                                 []string
+	inputCompressedSizes, inputUncompressedSizes []int64
 }
 
 func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, compressedBytes, uncompressedBytes int64) {
@@ -1946,8 +2026,14 @@ func (o *recordingIndexMergeObserver) ObserveIndexMergeOutput(tenant string, com
 	o.uncompressedSizes = append(o.uncompressedSizes, uncompressedBytes)
 }
 
-func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
-	t.Run("reports the tenant and the compressed size of the uploaded index once", func(t *testing.T) {
+func (o *recordingIndexMergeObserver) ObserveIndexMergeInput(tenant string, compressedBytes, uncompressedBytes int64) {
+	o.inputTenants = append(o.inputTenants, tenant)
+	o.inputCompressedSizes = append(o.inputCompressedSizes, compressedBytes)
+	o.inputUncompressedSizes = append(o.inputUncompressedSizes, uncompressedBytes)
+}
+
+func TestExecuteIndexMerge_ObservesSizes(t *testing.T) {
+	t.Run("reports the source page sizes, and the tenant and compressed size of the uploaded index once", func(t *testing.T) {
 		ctx := context.Background()
 		bucket := objstore.NewInMemBucket()
 		buildSourceIndexWithBothKinds(t, bucket, "tenant-1", "source/index-0.dat")
@@ -1967,6 +2053,42 @@ func TestExecuteIndexMerge_ObservesOutputSizes(t *testing.T) {
 		require.Equal(t, []int64{attrs.Size}, observer.compressedSizes)
 		require.Len(t, observer.uncompressedSizes, 1)
 		require.Positive(t, observer.uncompressedSizes[0])
+
+		sourceCompressed, sourceUncompressed := indexPageBytes(t, bucket, "tenant-1", "source/index-0.dat")
+		require.Positive(t, sourceCompressed)
+		require.Equal(t, sourceCompressed, totalBytes(observer.inputCompressedSizes))
+		require.Equal(t, sourceUncompressed, totalBytes(observer.inputUncompressedSizes))
+		require.Equal(t, []string{"tenant-1"}, slices.Compact(observer.inputTenants))
+	})
+
+	t.Run("reports fewer source bytes when the key span rules out postings pages", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		postingsBuilder := postings.NewBuilder(nil, 1, 4, math.MaxInt)
+		postingsBuilder.SetTenant("tenant-1")
+		for i := range 300 {
+			postingsBuilder.ObserveLabelPosting(postings.LabelObservation{
+				ObjectPath: "log-0", ColumnName: fmt.Sprintf("c%04d", i), LabelValue: "v", StreamID: 1,
+				Time: postings.At(time.Unix(0, 100)), UncompressedSize: 100,
+			})
+		}
+		uploadSections(t, bucket, "source/index-0.dat", postingsBuilder)
+		start := postings.Key{Kind: postings.KindLabel, ColumnName: "c0000"}
+		end := postings.Key{Kind: postings.KindLabel, ColumnName: "c0010"}
+		keySpan, err := postings.NewKeySpan(&start, &end)
+		require.NoError(t, err)
+		observer := &recordingIndexMergeObserver{}
+		execCtx := newTestExecutorContext(t, bucket)
+		execCtx.indexMergeObserver = observer
+
+		_, err = execCtx.doIndexMerge(t.Context(), &physical.IndexMerge{
+			NodeID: ulid.Make(), Tenant: "tenant-1", KeySpan: keySpan,
+			Runs: []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "source/index-0.dat"}}}},
+		})
+		require.NoError(t, err)
+
+		sourceCompressed, _ := indexPageBytes(t, bucket, "tenant-1", "source/index-0.dat")
+		require.Positive(t, totalBytes(observer.inputCompressedSizes))
+		require.Less(t, totalBytes(observer.inputCompressedSizes), sourceCompressed)
 	})
 
 	t.Run("reports the summed compressed size of every index object of a run once", func(t *testing.T) {
@@ -2073,13 +2195,34 @@ func (it *closeErrIter) At() int      { return it.rows[it.next-1] }
 func (it *closeErrIter) Err() error   { return nil }
 func (it *closeErrIter) Close() error { return it.closeErr }
 
+// countingIter returns rows and calls onClose when it closes.
+type countingIter struct {
+	rows    []int
+	next    int
+	onClose func()
+}
+
+func (it *countingIter) Next() bool {
+	if it.next >= len(it.rows) {
+		return false
+	}
+	it.next++
+	return true
+}
+
+func (it *countingIter) At() int    { return it.rows[it.next-1] }
+func (it *countingIter) Err() error { return nil }
+func (it *countingIter) Close() error {
+	it.onClose()
+	return nil
+}
+
 func TestSectionConcatSeq(t *testing.T) {
 	t.Run("stops with the close error of a drained section reader", func(t *testing.T) {
 		closeErr := errors.New("close failed")
 		seq := &sectionConcatSeq[int]{
-			ctx:        context.Background(),
-			objectPath: "indexes/a",
-			sections:   []*dataobj.Section{nil, nil},
+			ctx:      context.Background(),
+			sections: []sourceSection{{objectPath: "indexes/a"}, {objectPath: "indexes/a"}},
 			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
 				return &closeErrIter{rows: []int{1}, closeErr: closeErr}, nil
 			},
@@ -2089,6 +2232,66 @@ func TestSectionConcatSeq(t *testing.T) {
 		require.Equal(t, 1, seq.At())
 		require.False(t, seq.Next())
 		require.ErrorIs(t, seq.Err(), closeErr)
+	})
+
+	inOrderSeq := func(sections ...[]int) *sectionConcatSeq[int] {
+		var refs []sourceSection
+		for i := range sections {
+			refs = append(refs, sourceSection{objectPath: fmt.Sprintf("indexes/%d", i)})
+		}
+		next := 0
+		return &sectionConcatSeq[int]{
+			ctx:      context.Background(),
+			sections: refs,
+			compare:  func(a, b int) int { return a - b },
+			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
+				if next >= len(sections) {
+					return nil, errors.New("opened more sections than the sequence holds")
+				}
+				rows := sections[next]
+				next++
+				return &closeErrIter{rows: rows}, nil
+			},
+		}
+	}
+	drain := func(seq *sectionConcatSeq[int]) []int {
+		var rows []int
+		for seq.Next() {
+			rows = append(rows, seq.At())
+		}
+		return rows
+	}
+
+	t.Run("returns the rows of every section in order when each row sorts at or above the row before it", func(t *testing.T) {
+		seq := inOrderSeq([]int{1, 2, 2}, []int{2, 5})
+		require.Equal(t, []int{1, 2, 2, 2, 5}, drain(seq))
+		require.NoError(t, seq.Err())
+	})
+
+	t.Run("keeps at most one section reader open while it reads the sections of several objects", func(t *testing.T) {
+		var open, maxOpen int
+		seq := &sectionConcatSeq[int]{
+			ctx: context.Background(),
+			sections: []sourceSection{
+				{objectPath: "indexes/a"}, {objectPath: "indexes/a"}, {objectPath: "indexes/b"},
+			},
+			open: func(context.Context, *dataobj.Section) (iter.CloseIterator[int], error) {
+				open++
+				maxOpen = max(maxOpen, open)
+				return &countingIter{rows: []int{1, 2}, onClose: func() { open-- }}, nil
+			},
+		}
+
+		require.Len(t, drain(seq), 6)
+		require.NoError(t, seq.Err())
+		require.Equal(t, 1, maxOpen)
+		require.Zero(t, open)
+	})
+
+	t.Run("stops with an error that names the object when a section starts below the end of the section before it", func(t *testing.T) {
+		seq := inOrderSeq([]int{1, 4}, []int{3})
+		require.Equal(t, []int{1, 4}, drain(seq))
+		require.ErrorContains(t, seq.Err(), `a row of section 1/2 of the sequence, of object "indexes/1", sorts below the row before it, of object "indexes/0"`)
 	})
 }
 
@@ -2105,4 +2308,127 @@ func oneArtifact(t testing.TB) func([]v2.ResultArtifact, error) (v2.ResultArtifa
 		require.Len(t, artifacts, 1)
 		return artifacts[0], nil
 	}
+}
+
+// indexPageBytes returns the total compressed and uncompressed size of the pages in the
+// postings and stats sections of tenant in the object at path.
+func indexPageBytes(t *testing.T, bucket objstore.Bucket, tenant, path string) (compressed, uncompressed int64) {
+	t.Helper()
+	obj, err := dataobj.FromBucket(t.Context(), bucket, path, 0)
+	require.NoError(t, err)
+	for _, section := range obj.Sections() {
+		if section.Tenant != tenant {
+			continue
+		}
+		switch {
+		case postings.CheckSection(section):
+			opened, err := postings.Open(t.Context(), section)
+			require.NoError(t, err)
+			sectionStats, err := postings.ReadStats(t.Context(), opened)
+			require.NoError(t, err)
+			for _, column := range sectionStats.Columns {
+				for _, page := range column.Pages {
+					compressed += int64(page.CompressedSize)
+					uncompressed += int64(page.UncompressedSize)
+				}
+			}
+		case stats.CheckSection(section):
+			opened, err := stats.Open(t.Context(), section)
+			require.NoError(t, err)
+			sectionStats, err := stats.ReadStats(t.Context(), opened)
+			require.NoError(t, err)
+			for _, column := range sectionStats.Columns {
+				for _, page := range column.Pages {
+					compressed += int64(page.CompressedSize)
+					uncompressed += int64(page.UncompressedSize)
+				}
+			}
+		}
+	}
+	return compressed, uncompressed
+}
+
+func totalBytes(values []int64) int64 {
+	var total int64
+	for _, value := range values {
+		total += value
+	}
+	return total
+}
+
+// fakeTenantOverrides is a [TenantOverrides] that gives each tenant its own
+// bloom deny list. A tenant that is not in the map has an empty list.
+type fakeTenantOverrides map[string][]string
+
+func (o fakeTenantOverrides) DataObjBloomDenyList(tenant string) []string { return o[tenant] }
+
+func TestExecuteIndexMerge_BloomDenyList(t *testing.T) {
+	ctx := context.Background()
+	overrides := fakeTenantOverrides{"tenant-a": {"observed_timestamp"}}
+
+	for _, tc := range []struct {
+		tenant      string
+		wantPassAll bool
+	}{
+		{tenant: "tenant-a", wantPassAll: true},
+		{tenant: "tenant-b", wantPassAll: false},
+	} {
+		t.Run("merges the filters of "+tc.tenant, func(t *testing.T) {
+			bucket := objstore.NewInMemBucket()
+			srcPath := "source/index-0.dat"
+
+			// The source index has a real filter for each column.
+			b := postings.NewBuilder(nil, 0, 0, math.MaxInt)
+			b.SetTenant(tc.tenant)
+			for _, column := range []string{"observed_timestamp", "trace_id"} {
+				b.PrepareBloomColumn("log-A", 0, column, 100, 0)
+				require.NoError(t, b.ObserveBloomPosting(postings.BloomObservation{
+					ObjectPath: "log-A", SectionIndex: 0, ColumnName: column, Value: "1", StreamID: 1, Timestamp: time.Unix(0, 1_000_000),
+				}))
+			}
+			uploadSections(t, bucket, srcPath, b)
+
+			c := newTestExecutorContext(t, bucket)
+			c.tenantOverrides = overrides
+			node := &physical.IndexMerge{
+				NodeID: ulid.Make(),
+				Tenant: tc.tenant,
+				Runs:   []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: srcPath, SectionIndex: 0}}}},
+			}
+			arts, err := oneArtifact(t)(c.doIndexMerge(ctx, node))
+			require.NoError(t, err)
+
+			requireBloomFilters(t, readAllPostingsRowsFromBucket(ctx, t, bucket, arts.Path), tc.wantPassAll)
+		})
+	}
+}
+
+// requireBloomFilters checks the bloom rows of the columns observed_timestamp
+// and trace_id. The trace_id filter must prune the value "2". The
+// observed_timestamp filter must match every value if wantPassAll is true, and
+// must prune the value "2" otherwise.
+func requireBloomFilters(t *testing.T, rows []postings.Row, wantPassAll bool) {
+	t.Helper()
+
+	matches := func(row postings.Row, value string) bool {
+		var filter bloom.BloomFilter
+		require.NoError(t, filter.UnmarshalBinary(row.BloomFilter))
+		return filter.Test([]byte(value))
+	}
+
+	seen := map[string]bool{}
+	for _, row := range rows {
+		if row.Kind != postings.KindBloom {
+			continue
+		}
+		seen[row.ColumnName] = true
+		require.True(t, matches(row, "1"), "column %s must match its own value", row.ColumnName)
+		switch row.ColumnName {
+		case "observed_timestamp":
+			require.Equal(t, wantPassAll, matches(row, "2"))
+		case "trace_id":
+			require.False(t, matches(row, "2"))
+		}
+	}
+	require.Equal(t, map[string]bool{"observed_timestamp": true, "trace_id": true}, seen)
 }

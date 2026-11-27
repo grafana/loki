@@ -104,9 +104,21 @@ message IndexFilter {
   // source_index_paths lists the paths of every index object of the source
   // index.
   repeated string source_index_paths = 4;
+  // source_index_paths_in_key_order is true if source_index_paths lists the
+  // index objects in posting key order, with ranges that do not overlap. The
+  // worker then reads them as one sequence. A coordinator that predates the
+  // field leaves it false, and the worker merges the index objects in any
+  // order.
+  bool source_index_paths_in_key_order = 5;
 }
 
-// DeletionSweep applies delete requests to the objects of one tenant.
+// DeletionSweep finds the objects of one tenant that no ToC can reach, and
+// acts on the deletion candidates.
 message DeletionSweep {
   string tenant = 1;
+  // delete makes the sweep delete its deletion candidates. If it is false,
+  // the sweep only logs them. A planner that does not know the field sends
+  // false, so an older planner gets a dry run. An older worker ignores the
+  // field and does a dry run.
+  bool delete = 2;
 }

@@ -206,7 +206,7 @@ type LineFormatter struct {
 	*template.Template
 	buf *bytes.Buffer
 
-	currentLine []byte
+	currentLine UnsafeBytes
 	currentTs   int64
 	simpleKey   string
 
@@ -223,7 +223,7 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	}
 
 	functions := AddLineAndTimestampFunctions(func() string {
-		return unsafeGetString(lf.currentLine)
+		return unsafeGetString(lf.currentLine.UnsafeData)
 	}, func() int64 {
 		return lf.currentTs
 	})
@@ -249,12 +249,12 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	return lf, nil
 }
 
-func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LineFormatter) Process(ts int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	if lf.simpleKey != "" {
 		if val, ok := lbs.Get(lf.simpleKey); ok {
-			return unsafeGetBytes(val), true
+			return UnsafeBytes{UnsafeData: unsafeGetBytes(val)}, true
 		}
-		return []byte{}, true
+		return UnsafeBytes{UnsafeData: []byte{}}, true
 	}
 
 	lf.buf.Reset()
@@ -268,11 +268,14 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 			smp.Put(m)
 		}
 	}()
-	if err := lf.Execute(lf.buf, m); err != nil {
+	err := lf.Execute(lf.buf, m)
+	// The template reads the line only during Execute. Drop it, so the formatter does not retain it.
+	lf.currentLine = UnsafeBytes{}
+	if err != nil {
 		lbs.SetErr(errTemplateFormat, err)
 		return line, true
 	}
-	return lf.buf.Bytes(), true
+	return UnsafeBytes{UnsafeData: lf.buf.Bytes()}, true
 }
 
 // Hints implements Stage.
@@ -389,7 +392,7 @@ type LabelsFormatter struct {
 	formats []labelFormatter
 	buf     *bytes.Buffer
 
-	currentLine []byte
+	currentLine UnsafeBytes
 	currentTs   int64
 
 	// mayReadLine is true when the text of a template names __line__, even inside a string.
@@ -410,7 +413,7 @@ func NewLabelsFormatter(fmts []LabelFmt) (*LabelsFormatter, error) {
 	}
 
 	functions := AddLineAndTimestampFunctions(func() string {
-		return unsafeGetString(lf.currentLine)
+		return unsafeGetString(lf.currentLine.UnsafeData)
 	}, func() int64 {
 		return lf.currentTs
 	})
@@ -447,7 +450,7 @@ func validate(fmts []LabelFmt) error {
 	return nil
 }
 
-func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (lf *LabelsFormatter) Process(ts int64, l UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	lf.currentLine = l
 	lf.currentTs = ts
 
@@ -472,6 +475,8 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 		}
 		lbs.Set(ParsedLabel, f.Name, lf.buf.String())
 	}
+	// The templates read the line only during the loop. Drop it, so the formatter does not retain it.
+	lf.currentLine = UnsafeBytes{}
 	return l, true
 }
 
@@ -551,8 +556,8 @@ func NewDecolorizer() (*Decolorizer, error) {
 	return &Decolorizer{}, nil
 }
 
-func (Decolorizer) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
-	return ansiRegex.ReplaceAll(line, []byte{}), true
+func (Decolorizer) Process(_ int64, line UnsafeBytes, _ *LabelsBuilder) (UnsafeBytes, bool) {
+	return UnsafeBytes{UnsafeData: ansiRegex.ReplaceAll(line.UnsafeData, []byte{})}, true
 }
 
 // Hints implements Stage.

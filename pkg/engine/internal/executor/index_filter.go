@@ -35,7 +35,7 @@ func (c *Context) executeIndexFilter(node *physical.IndexFilter) Pipeline {
 }
 
 func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter) ([]v2.ResultArtifact, error) {
-	if c.bucket == nil {
+	if c.indexBucket == nil {
 		return nil, errors.New("no object store bucket configured")
 	}
 	if node.Tenant == "" || len(node.SourceIndexPaths) == 0 || slices.Contains(node.SourceIndexPaths, "") {
@@ -70,14 +70,12 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 		}
 	}
 
-	// A K-way merge keeps the rows in key order when they come from several
-	// index objects of one index run, so each output section stays sorted.
 	foundPostings := make(map[string]struct{}, len(keepSet))
-	if err := c.mergePostingsInto(ctx, sources, postings.KeySpan{}, keep(foundPostings), out); err != nil {
+	if err := c.mergePostingsInto(ctx, filterRuns(node, sources), postings.KeySpan{}, keep(foundPostings), out, nil); err != nil {
 		return nil, fmt.Errorf("filtering postings of source index %q: %w", source, err)
 	}
 	foundStats := make(map[string]struct{}, len(keepSet))
-	if err := c.mergeStatsInto(ctx, sources, keep(foundStats), out); err != nil {
+	if err := c.mergeStatsInto(ctx, sources, keep(foundStats), out, nil); err != nil {
 		return nil, fmt.Errorf("filtering stats of source index %q: %w", source, err)
 	}
 
@@ -100,6 +98,25 @@ func (c *Context) doIndexFilter(ctx context.Context, node *physical.IndexFilter)
 	return artifacts, nil
 }
 
+// filterRuns returns the runs of postings sections that the filter merges.
+// Sources in key order form one run, so the merge holds one postings section
+// reader at a time. The merge then fails if they are not in key order.
+// Otherwise each source is a run of its own, and the merge accepts any order.
+func filterRuns(node *physical.IndexFilter, sources []objectSections) [][]sourceSection {
+	if !node.SourcesInKeyOrder {
+		runs := make([][]sourceSection, len(sources))
+		for i, source := range sources {
+			runs[i] = sectionsOf(source.path, source.postings)
+		}
+		return runs
+	}
+	var run []sourceSection
+	for _, source := range sources {
+		run = append(run, sectionsOf(source.path, source.postings)...)
+	}
+	return [][]sourceSection{run}
+}
+
 // openFilterSources opens the source index objects of node and returns their
 // postings and stats sections of the tenant, and their stream layout.
 //
@@ -115,7 +132,7 @@ func (c *Context) openFilterSources(ctx context.Context, node *physical.IndexFil
 		layout  sourceLayout
 	)
 	for _, path := range node.SourceIndexPaths {
-		obj, err := dataobj.FromBucket(ctx, c.bucket, path, indexPrefetchBytes)
+		obj, err := dataobj.FromBucket(ctx, c.indexBucket, path, indexPrefetchBytes)
 		if err != nil {
 			return nil, streams.Layout{}, fmt.Errorf("opening source index %q: %w", path, err)
 		}

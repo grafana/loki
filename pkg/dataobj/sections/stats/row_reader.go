@@ -9,12 +9,13 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 )
 
-// batchReader is the batch-level reader consumed by [RowReader]. [*Reader]
-// implements it; tests substitute a fake to exercise batch-boundary handling
-// (e.g. empty, non-EOF batches).
+// batchReader reads batches of rows for [RowReader]. Read can return an empty
+// batch with a nil error, and [RowReader] skips it. At the end of the section,
+// Read returns [io.EOF].
 type batchReader interface {
 	Open(ctx context.Context) error
 	Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error)
@@ -43,15 +44,18 @@ type RowReader struct {
 // reader is opened lazily on the first call to Next. The provided ctx governs
 // all subsequent I/O (Open and Read). A RowReader of an empty section reads no
 // rows.
-func NewRowReader(ctx context.Context, sec *Section) *RowReader {
+//
+// statsTracker is optional. The underlying reader reports its stats to it.
+func NewRowReader(ctx context.Context, sec *Section, statsTracker dataset.RowReaderStatsTracker) *RowReader {
 	if sec.Empty() {
 		return &RowReader{ctx: ctx, exhausted: true}
 	}
 	return &RowReader{
 		ctx: ctx,
 		reader: NewReader(ReaderOptions{
-			Columns:   sec.Columns(),
-			Allocator: memory.DefaultAllocator,
+			Columns:      sec.Columns(),
+			Allocator:    memory.DefaultAllocator,
+			StatsTracker: statsTracker,
 		}),
 	}
 }
@@ -93,11 +97,9 @@ func (r *RowReader) next() (Stat, error) {
 			r.batch = nil
 		}
 
-		// Read batches until one contains rows or the reader reaches EOF. The
-		// underlying reader may return an empty (0-row) batch without io.EOF
-		// when a read window is fully filtered out; that means "keep reading",
-		// not "end of section". Treating an empty non-EOF batch as EOF would
-		// silently drop every row after the first fully-filtered batch.
+		// Skip an empty batch with a nil error. batchReader allows it, and stopping
+		// there would drop the rows of later batches. An empty batch with io.EOF
+		// ends the section.
 		for r.batch == nil {
 			batch, err := r.reader.Read(r.ctx, 8192)
 			if err != nil && !errors.Is(err, io.EOF) {

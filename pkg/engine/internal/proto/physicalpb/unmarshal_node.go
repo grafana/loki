@@ -110,9 +110,10 @@ func (n *IndexFilter) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = IndexFilter{
-		Tenant:           indexFilter.Tenant,
-		SourceIndexPaths: slices.Clone(indexFilter.SourceIndexPaths),
-		ObjectPaths:      slices.Clone(indexFilter.ObjectPaths),
+		Tenant:                     indexFilter.Tenant,
+		SourceIndexPaths:           slices.Clone(indexFilter.SourceIndexPaths),
+		SourceIndexPathsInKeyOrder: indexFilter.SourcesInKeyOrder,
+		ObjectPaths:                slices.Clone(indexFilter.ObjectPaths),
 	}
 	return nil
 }
@@ -132,6 +133,6 @@ func (n *DeletionSweep) UnmarshalPhysical(from physical.Node) error {
 		return fmt.Errorf("unsupported physical node type: %T", from)
 	}
 
-	*n = DeletionSweep{Tenant: deletionSweep.Tenant}
+	*n = DeletionSweep{Tenant: deletionSweep.Tenant, Delete: deletionSweep.Delete}
 	return nil
 }

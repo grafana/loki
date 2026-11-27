@@ -8,13 +8,12 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
-	"github.com/grafana/jsonparser"
-
 	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
 
+	"github.com/buger/jsonparser"
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -73,6 +72,11 @@ type JSONParser struct {
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
+//
+// When captureJSONPath is true, the labels builder also retains the JSON path of each label. The
+// paths of nested labels alias the line, so the caller must not overwrite the line while it reads
+// them. The builder retains the paths across calls, so they retain the line until the same label
+// sets a new path. This is the one exception to the rule that a stage must not retain the line.
 func NewJSONParser(captureJSONPath bool) *JSONParser {
 	return &JSONParser{
 		prefixBuffer:          [][]byte{},
@@ -83,7 +87,7 @@ func NewJSONParser(captureJSONPath bool) *JSONParser {
 	}
 }
 
-func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (j *JSONParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	parserHints := lbs.ParserLabelHints()
 	if parserHints.NoLabels() {
 		return line, true
@@ -96,8 +100,12 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	j.prefixBuffer = j.prefixBuffer[:0]
 	j.lbs = lbs
 	j.parserHints = parserHints
+	// prefixBuffer holds sub-slices of the line. Clear it, so the parser retains no reference to
+	// the line. The closure reads the field when Process returns, because append can replace the
+	// array. It clears the whole capacity, because entries past the length can point into the line.
+	defer func() { clear(j.prefixBuffer[:cap(j.prefixBuffer)]) }()
 
-	if err := jsonparser.ObjectEach(line, j.parseObject); err != nil {
+	if err := jsonparser.ObjectEach(line.UnsafeData, j.parseObject); err != nil {
 		if errors.Is(err, errFoundAllLabels) {
 			// Short-circuited
 			return line, true
@@ -294,12 +302,17 @@ func readValue(v []byte, dataType jsonparser.ValueType) string {
 	}
 }
 
+// unescapeJSONString returns the unescaped form of b as a new string.
 func unescapeJSONString(b []byte) string {
 	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 	bU, err := jsonparser.Unescape(b, stackbuf[:])
 	if err != nil {
 		return ""
 	}
+
+	// The copy in string(bU) is required. jsonparser.Unescape returns its input when it holds no
+	// backslash, so bU can alias b, and b can alias the log line. A string that aliases the line must
+	// not reach a label, because the caller can overwrite the line after Process returns.
 	res := string(bU)
 
 	if strings.ContainsRune(res, utf8.RuneError) {
@@ -350,7 +363,7 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 	}, nil
 }
 
-func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (r *RegexpParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	parserHints := lbs.ParserLabelHints()
 	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
@@ -360,7 +373,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		return line, false
 	}
 
-	for i, value := range r.regex.FindSubmatch(line) {
+	for i, value := range r.regex.FindSubmatch(line.UnsafeData) {
 		if name, ok := r.nameIndex[i]; ok {
 			key, shouldExtract := r.keys.get(unsafeGetBytes(name), parserHints, func() (string, bool) {
 				sanitized := sanitizeLabelKey(name)
@@ -417,7 +430,7 @@ func NewLogfmtParser(strict, keepEmpty bool) *LogfmtParser {
 	}
 }
 
-func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (l *LogfmtParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	parserHints := lbs.ParserLabelHints()
 	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
@@ -427,7 +440,10 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		return line, false
 	}
 
-	l.dec.Reset(line)
+	l.dec.Reset(line.UnsafeData)
+	// The decoder retains the line until the next Reset. Reset(nil) drops it, so the parser retains no
+	// reference to the line.
+	defer l.dec.Reset(nil)
 	for !l.dec.EOL() {
 		ok := l.dec.ScanKeyval()
 		if !ok {
@@ -520,7 +536,7 @@ func NewPatternParser(pn string) (*PatternParser, error) {
 	}, nil
 }
 
-func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (l *PatternParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	parserHints := lbs.ParserLabelHints()
 	labelFilterHints := lbs.LabelFilterHints()
 	if parserHints.NoLabels() {
@@ -529,7 +545,10 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 	if !labelFilterHints.ShouldParseLine(line, lbs) {
 		return line, false
 	}
-	matches := l.matcher.Matches(line)
+	matches := l.matcher.Matches(line.UnsafeData)
+	// The matcher keeps the captures, which are sub-slices of the line. Reset drops them, so the parser
+	// retains no reference to the line.
+	defer l.matcher.Reset()
 	names := l.names[:len(matches)]
 	for i, m := range matches {
 		name := names[i]
@@ -541,6 +560,8 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 			continue
 		}
 
+		// The label must not alias the line, which the caller can overwrite after Process returns.
+		// So copy the capture.
 		lbs.Set(ParsedLabel, name, string(m))
 		if !labelFilterHints.ShouldContinueParsingLine(name, lbs) {
 			return line, false
@@ -633,7 +654,7 @@ func (l *LogfmtExpressionParser) wantsOtherName(lbs *LabelsBuilder, current stri
 	return false
 }
 
-func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+func (l *LogfmtExpressionParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
 	// If there are no expressions, extract common labels
 	// and add the suffix "_extracted"
 	if len(l.expressions) == 0 {
@@ -647,12 +668,19 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	// alwaysExtract checks whether a key should be extracted regardless of other
 	// conditions.
 	alwaysExtract := func(key string) bool {
-		// Any key in the expression list should always be extracted.
-		_, ok := l.origKeys[key]
-		return ok
+		// Any key that an expression reads from the line should always be extracted.
+		for _, orig := range l.origKeys {
+			if key == orig {
+				return true
+			}
+		}
+		return false
 	}
 
-	l.dec.Reset(line)
+	l.dec.Reset(line.UnsafeData)
+	// The decoder retains the line until the next Reset. Reset(nil) drops it, so the parser retains no
+	// reference to the line.
+	defer l.dec.Reset(nil)
 	var current []byte
 	for !l.dec.EOL() {
 		ok := l.dec.ScanKeyval()
@@ -686,11 +714,18 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 			val = nil
 		}
 
+		// Only extract keys that are the source of an expression, so a line key
+		// sharing a renamed label's name can't overwrite it.
+		matched := false
 		for id, orig := range l.origKeys {
 			if key == orig {
 				key = id
+				matched = true
 				break
 			}
+		}
+		if !matched {
+			continue
 		}
 
 		if _, ok := l.expressions[key]; ok {
@@ -796,21 +831,21 @@ func JSONPathToStrings(paths []interface{}) []string {
 	return stringPaths
 }
 
-func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if len(line) == 0 || lbs.ParserLabelHints().NoLabels() {
+func (j *JSONExpressionParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
+	if len(line.UnsafeData) == 0 || lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 
 	// Check that the line starts correctly
 	// the parser will pass an error if other
 	// parts of the line are malformed
-	if !isValidJSONStart(line) {
+	if !isValidJSONStart(line.UnsafeData) {
 		lbs.SetErr(errJSON, nil)
 		return line, true
 	}
 
 	var matches int
-	jsonparser.EachKey(line, func(idx int, data []byte, typ jsonparser.ValueType, err error) {
+	jsonparser.EachKey(line.UnsafeData, func(idx int, data []byte, typ jsonparser.ValueType, err error) {
 		if err != nil {
 			lbs.SetErr(errJSON, err)
 			return
@@ -904,28 +939,28 @@ func (u *UnpackParser) Hints() StageHints {
 
 func (UnpackParser) RequiredLabelNames() []string { return []string{} }
 
-func (u *UnpackParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if len(line) == 0 || lbs.ParserLabelHints().NoLabels() {
+func (u *UnpackParser) Process(_ int64, line UnsafeBytes, lbs *LabelsBuilder) (UnsafeBytes, bool) {
+	if len(line.UnsafeData) == 0 || lbs.ParserLabelHints().NoLabels() {
 		return line, true
 	}
 
 	// we only care about object and values.
-	if line[0] != '{' {
+	if line.UnsafeData[0] != '{' {
 		lbs.SetErr(errJSON, errUnexpectedJSONObject)
 		return line, true
 	}
 
 	u.lbsBuffer = u.lbsBuffer[:0]
-	entry, err := u.unpack(line, lbs)
+	entry, err := u.unpack(line.UnsafeData, lbs)
 	if err != nil {
 		if errors.Is(err, errLabelDoesNotMatch) {
-			return entry, false
+			return UnsafeBytes{UnsafeData: entry}, false
 		}
 		lbs.SetErr(errJSON, err)
 		return line, true
 	}
 
-	return entry, true
+	return UnsafeBytes{UnsafeData: entry}, true
 }
 
 func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) {

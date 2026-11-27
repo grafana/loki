@@ -140,7 +140,7 @@ func (p *streamPostings) isLabelName(name []byte) bool {
 // given label name and values.
 // It mirrors ByteSliceReader.Postings.
 // Values must be provided in ascending order.
-func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (Postings, error) {
+func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (_ Postings, err error) {
 	ctx := context.Background()
 
 	if len(labelValues) == 0 {
@@ -178,6 +178,11 @@ func (p *streamPostings) postingsFor(labelName string, labelValues ...string) (P
 	}
 
 	results := make([]Postings, 0, len(labelValues))
+	defer func() {
+		if err != nil {
+			closeAll(results)
+		}
+	}()
 	skip := 0
 	for valueIndex < len(labelValues) {
 		targetLabelValue := labelValues[valueIndex]
@@ -351,9 +356,7 @@ func (p *streamPostings) readPostingsList(decbuf *streamenc.Decbuf, postingsOffs
 
 // pooledBigEndianPostings wraps BigEndianPostings so the backing []byte
 // buffer is returned to postingsListBufferPool once iteration drains (Next
-// or Seek returns false).
-// Callers that abandon the iterator mid-scan lose the pool benefit for
-// that buffer but are otherwise unaffected — GC still reclaims it.
+// or Seek returns false), or when it is closed.
 type pooledBigEndianPostings struct {
 	BigEndianPostings
 	buf    []byte // the buffer that we will return to the pool
@@ -384,12 +387,16 @@ func (p *pooledBigEndianPostings) Seek(x storage.SeriesRef) bool {
 	return ok
 }
 
+func (p *pooledBigEndianPostings) Close() { p.release() }
+
 func (p *pooledBigEndianPostings) release() {
 	if !p.pooled {
 		return
 	}
 	p.pooled = false
+	p.list = nil
 	putPostingsListBuffer(p.buf)
+	p.buf = nil
 }
 
 // streamPostingsOffsetTable iterates the postings-offset table, running

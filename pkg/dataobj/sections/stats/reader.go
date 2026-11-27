@@ -135,6 +135,10 @@ type Column struct {
 
 var tracer = otel.Tracer("pkg/dataobj/sections/stats")
 
+// RowReaderStatsTracker is the type of [ReaderOptions.StatsTracker] and of the
+// tracker argument of [NewRowReader].
+type RowReaderStatsTracker = dataset.RowReaderStatsTracker
+
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
 	// Columns to read. Each column must belong to the same [Section].
@@ -143,6 +147,9 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
+
+	// StatsTracker keeps track of the various reader internal stats.
+	StatsTracker dataset.RowReaderStatsTracker
 }
 
 // validate returns an error if opts is invalid. ReaderOptions are valid when
@@ -174,7 +181,7 @@ type Reader struct {
 	opts     ReaderOptions
 	schema   *arrow.Schema
 	ready    bool
-	inner    *columnar.ReaderAdapter
+	inner    *dataset.RowReader
 	alloc    *memoryv2.Allocator
 	readSpan trace.Span
 }
@@ -225,10 +232,16 @@ func (r *Reader) Open(ctx context.Context) error {
 	return nil
 }
 
-// Read reads up to batchSize rows from the section. At end of section returns
-// (nil, io.EOF). May return a non-nil batch with io.EOF — callers should
-// process the batch before checking the error. Returned batches must be
-// released by the caller after use.
+// Read reads up to batchSize rows from the section. Read returns an error if
+// batchSize is not positive.
+//
+// A batch that comes with a nil error has at least one row. A batch with fewer
+// than batchSize rows does not mean that the section ended. At the end of the
+// section, Read returns an empty batch and [io.EOF].
+//
+// A batch that comes with an error has no rows. Read never returns a nil batch
+// with [io.EOF]. It can return a nil batch with another error. The caller must
+// release every returned batch.
 func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, error) {
 	if !r.ready {
 		return nil, errReaderNotOpen
@@ -239,11 +252,12 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 		ctx = xcap.ContextWithSpan(ctx, r.readSpan)
 	}
 	defer r.alloc.Reclaim()
-	rb, readErr := r.inner.Read(ctx, r.alloc, batchSize)
+	rb, readErr := r.inner.ReadRecordBatch(ctx, r.alloc, batchSize)
 	result, err := arrowconv.ToRecordBatch(rb, r.schema)
 	if err != nil {
 		return nil, fmt.Errorf("convert columnar.RecordBatch to arrow.RecordBatch: %w", err)
 	}
+
 	return result, readErr
 }
 
@@ -274,9 +288,10 @@ func (r *Reader) init(ctx context.Context) error {
 		Dataset:           dset,
 		ProjectedColumns:  dset.Columns(),
 		PrefetchAllOnOpen: true,
+		StatsTracker:      r.opts.StatsTracker,
 	}
 	if r.inner == nil {
-		r.inner = columnar.NewReaderAdapter(innerOptions)
+		r.inner = dataset.NewRowReader(innerOptions)
 	} else {
 		r.inner.Reset(innerOptions)
 	}
