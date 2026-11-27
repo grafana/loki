@@ -2,6 +2,7 @@ package ring
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
@@ -29,12 +30,19 @@ var (
 )
 
 type PartitionInstanceLifecyclerConfig struct {
-	// PartitionID is the ID of the partition managed by the lifecycler.
+	// PartitionID is the ID of the partition managed by the lifecycler. It must not be negative.
 	PartitionID int32
+
+	// CreatePartitionsWithDerivedTokens creates new partitions using PartitionTokensSmt512, without stored tokens.
+	// When enabled, PartitionID must be below MaxDerivedTokenPartitions.
+	// An existing partition keeps its token scheme.
+	CreatePartitionsWithDerivedTokens bool
+
+	// MaxDerivedTokenPartitions is the number of partition IDs, from 0, that can be created with derived tokens.
+	MaxDerivedTokenPartitions int32
 
 	// InstanceID is the ID of the instance managed by the lifecycler.
 	InstanceID string
-
 	// MultiPartitionOwnership is the flag that indicates whether the lifecycler should allow owning multiple partitions.
 	// This changes the InstanceID used to register the owner in the ring.
 	MultiPartitionOwnership bool
@@ -50,7 +58,15 @@ type PartitionInstanceLifecyclerConfig struct {
 	// DeleteInactivePartitionAfterDuration is how long the lifecycler should wait before
 	// deleting inactive partitions with no owners. Inactive partitions are never removed
 	// if this value is 0.
+	// If both this and DeleteInactivePartitionAfterDurationFunc are set, then the value returned
+	// from DeleteInactivePartitionAfterDurationFunc is used.
 	DeleteInactivePartitionAfterDuration time.Duration
+
+	// DeleteInactivePartitionAfterDurationFunc is like DeleteInactivePartitionAfterDuration,
+	// but allows for dynamically setting the duration (eg. in response to runtime limits).
+	// If both this and DeleteInactivePartitionAfterDuration are set, then the value returned
+	// from DeleteInactivePartitionAfterDurationFunc is used.
+	DeleteInactivePartitionAfterDurationFunc func() (time.Duration, error)
 
 	// PollingInterval is the internal polling interval. This setting is useful to let
 	// upstream projects to lower it in unit tests.
@@ -83,7 +99,15 @@ type PartitionInstanceLifecycler struct {
 	reconcilesFailedTotal *prometheus.CounterVec
 }
 
-func NewPartitionInstanceLifecycler(cfg PartitionInstanceLifecyclerConfig, ringName, ringKey string, store kv.Client, logger log.Logger, reg prometheus.Registerer) *PartitionInstanceLifecycler {
+func NewPartitionInstanceLifecycler(cfg PartitionInstanceLifecyclerConfig, ringName, ringKey string, store kv.Client, logger log.Logger, reg prometheus.Registerer) (*PartitionInstanceLifecycler, error) {
+	if cfg.PartitionID < 0 {
+		return nil, fmt.Errorf("invalid partition ID %d: must not be negative", cfg.PartitionID)
+	}
+
+	if cfg.CreatePartitionsWithDerivedTokens && cfg.PartitionID >= cfg.MaxDerivedTokenPartitions {
+		return nil, fmt.Errorf("invalid partition ID %d: must be below the maximum derived token partitions (%d) when creating partitions with derived tokens", cfg.PartitionID, cfg.MaxDerivedTokenPartitions)
+	}
+
 	if cfg.PollingInterval == 0 {
 		cfg.PollingInterval = 5 * time.Second
 	}
@@ -111,7 +135,7 @@ func NewPartitionInstanceLifecycler(cfg PartitionInstanceLifecyclerConfig, ringN
 
 	l.BasicService = services.NewBasicService(l.starting, l.running, l.stopping)
 
-	return l
+	return l, nil
 }
 
 // CreatePartitionOnStartup returns whether the lifecycle creates the partition on startup
@@ -282,7 +306,7 @@ func (l *PartitionInstanceLifecycler) createPartitionAndRegisterOwner(ctx contex
 
 		partitionDesc, exists := ring.Partitions[l.cfg.PartitionID]
 		if exists {
-			level.Info(l.logger).Log("msg", "partition found in the ring", "partition", l.cfg.PartitionID, "state", partitionDesc.GetState(), "state_timestamp", partitionDesc.GetState().String(), "tokens", len(partitionDesc.GetTokens()))
+			level.Info(l.logger).Log("msg", "partition found in the ring", "partition", l.cfg.PartitionID, "state", partitionDesc.GetState(), "state_timestamp", partitionDesc.GetState().String(), "tokens", len(partitionDesc.GetTokens()), "token_scheme", partitionDesc.GetTokenScheme())
 		} else {
 			level.Info(l.logger).Log("msg", "partition not found in the ring", "partition", l.cfg.PartitionID)
 		}
@@ -290,7 +314,11 @@ func (l *PartitionInstanceLifecycler) createPartitionAndRegisterOwner(ctx contex
 		if !exists {
 			// The partition doesn't exist, so we create a new one. A new partition should always be created
 			// in PENDING state.
-			ring.AddPartition(l.cfg.PartitionID, PartitionPending, now)
+			if l.cfg.CreatePartitionsWithDerivedTokens {
+				ring.AddPartitionWithDerivedTokens(l.cfg.PartitionID, PartitionPending, now)
+			} else {
+				ring.AddPartition(l.cfg.PartitionID, PartitionPending, now)
+			}
 			changed = true
 		}
 
@@ -385,9 +413,19 @@ func (l *PartitionInstanceLifecycler) reconcileOtherPartitions(ctx context.Conte
 
 	err := l.updateRing(ctx, func(ring *PartitionRingDesc) (bool, error) {
 		changed := false
+		deleteInactivePartitionAfter := l.cfg.DeleteInactivePartitionAfterDuration
 
-		if l.cfg.DeleteInactivePartitionAfterDuration > 0 {
-			deleteBefore := now.Add(-l.cfg.DeleteInactivePartitionAfterDuration)
+		if l.cfg.DeleteInactivePartitionAfterDurationFunc != nil {
+			var err error
+			deleteInactivePartitionAfter, err = l.cfg.DeleteInactivePartitionAfterDurationFunc()
+
+			if err != nil {
+				return false, err
+			}
+		}
+
+		if deleteInactivePartitionAfter > 0 {
+			deleteBefore := now.Add(-deleteInactivePartitionAfter)
 
 			for partitionID, partition := range ring.Partitions {
 				// Never delete the partition owned by this lifecycler, since it's expected to have at least

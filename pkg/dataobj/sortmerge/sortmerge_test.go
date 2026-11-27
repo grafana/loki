@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,21 +14,19 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/sortmerge"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-var testBuilderConfig = logsobj.BuilderConfig{
-	BuilderBaseConfig: logsobj.BuilderBaseConfig{
-		TargetPageSize:          2048,
-		TargetObjectSize:        1 << 20, // 1 MiB
-		TargetSectionSize:       8 << 10, // 8 KiB
-		BufferSize:              2048 * 8,
-		SectionStripeMergeLimit: 2,
-	},
+var testBuilderConfig = logsobj.BuilderBaseConfig{
+	TargetPageSize:          2048,
+	TargetObjectSize:        1 << 20, // 1 MiB
+	TargetSectionSize:       8 << 10, // 8 KiB
+	BufferSize:              2048 * 8,
+	SectionStripeMergeLimit: 2,
 }
 
 const testTenant = "test"
@@ -36,23 +35,24 @@ type schemaOverrides []string
 
 func (s schemaOverrides) SortSchemaLabels(_ string) []string { return s }
 
-// buildSchemaObject builds a schema-sorted (SortSchemaASC) in-memory object for
-// the given per-label entries. Labels may be appended out of sort-key order to
-// exercise stream-ID remapping.
+func (s schemaOverrides) DataObjShardLayout(_ string) streams.ShardLayout {
+	return streams.DefaultShardLayout()
+}
+
+// buildSchemaObject builds a sorted in-memory object for the given per-label
+// entries. Each object assigns its own stream IDs, so merging several objects
+// exercises stream-ID remapping.
 func buildSchemaObject(t *testing.T, sortSchema []string, byLabel map[string][]push.Entry) (*dataobj.Object, func()) {
 	t.Helper()
 
-	cfg := testBuilderConfig
-	cfg.AppendOrderedEnabled = true
-
-	b, err := logsobj.NewBuilder(cfg, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), schemaOverrides(sortSchema))
+	b, err := logsobj.NewBuilder(testTenant, testBuilderConfig, nil, logsobj.NewBuilderMetrics(), log.NewNopLogger(), schemaOverrides(sortSchema))
 	require.NoError(t, err)
 
 	for lbls, entries := range byLabel {
-		require.NoError(t, b.Append(testTenant, logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
+		require.NoError(t, b.Append(logproto.Stream{Labels: lbls, Entries: entries}, entries[0].Timestamp))
 	}
 
-	obj, closer, err := b.Flush()
+	obj, closer, err := b.FlushAndSort(t.Context())
 	require.NoError(t, err)
 	return obj, func() { _ = closer.Close() }
 }
@@ -83,7 +83,7 @@ func planGlobalStreams(ctx context.Context, t *testing.T, objs []*dataobj.Object
 				require.NoError(t, err)
 				schemaKey, err := logsobj.ComputeSchemaKey(stream.Labels, sortSchema)
 				require.NoError(t, err)
-				key := streams.NewSortKey(stream.Labels, schemaKey)
+				key := streams.DefaultShardLayout().NewSortKey(stream.Labels, schemaKey)
 
 				all = append(all, entry{sourceIdx: sourceIdx, sourceStreamID: stream.ID, key: key})
 			}
@@ -160,7 +160,7 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 	for i, section := range sections {
 		runs[i] = sortmerge.Run{{Section: section, Remap: remaps[i]}}
 	}
-	iter := sortmerge.MixedRunIterator(ctx, runs, sortSchema)
+	iter := sortmerge.MixedRunIterator(ctx, runs)
 
 	var (
 		count int
@@ -182,6 +182,94 @@ func TestIteratorWithStreamRemap_MergesAcrossObjects(t *testing.T) {
 	}
 	// objA (2 streams x 2) + objB (2 streams x 2) = 8 records; no dedup.
 	require.Equal(t, 8, count)
+}
+
+func TestSchemaSortedIterator(t *testing.T) {
+	ctx := t.Context()
+	sortSchema := []string{"label:app"}
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	const entriesPerStream = 40
+
+	byLabel := map[string][]push.Entry{}
+	for _, app := range []string{"a", "b", "c", "d"} {
+		entries := make([]push.Entry, 0, entriesPerStream)
+		for i := range entriesPerStream {
+			entries = append(entries, push.Entry{
+				Timestamp: t0.Add(time.Duration(i) * time.Second),
+				Line:      strings.Repeat("x", 200),
+			})
+		}
+		byLabel[`{app="`+app+`"}`] = entries
+	}
+	obj, closeObj := buildSchemaObject(t, sortSchema, byLabel)
+	defer closeObj()
+
+	var (
+		sections []*dataobj.Section
+		ordering []streams.SortKey
+		idByApp  = map[string]int64{}
+	)
+	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+		streamsSection, err := streams.Open(ctx, sec)
+		require.NoError(t, err)
+		ordering = make([]streams.SortKey, streamsSection.NumRows()+1)
+		for res := range streams.IterSection(ctx, streamsSection) {
+			stream, err := res.Value()
+			require.NoError(t, err)
+			schemaKey, err := logsobj.ComputeSchemaKey(stream.Labels, sortSchema)
+			require.NoError(t, err)
+			ordering[stream.ID] = streams.DefaultShardLayout().NewSortKey(stream.Labels, schemaKey)
+			idByApp[stream.Labels.Get("app")] = stream.ID
+		}
+	}
+	for _, sec := range obj.Sections().Filter(logs.CheckSection) {
+		sections = append(sections, sec)
+	}
+	require.Greater(t, len(sections), 1, "the streams must span several sections")
+
+	collect := func(t *testing.T, keep []int64) []logs.Record {
+		t.Helper()
+		iter, err := sortmerge.SchemaSortedIterator(ctx, sections, ordering, keep)
+		require.NoError(t, err)
+		var recs []logs.Record
+		for res := range iter {
+			rec, err := res.Value()
+			require.NoError(t, err)
+			recs = append(recs, rec)
+		}
+		return recs
+	}
+
+	t.Run("returns only the records of the kept streams, in merge order, when the streams span several sections", func(t *testing.T) {
+		recs := collect(t, []int64{idByApp["c"], idByApp["a"]})
+		require.Len(t, recs, 2*entriesPerStream)
+		for i, rec := range recs {
+			require.Contains(t, []int64{idByApp["a"], idByApp["c"]}, rec.StreamID)
+			if i > 0 {
+				require.LessOrEqual(t, recOrder(recs[i-1], rec), 0)
+			}
+		}
+	})
+
+	t.Run("returns every record when every stream is kept", func(t *testing.T) {
+		recs := collect(t, []int64{idByApp["a"], idByApp["b"], idByApp["c"], idByApp["d"]})
+		require.Len(t, recs, 4*entriesPerStream)
+	})
+
+	t.Run("ignores kept stream IDs that no section holds", func(t *testing.T) {
+		recs := collect(t, []int64{idByApp["b"], 9999})
+		require.Len(t, recs, entriesPerStream)
+		for _, rec := range recs {
+			require.Equal(t, idByApp["b"], rec.StreamID)
+		}
+	})
+
+	t.Run("returns an error when no stream ID is kept", func(t *testing.T) {
+		for _, keep := range [][]int64{nil, {}} {
+			_, err := sortmerge.SchemaSortedIterator(ctx, sections, ordering, keep)
+			require.ErrorContains(t, err, "no stream IDs to keep")
+		}
+	})
 }
 
 // recOrder compares records by [streamID ASC, timestamp DESC].

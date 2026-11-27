@@ -113,6 +113,10 @@ type Version struct {
 		M int // Parity blocks
 	} `xml:"Internal"`
 
+	// Restore state of an archived version, only returned when the listing
+	// asked for it with ListObjectsOptions.WithRestoreStatus.
+	Restore *RestoreInfo `xml:"RestoreStatus"`
+
 	// Checksum values. Only returned by AiStor servers.
 	ChecksumCRC32     string `xml:",omitempty"`
 	ChecksumCRC32C    string `xml:",omitempty"`
@@ -298,6 +302,7 @@ type copyObjectResult struct {
 	ChecksumXXHash64  string `xml:"ChecksumXXHASH64,omitempty"`
 	ChecksumXXHash3   string `xml:"ChecksumXXHASH3,omitempty"`
 	ChecksumXXHash128 string `xml:"ChecksumXXHASH128,omitempty"`
+	ChecksumType      string `xml:",omitempty"`
 }
 
 // setChecksums copies the copied part's checksums onto a CompletePart.

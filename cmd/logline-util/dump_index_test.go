@@ -50,6 +50,42 @@ func createTestLintFile(t *testing.T, path string) {
 	require.NoError(t, writer.Close())
 }
 
+// createTestV5File creates a v5 .lidx file at path with 16s buckets and 5
+// document shard bits on 2024-02-01, with one term posted to cells.
+func createTestV5File(t *testing.T, path string, cells ...uint32) {
+	t.Helper()
+	writer, err := logline.NewWriter("v5", path, nil, &format.WriterConfig{
+		DocumentInterval:  16 * time.Second,
+		DocumentShardBits: 5,
+		DayStart:          time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC),
+	})
+	require.NoError(t, err)
+	require.NoError(t, writer.WriteTermDocIDs([8]byte{'E', 'R', 'R', 'O', 'R', 'L', 'O', 'G'}, cells, len(cells)))
+	require.NoError(t, writer.Close())
+}
+
+func TestPrintHeader_V5DocumentLayout(t *testing.T) {
+	testFile := filepath.Join(t.TempDir(), "test.lidx")
+	createTestV5File(t, testFile, 3, 64, 65)
+
+	reader, version, err := logline.OpenFile(testFile)
+	require.NoError(t, err)
+	defer reader.Close()
+	require.Equal(t, "v5", version)
+
+	var buf bytes.Buffer
+	printHeaderToWriter(&buf, reader, version, testFile)
+	output := buf.String()
+	require.Contains(t, output, "Document Count: 3")
+	require.Contains(t, output, "Day Start: 2024-02-01T00:00:00Z")
+	require.Contains(t, output, "Document Interval: 16s")
+	require.Contains(t, output, "Document Shard Bits: 5")
+
+	buf.Reset()
+	printDocumentsToWriter(&buf, reader, 0)
+	require.Contains(t, buf.String(), "no document table; document IDs are cells of 2024-02-01 (172,800 cells per day, 16s per bucket, 5 shard bits)")
+}
+
 func TestPrintHeader(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "test.lidx")

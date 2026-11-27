@@ -49,7 +49,6 @@ var lbacModules = []string{
 	LabelAccess,
 	LabelAccessStoreWrapper,
 	LabelAccessIngesterWrapper,
-	LabelAccessV2Engine,
 	LabelAccessInterceptors,
 	LabelAccessTripperware,
 	Filterers,
@@ -76,7 +75,6 @@ func TestSetupLBACEnabled(t *testing.T) {
 	edges := map[string][]string{
 		Querier:       {AuthMiddleware, LabelAccess, LabelAccessStoreWrapper},
 		QueryFrontend: {AuthMiddleware, LabelAccessTripperware},
-		QueryEngine:   {AuthMiddleware, LabelAccessV2Engine},
 		Ingester:      {LabelAccessStoreWrapper, LabelAccessIngesterWrapper, Filterers},
 		Server:        {LabelAccessInterceptors, LabelAccessUserIDTransformer},
 		IndexGateway:  {LabelAccess},

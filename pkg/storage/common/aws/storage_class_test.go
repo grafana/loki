@@ -1,10 +1,9 @@
 package aws
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -15,11 +14,27 @@ func TestValidateStorageClass(t *testing.T) {
 	}{
 		"should return error if storage class is invalid": {
 			"foo",
-			fmt.Errorf("unsupported S3 storage class: foo. Supported values: %s", strings.Join(SupportedStorageClasses, ", ")),
+			ErrUnsupportedStorageClass("foo"),
 		},
 		"should not return error if storage class is within supported values": {
-			StorageClassStandardInfrequentAccess,
+			string(s3types.StorageClassStandardIa),
 			nil,
+		},
+		"should not return error for GLACIER_IR": {
+			string(s3types.StorageClassGlacierIr),
+			nil,
+		},
+		"should not return error for INTELLIGENT_TIERING": {
+			string(s3types.StorageClassIntelligentTiering),
+			nil,
+		},
+		"should not return error for REDUCED_REDUNDANCY": {
+			string(s3types.StorageClassReducedRedundancy),
+			nil,
+		},
+		"should return error for GLACIER": {
+			string(s3types.StorageClassGlacier),
+			ErrUnsupportedStorageClass(string(s3types.StorageClassGlacier)),
 		},
 	}
 

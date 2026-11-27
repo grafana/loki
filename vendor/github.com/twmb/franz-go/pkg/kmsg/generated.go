@@ -6220,8 +6220,10 @@ type ListOffsetsRequest struct {
 	// Topics is an array of topics to get offsets for.
 	Topics []ListOffsetsRequestTopic
 
-	// TimeoutMillis is how long to wait for a lookup the offset being looked up
-	// is in remote storage.
+	// TimeoutMillis is how long Kafka can wait before responding to this request.
+	// This field has no effect on Kafka's processing of the request; the request
+	// will continue to be processed if the timeout is reached. If the timeout is
+	// reached, Kafka will reply with a REQUEST_TIMED_OUT error.
 	//
 	// This field has a default of 30000.
 	TimeoutMillis int32 // v10+
@@ -6231,11 +6233,13 @@ type ListOffsetsRequest struct {
 
 }
 
-func (*ListOffsetsRequest) Key() int16                 { return 2 }
-func (*ListOffsetsRequest) MaxVersion() int16          { return 11 }
-func (v *ListOffsetsRequest) SetVersion(version int16) { v.Version = version }
-func (v *ListOffsetsRequest) GetVersion() int16        { return v.Version }
-func (v *ListOffsetsRequest) IsFlexible() bool         { return v.Version >= 6 }
+func (*ListOffsetsRequest) Key() int16                       { return 2 }
+func (*ListOffsetsRequest) MaxVersion() int16                { return 11 }
+func (v *ListOffsetsRequest) SetVersion(version int16)       { v.Version = version }
+func (v *ListOffsetsRequest) GetVersion() int16              { return v.Version }
+func (v *ListOffsetsRequest) IsFlexible() bool               { return v.Version >= 6 }
+func (v *ListOffsetsRequest) Timeout() int32                 { return v.TimeoutMillis }
+func (v *ListOffsetsRequest) SetTimeout(timeoutMillis int32) { v.TimeoutMillis = timeoutMillis }
 func (v *ListOffsetsRequest) ResponseKind() Response {
 	r := &ListOffsetsResponse{Version: v.Version}
 	r.Default()

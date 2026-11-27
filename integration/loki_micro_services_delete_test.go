@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strconv"
 	"testing"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 type pushRequest struct {
@@ -29,7 +31,7 @@ type pushRequest struct {
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
 	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
-		c.SetSchemaVer("v13")
+		c.SetSchemaVer(fmt.Sprintf("v%d", config.LatestSchemaVersion))
 	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())

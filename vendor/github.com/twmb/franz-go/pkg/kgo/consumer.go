@@ -629,13 +629,23 @@ func (cl *Client) PollRecords(ctx context.Context, maxPollRecords int) Fetches {
 			}
 			c.sourcesReadyForDraining = nil
 		} else {
+			var one *pollOne
+			if len(fetches) == 0 && len(c.sourcesReadyForDraining) > 0 && maxPollRecords > 0 {
+				one = new(pollOne)
+			}
 			for len(c.sourcesReadyForDraining) > 0 && maxPollRecords > 0 {
 				source := c.sourcesReadyForDraining[0]
-				fetch, taken, drained := source.takeNBuffered(paused, maxPollRecords)
+				fetch, taken, drained := source.takeNBuffered(paused, maxPollRecords, one)
 				if drained {
 					c.sourcesReadyForDraining = c.sourcesReadyForDraining[1:]
 				}
 				maxPollRecords -= taken
+				if one != nil {
+					one.f[0] = fetch
+					fetches = one.f[:]
+					one = nil
+					continue
+				}
 				fetches = append(fetches, fetch)
 			}
 		}

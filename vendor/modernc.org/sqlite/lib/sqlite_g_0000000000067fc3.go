@@ -4,4 +4,8 @@
 
 package sqlite3
 
+const FP_ILOGB0 = -2147483648
+
+type float_t = Tfloat_t
+
 type tm = Ttm

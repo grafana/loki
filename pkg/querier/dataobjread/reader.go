@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
-	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/bucketstat"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_server "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/xcap"
@@ -27,41 +28,33 @@ const (
 	// DefaultMaxConcurrency is how many logs sections the reader scans at once.
 	DefaultMaxConcurrency = 16
 
-	// DefaultReadBatchSize is how many records one section read decodes and forwards at a time.
+	// DefaultReadBatchSize is the most records that one section read decodes and sends at a time.
 	DefaultReadBatchSize = 1024
 )
 
-// LogRecord is one decoded log line with the identity the sample layer needs.
-type LogRecord struct {
-	streamHash   uint64
-	streamLabels labels.Labels
-
-	// timestamp is nanoseconds since the Unix epoch.
-	timestamp int64
-
-	line     []byte
-	metadata labels.Labels
-}
-
-// LogReader runs a read plan and yields decoded log lines in batches.
+// LogReader runs a read plan and yields the records it reads as batches.
 //
-// One row reader scans each planned section, matching all of its streams together and reading
-// only the planned columns. The planner rejects a section it was given twice, so no section is
-// scanned twice.
+// One [logs.RowReader] scans each planned section with ReadRecordBatch, matching all of its
+// streams together and returning only the planned columns. The planner rejects a section it was
+// given twice, so no section is scanned twice.
 //
 // Up to maxConcurrency sections are scanned at once, to hide object-storage latency.
 //
-// Records are forwarded one batch at a time, so a read costs one channel send per batch rather
-// than one per record.
+// A scan reads each batch into memory that the batch owns, and sends the batch as it is. A read
+// costs one channel send per batch and copies no record. The consumer releases a batch when it has
+// used it, and the scans recycle its memory.
 //
 // The output carries no order. Batches from different sections interleave as their reads
 // complete, so a consumer must not depend on the order. The sample iterator does not, and the
 // data-object tier is never deduplicated against another source.
 //
-// The records in flight do not grow with the sample count. The plan does grow with the stream
-// count: every queued task references its object's decoded streams, one label set each.
+// The number of batches in flight is bounded by 2*maxConcurrency+1. The channel holds up to
+// maxConcurrency of them. Each scan holds one while it reads. The consumer holds at most one.
 //
-// Next and At are for the single consumer goroutine only. Err and Close are safe to call from
+// The queued tasks grow with the stream count: every task references the decoded streams of its
+// object, one label set each.
+//
+// nextRowsBatch is for the single consumer goroutine only. Err and Close are safe to call from
 // another one.
 type LogReader struct {
 	objects *OpenObjects
@@ -70,12 +63,13 @@ type LogReader struct {
 	// tasks are the section reads to run.
 	tasks *TaskIterator
 
-	// capture and statsCtx carry the dataset reader's byte accounting. capture is nil when the
+	// capture and statsCtx carry the statistics the query records. capture is nil when the
 	// caller installed none.
 	capture  *xcap.Capture
 	statsCtx *stats.Context
 
-	batches chan []LogRecord
+	batches chan *rowsBatch
+	pool    *rowsBatchPool
 
 	// stopped closes once the scan goroutine has fully exited.
 	stopped chan struct{}
@@ -88,9 +82,6 @@ type LogReader struct {
 
 	// parentCtx is the caller's context, as opposed to the cancellable one the scans run under.
 	parentCtx context.Context
-
-	currBatch []LogRecord
-	currPos   int
 }
 
 // NewLogReader starts scanning the tasks the iterator streams. It owns a cancellable
@@ -108,7 +99,8 @@ func NewLogReader(ctx context.Context, objects *OpenObjects, tasks *TaskIterator
 		parentCtx: parentCtx,
 		capture:   xcap.CaptureFromContext(ctx),
 		statsCtx:  stats.FromContext(ctx),
-		batches:   make(chan []LogRecord, maxConcurrency),
+		batches:   make(chan *rowsBatch, maxConcurrency),
+		pool:      newRowsBatchPool(),
 		stopped:   make(chan struct{}),
 		cancel:    cancel,
 	}
@@ -188,7 +180,7 @@ func (r *LogReader) runTasks(ctx context.Context, tasks *TaskIterator, maxConcur
 			err = r.runTask(ctx, task, batchSize)
 			scannedNanos.Add(int64(time.Since(start)))
 			if err != nil {
-				// Record the error as soon as a scan fails, so Next stops without draining the
+				// Record the error as soon as a scan fails, so nextRowsBatch stops without draining the
 				// batches queued before it. The group then cancels the sibling scans.
 				r.setErr(err)
 			}
@@ -239,57 +231,61 @@ func (r *LogReader) runTask(ctx context.Context, task ReadTask, batchSize int) (
 		return err
 	}
 
-	buf := make([]logs.Record, batchSize)
+	return r.sendBatches(ctx, reader, task, batchSize)
+}
+
+// sendBatches reads up to batchSize records of reader at a time into a pooled batch, and sends the
+// batch. A send passes the batch to the consumer, which owns it from then on.
+//
+// sendBatches releases the batch that it holds when it reaches the end of the section or fails.
+// It never releases a batch that it sent. A panic drops the batch that it holds instead, because
+// the state of the batch is unknown. The garbage collector frees that batch, and the recover of
+// the scan reports the panic.
+func (r *LogReader) sendBatches(ctx context.Context, reader *logs.RowReader, task ReadTask, batchSize int) error {
 	for {
-		n, readErr := reader.Read(ctx, buf)
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			return readErr
-		}
-		batch, err := task.records(buf[:n])
+		batch := r.pool.get()
+
+		records, err := reader.ReadRecordBatch(ctx, &batch.alloc, batchSize)
 		if err != nil {
+			batch.release()
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return err
 		}
-		if len(batch) > 0 {
-			select {
-			case r.batches <- batch:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
+
+		if err := batch.init(task, records); err != nil {
+			batch.release()
+			return err
 		}
-		if n == 0 && errors.Is(readErr, io.EOF) {
-			return nil
+
+		select {
+		case r.batches <- batch:
+		case <-ctx.Done():
+			batch.release()
+			return ctx.Err()
 		}
 	}
 }
 
-func (r *LogReader) Next() bool {
-	for {
-		if r.currPos+1 < len(r.currBatch) {
-			r.currPos++
-			return true
-		}
-		// A failed scan is terminal, so stop instead of returning the batches queued before it.
-		// Checked once per batch, not per record, to keep the per-sample path cheap.
-		if err := r.Err(); err != nil {
-			// Stop the planner too: it must not keep resolving objects for a query that has
-			// already failed.
-			r.tasks.Abort(err)
-			return false
-		}
-		batch, ok := <-r.batches
-		if !ok {
-			return false
-		}
-		r.currBatch = batch
-		r.currPos = 0
-		if len(r.currBatch) > 0 {
-			return true
-		}
+// nextRowsBatch returns the next batch of records. It returns nil when no batch is left, or when
+// the read failed: see [LogReader.Err]. The caller owns the batch, and must release it.
+func (r *LogReader) nextRowsBatch() *rowsBatch {
+	// A failed scan is terminal, so stop instead of returning the batches queued before it.
+	if err := r.Err(); err != nil {
+		// Stop the planner too: it must not keep planning objects for a query that has
+		// already failed.
+		r.tasks.Abort(err)
+		return nil
 	}
-}
 
-// At returns the record the last Next fetched, so it panics unless Next returned true.
-func (r *LogReader) At() LogRecord { return r.currBatch[r.currPos] }
+	// The scan goroutine closes the channel after the last scan stops, so a closed channel ends the read.
+	batch, ok := <-r.batches
+	if !ok {
+		return nil
+	}
+	return batch
+}
 
 func (r *LogReader) Err() error {
 	r.errClosingMu.Lock()
@@ -318,6 +314,8 @@ func (r *LogReader) setErr(err error) {
 //
 // Closing before the results are drained is not a failure, so Close reports no error for the
 // cancellation it causes.
+//
+// Close does not release a batch that the consumer holds. The consumer releases it.
 func (r *LogReader) Close() error {
 	// Decide, before anything is cancelled, whether a later cancellation is the caller's or
 	// this reader's own. Asking the caller's context is the whole question, and it does not
@@ -340,13 +338,28 @@ func (r *LogReader) Close() error {
 
 	r.cancel()
 	<-r.stopped
+
+	// Drain the queued batches, so the closed reader does not keep them alive until the query ends.
+	// Do not release them. The scans have exited, and the garbage collector frees their memory.
+	for range r.batches {
+	}
+
 	r.recordStats()
 	r.objects.release()
 	return r.Err()
 }
 
-// recordStats folds the data-object byte and row counts into the query stats. It does nothing
+// recordStats adds the figures of the capture to the query stats and to the metrics. It does nothing
 // when no capture was installed.
+//
+// The query stats get:
+//   - the decompressed row and byte counts
+//   - the section resolution time
+//   - the counts of logs objects and of index objects opened
+//   - the downloaded bytes of logs objects and of index objects
+//
+// The metrics get the object-store requests, the downloaded bytes and the metadata reads. Only the metrics count the
+// table-of-contents read.
 func (r *LogReader) recordStats() {
 	if r.capture == nil {
 		return
@@ -356,19 +369,54 @@ func (r *LogReader) recordStats() {
 	r.statsCtx.AddPostPredicateDecompressedBytes(xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowBytes))
 	r.statsCtx.AddPrePredicateDecompressedRows(xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetPrimaryRowsRead))
 	r.statsCtx.AddPostFilterRows(xcap.ValueFromRegion[int64](r.capture, logs.RegionRead, dataobj.StatDatasetSecondaryRowsRead))
+	r.statsCtx.RecordDataobjSectionsResolutionTime(time.Duration(xcap.ValueFromRegion[int64](r.capture, metastore.RegionSections, metastore.StatMetastoreSectionsDuration)))
+
+	// End first: it freezes the set of regions the code below reads. Every goroutine that recorded
+	// into them has stopped, so the counts are final.
 	r.capture.End()
 
-	// Clear the capture so a repeated Close does not count the same bytes twice.
+	r.metrics.Record(r.capture)
+
+	// statsFrom sums the downloaded bytes and the opened objects of the regions whose root region
+	// belongs to one of the wanted components.
+	statsFrom := func(wanted ...string) (downloadedBytes, compactedObjects, uncompactedObjects int64) {
+		for root, tree := range r.capture.RootRegions() {
+			if !slices.Contains(wanted, componentForRootRegion(root.Name())) {
+				continue
+			}
+			for _, region := range tree {
+				if region.Name() != metastore.RegionGetIndexes {
+					downloadedBytes += region.Int64Value(bucketstat.StatObjectBytesDownloaded)
+				}
+				compactedObjects += region.Int64Value(dataobj.StatObjectsOpenedCompacted)
+				uncompactedObjects += region.Int64Value(dataobj.StatObjectsOpenedUncompacted)
+			}
+		}
+		return downloadedBytes, compactedObjects, uncompactedObjects
+	}
+
+	logsBytes, logsCompacted, logsUncompacted := statsFrom(componentStreamsReader, componentLogsReader)
+	indexBytes, indexCompacted, indexUncompacted := statsFrom(componentMetastore)
+	r.statsCtx.AddDataobjLogsCompactedObjectsCount(logsCompacted)
+	r.statsCtx.AddDataobjLogsUncompactedObjectsCount(logsUncompacted)
+	r.statsCtx.AddDataobjIndexCompactedObjectsCount(indexCompacted)
+	r.statsCtx.AddDataobjIndexUncompactedObjectsCount(indexUncompacted)
+	r.statsCtx.AddDataobjLogsDownloadedBytes(logsBytes)
+	r.statsCtx.AddDataobjIndexDownloadedBytes(indexBytes)
+
+	// Clear the capture so a repeated Close does not count the same figures twice.
 	r.capture = nil
 }
 
-// recordReader is the reader the sample iterator consumes.
+// rowsBatchReader is the reader the sample iterator consumes.
 //
-// Next and At are for the single consumer goroutine only. Err and Close are safe to call from
+// nextRowsBatch returns nil at the end of the read and after a failure. Err reports the failure.
+// The consumer owns each batch that nextRowsBatch returns, and must release it.
+//
+// nextRowsBatch is for the single consumer goroutine only. Err and Close are safe to call from
 // another one.
-type recordReader interface {
-	Next() bool
-	At() LogRecord
+type rowsBatchReader interface {
+	nextRowsBatch() *rowsBatch
 	Err() error
 	Close() error
 }

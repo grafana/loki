@@ -14,12 +14,13 @@
 package index
 
 import (
-	"container/heap"
 	"encoding/binary"
+	"math"
 	"runtime"
 	"sort"
 	"sync"
 
+	"github.com/bboreham/go-loser"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 )
@@ -403,6 +404,9 @@ type Postings interface {
 
 	// Err returns the last error of the iterator.
 	Err() error
+
+	// Close returns any pooled buffers held by the postings.
+	Close()
 }
 
 // errPostings is an empty iterator that always errors.
@@ -414,6 +418,7 @@ func (e errPostings) Next() bool                  { return false }
 func (e errPostings) Seek(storage.SeriesRef) bool { return false }
 func (e errPostings) At() storage.SeriesRef       { return 0 }
 func (e errPostings) Err() error                  { return e.err }
+func (e errPostings) Close()                      {}
 
 var emptyPostings = errPostings{}
 
@@ -447,6 +452,7 @@ func Intersect(its ...Postings) Postings {
 	}
 	for _, p := range its {
 		if p == EmptyPostings() {
+			closeAll(its)
 			return EmptyPostings()
 		}
 	}
@@ -509,6 +515,14 @@ func (it *intersectPostings) Err() error {
 	return nil
 }
 
+func (it *intersectPostings) Close() { closeAll(it.arr) }
+
+func closeAll(its []Postings) {
+	for _, p := range its {
+		p.Close()
+	}
+}
+
 // Merge returns a new iterator over the union of the input iterators.
 func Merge(its ...Postings) Postings {
 	if len(its) == 0 {
@@ -518,140 +532,116 @@ func Merge(its ...Postings) Postings {
 		return its[0]
 	}
 
-	p, ok := newMergedPostings(its)
-	if !ok {
-		return EmptyPostings()
-	}
+	p := newMergedPostings(its)
 	return p
 }
 
-type postingsHeap []Postings
-
-func (h postingsHeap) Len() int           { return len(h) }
-func (h postingsHeap) Less(i, j int) bool { return h[i].At() < h[j].At() }
-func (h *postingsHeap) Swap(i, j int)     { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
-
-func (h *postingsHeap) Push(x interface{}) {
-	*h = append(*h, x.(Postings))
-}
-
-func (h *postingsHeap) Pop() interface{} {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-	return x
-}
-
 type mergedPostings struct {
-	h           postingsHeap
-	initialized bool
-	cur         storage.SeriesRef
-	err         error
+	h   *loser.Tree[storage.SeriesRef, Postings]
+	its []Postings // the inputs, kept to close them
+	cur storage.SeriesRef
+	err error
+	// started is set by the first Next or Seek. newMergedPostings calls
+	// IsEmpty, which initializes the tree, so the first Next must return the
+	// tree's current winner instead of advancing past it.
+	started bool
 }
 
-func newMergedPostings(p []Postings) (m *mergedPostings, nonEmpty bool) {
-	ph := make(postingsHeap, 0, len(p))
+// mergedPostingsMaxVal must be higher than all real values used in the tree.
+// The tree's winner has this value once every input is exhausted.
+const mergedPostingsMaxVal = storage.SeriesRef(math.MaxUint64)
 
+func newMergedPostings(p []Postings) (m Postings) {
+	if len(p) == 0 {
+		return EmptyPostings()
+	}
+	lt := loser.New(p, mergedPostingsMaxVal)
+	// loser.New has called Next on every input, so any that failed up front
+	// have already reported their error.
 	for _, it := range p {
-		// NOTE: mergedPostings struct requires the user to issue an initial Next.
-		if it.Next() {
-			ph = append(ph, it)
-		} else {
-			if it.Err() != nil {
-				return &mergedPostings{err: it.Err()}, true
-			}
+		if err := it.Err(); err != nil {
+			closeAll(p)
+			return ErrPostings(err)
 		}
 	}
-
-	if len(ph) == 0 {
-		return nil, false
+	if lt.IsEmpty() {
+		closeAll(p)
+		return EmptyPostings()
 	}
-	return &mergedPostings{h: ph}, true
+	return &mergedPostings{h: lt, its: p}
 }
 
 func (it *mergedPostings) Next() bool {
-	if it.h.Len() == 0 || it.err != nil {
+	if it.err != nil || it.h.At() == mergedPostingsMaxVal {
 		return false
 	}
-
-	// The user must issue an initial Next.
-	if !it.initialized {
-		heap.Init(&it.h)
-		it.cur = it.h[0].At()
-		it.initialized = true
+	if !it.started {
+		it.started = true
+		it.cur = it.h.At()
 		return true
 	}
-
 	for {
-		cur := it.h[0]
-		if !cur.Next() {
-			heap.Pop(&it.h)
-			if cur.Err() != nil {
-				it.err = cur.Err()
-				return false
-			}
-			if it.h.Len() == 0 {
-				return false
-			}
-		} else {
-			// Value of top of heap has changed, re-heapify.
-			heap.Fix(&it.h, 0)
+		w := it.h.Winner()
+		ok := w.Next()
+		if !ok && w.Err() != nil {
+			it.err = w.Err()
+			return false
 		}
-
-		if it.h[0].At() != it.cur {
-			it.cur = it.h[0].At()
+		it.h.Fix(!ok)
+		newItem := it.h.At()
+		if newItem == mergedPostingsMaxVal { // Optimisation - faster than it.h.IsEmpty()
+			return false
+		}
+		// Remove duplicate entries.
+		if newItem != it.cur {
+			it.cur = newItem
 			return true
 		}
 	}
 }
 
 func (it *mergedPostings) Seek(id storage.SeriesRef) bool {
-	if it.h.Len() == 0 || it.err != nil {
+	if it.err != nil {
 		return false
 	}
-	if !it.initialized {
-		if !it.Next() {
+	it.started = true
+	for it.h.At() < id {
+		w := it.h.Winner()
+		ok := w.Seek(id)
+		if !ok && w.Err() != nil {
+			it.err = w.Err()
 			return false
 		}
+		it.h.Fix(!ok)
 	}
-	for it.cur < id {
-		cur := it.h[0]
-		if !cur.Seek(id) {
-			heap.Pop(&it.h)
-			if cur.Err() != nil {
-				it.err = cur.Err()
-				return false
-			}
-			if it.h.Len() == 0 {
-				return false
-			}
-		} else {
-			// Value of top of heap has changed, re-heapify.
-			heap.Fix(&it.h, 0)
-		}
-
-		it.cur = it.h[0].At()
+	if it.h.At() == mergedPostingsMaxVal { // Optimisation - faster than it.h.IsEmpty()
+		return false
 	}
+	it.cur = it.h.At()
 	return true
 }
 
-func (it mergedPostings) At() storage.SeriesRef {
+func (it *mergedPostings) At() storage.SeriesRef {
 	return it.cur
 }
 
-func (it mergedPostings) Err() error {
+func (it *mergedPostings) Err() error {
 	return it.err
 }
+
+func (it *mergedPostings) Close() { closeAll(it.its) }
 
 // Without returns a new postings list that contains all elements from the full list that
 // are not in the drop list.
 func Without(full, drop Postings) Postings {
 	if full == EmptyPostings() {
+		full.Close()
+		drop.Close()
 		return EmptyPostings()
 	}
 
 	if drop == EmptyPostings() {
+		drop.Close()
 		return full
 	}
 	return newRemovedPostings(full, drop)
@@ -730,6 +720,11 @@ func (rp *removedPostings) Err() error {
 	return rp.remove.Err()
 }
 
+func (rp *removedPostings) Close() {
+	rp.full.Close()
+	rp.remove.Close()
+}
+
 // ListPostings implements the Postings interface over a plain list.
 type ListPostings struct {
 	list []storage.SeriesRef
@@ -747,6 +742,8 @@ func newListPostings(list ...storage.SeriesRef) *ListPostings {
 func (it *ListPostings) At() storage.SeriesRef {
 	return it.cur
 }
+
+func (it *ListPostings) Close() {}
 
 func (it *ListPostings) Next() bool {
 	if len(it.list) > 0 {
@@ -832,6 +829,8 @@ func (it *BigEndianPostings) Err() error {
 	return nil
 }
 
+func (it *BigEndianPostings) Close() {}
+
 // seriesRefSlice attaches the methods of sort.Interface to []storage.SeriesRef, sorting in increasing order.
 type seriesRefSlice []storage.SeriesRef
 
@@ -894,7 +893,8 @@ func (sp *ShardedPostings) Seek(v storage.SeriesRef) (res bool) {
 	if v < storage.SeriesRef(sp.minOffset) {
 		v = storage.SeriesRef(sp.minOffset)
 	}
-	return sp.p.Seek(v)
+	// Seek may jump beyond the shard when there are no more matching refs inside it.
+	return sp.p.Seek(v) && sp.p.At() < storage.SeriesRef(sp.maxOffset)
 }
 
 // At returns the value at the current iterator position.
@@ -906,3 +906,5 @@ func (sp *ShardedPostings) At() storage.SeriesRef {
 func (sp *ShardedPostings) Err() (err error) {
 	return sp.p.Err()
 }
+
+func (sp *ShardedPostings) Close() { sp.p.Close() }

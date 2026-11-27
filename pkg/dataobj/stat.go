@@ -24,14 +24,13 @@ var (
 	// pages skipped".
 	StatDatasetPagesPruned = xcap.NewStatisticInt64("dataobj.dataset.pages.pruned", xcap.AggregationTypeSum)
 
-	// StatObjectBytesDownloaded is the total number of bytes a task pulled from
-	// the backing object store via the [rangeReader] interface across every
-	// request (metadata reads, page downloads, ad-hoc reads, etc.).
+	// StatObjectsOpened* count the objects that [FromBucket] opened. The compaction state of the key
+	// picks the statistic. See [IsCompactedObjectPath].
 	//
-	// It is recorded at the lowest rangeReader layer that actually hits remote
-	// storage. Bytes served from the metadata prefetch buffer are not counted
-	// again, so this is a true "transferred from storage" figure.
-	StatObjectBytesDownloaded = xcap.NewStatisticInt64("dataobj.object.bytes.downloaded", xcap.AggregationTypeSum)
+	// An open counts once it has read the object metadata, even when a cache served the read. A failed
+	// open counts nothing. Opening one key twice counts twice.
+	StatObjectsOpenedCompacted   = xcap.NewStatisticInt64("dataobj.objects.opened.compacted", xcap.AggregationTypeSum)
+	StatObjectsOpenedUncompacted = xcap.NewStatisticInt64("dataobj.objects.opened.uncompacted", xcap.AggregationTypeSum)
 
 	// Dataset column statistics.
 	StatDatasetPrimaryColumns       = xcap.NewStatisticInt64("primary.columns", xcap.AggregationTypeSum, xcap.Local())

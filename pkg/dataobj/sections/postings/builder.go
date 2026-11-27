@@ -87,6 +87,13 @@ func (b *Builder) ObserveBloomPosting(obs BloomObservation) error {
 	return b.blooms.Observe(obs)
 }
 
+// PreparePassAllBloomColumn initializes a column whose bloom filter matches
+// every value. Observations of the column update its stream bitmap, time range
+// and size, but never its filter. Call it instead of [Builder.PrepareBloomColumn].
+func (b *Builder) PreparePassAllBloomColumn(objectPath string, sectionIndex int64, columnName string, shardBuckets int64) {
+	b.blooms.PreparePassAllColumn(objectPath, sectionIndex, columnName, shardBuckets)
+}
+
 // BloomBytes returns the marshaled bloom filter bytes for a specific column.
 // Returns an error if the column has not been prepared.
 func (b *Builder) BloomBytes(objectPath string, sectionIndex int64, columnName string) ([]byte, error) {

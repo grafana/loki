@@ -4,35 +4,50 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
+
+// NewOnPagesDownloadedFunc returns a stats tracker for
+// [RemappedSection.StatsTracker]. It calls fn with the compressed and the
+// uncompressed size of each batch of pages that the reader of the section
+// downloads. It returns nil if fn is nil.
+func NewOnPagesDownloadedFunc(fn func(compressedBytes, uncompressedBytes int64)) dataset.RowReaderStatsTracker {
+	return dataset.NewOnPagesDownloadedFunc(fn)
+}
 
 // RemappedSection pairs a logs section with its source object's local-to-global
 // stream IDs. Global IDs must be ranked in physical stream order.
 type RemappedSection struct {
 	Section *dataobj.Section
 	Remap   map[int64]int64
+
+	// DropStreamIDs holds local stream IDs whose records the section skips.
+	// Remap needs no entry for them. Records of any other stream must be in
+	// Remap, so a record of an unknown stream still fails the merge.
+	DropStreamIDs []int64
+
+	// StatsTracker is optional. The reader of the section reports its stats
+	// to it.
+	StatsTracker dataset.RowReaderStatsTracker
 }
 
 // Run is a sequence of sections sorted by global stream ID ascending, then
 // timestamp descending, including across section boundaries.
 type Run []RemappedSection
 
-func buildIteratorPerRun(ctx context.Context, runs []Run, expectedSchemaLabels []string) []*runSequence {
+func buildIteratorPerRun(ctx context.Context, runs []Run) []*runSequence {
 	sequences := make([]*runSequence, 0, len(runs))
 	bufferSize := max(128, 8192/max(1, len(runs)))
 
 	for _, run := range runs {
 		sectionIterators := make([]sectionIterator, 0, len(run))
 		for _, inputSection := range run {
-			sectionIterators = append(sectionIterators, &lazySectionIterator{ctx: ctx, input: inputSection, schemaLabels: expectedSchemaLabels, bufferSize: bufferSize})
+			sectionIterators = append(sectionIterators, &lazySectionIterator{ctx: ctx, input: inputSection, bufferSize: bufferSize})
 		}
 		sequences = append(sequences, &runSequence{ctx: ctx, remaining: sectionIterators})
 	}
@@ -42,16 +57,19 @@ func buildIteratorPerRun(ctx context.Context, runs []Run, expectedSchemaLabels [
 // MixedRunIterator merges sorted runs, keeping at most one section reader open
 // per run. Readers are opened only during iteration and closed on early stop.
 // Inputs and their remaps must remain unchanged during iteration.
-func MixedRunIterator(ctx context.Context, runs []Run, expectedSchemaLabels []string) result.Seq[logs.Record] {
+//
+// Every input section must sort its rows by the stream keys that its remap
+// maps to. The caller checks this, for example by requiring equal stream
+// layouts across the source objects.
+func MixedRunIterator(ctx context.Context, runs []Run) result.Seq[logs.Record] {
 	return result.Iter(func(yield func(logs.Record) bool) error {
-		sequences := buildIteratorPerRun(ctx, runs, expectedSchemaLabels)
+		sequences := buildIteratorPerRun(ctx, runs)
 
 		maxValue := result.Value(dataset.Row{Index: math.MaxInt, Values: []dataset.Value{
 			dataset.Int64Value(math.MaxInt64), dataset.Int64Value(math.MinInt64),
 		}})
 		tree := loser.New(sequences, maxValue, (*runSequence).At, logs.CompareForSortOrder(logs.SortStreamASC), (*runSequence).Close)
 		defer tree.Close()
-		sym := symbolizer.New(1024, 100_000)
 		for tree.Next() {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -62,7 +80,7 @@ func MixedRunIterator(ctx context.Context, runs []Run, expectedSchemaLabels []st
 				return err
 			}
 			var record logs.Record
-			if err := logs.DecodeRow(seq.current.Columns(), row, &record, sym); err != nil {
+			if err := logs.DecodeRow(seq.current.Columns(), row, &record); err != nil {
 				return err
 			}
 			if !yield(record) {
@@ -155,12 +173,11 @@ type sectionIterator interface {
 
 // lazySectionIterator defers opening and allocating row buffers until iteration starts.
 type lazySectionIterator struct {
-	ctx          context.Context
-	input        RemappedSection
-	schemaLabels []string
-	bufferSize   int
-	sequence     *sectionSequence
-	err          error
+	ctx        context.Context
+	input      RemappedSection
+	bufferSize int
+	sequence   *sectionSequence
+	err        error
 }
 
 func (s *lazySectionIterator) init() error {
@@ -169,7 +186,7 @@ func (s *lazySectionIterator) init() error {
 		return nil
 	}
 
-	seq, err := openRemappedSection(s.ctx, s.input, s.schemaLabels, s.bufferSize)
+	seq, err := openRemappedSection(s.ctx, s.input, s.bufferSize)
 	if err != nil {
 		return err
 	}
@@ -214,7 +231,7 @@ func (s *lazySectionIterator) Close() {
 	}
 }
 
-func openRemappedSection(ctx context.Context, input RemappedSection, schema []string, bufferSize int) (*sectionSequence, error) {
+func openRemappedSection(ctx context.Context, input RemappedSection, bufferSize int) (*sectionSequence, error) {
 	if input.Section == nil || input.Remap == nil {
 		return nil, fmt.Errorf("sort merge: section and stream remap are required")
 	}
@@ -222,14 +239,7 @@ func openRemappedSection(ctx context.Context, input RemappedSection, schema []st
 	if err != nil {
 		return nil, fmt.Errorf("opening logs section: %w", err)
 	}
-	got, err := sec.SchemaLabels()
-	if err != nil {
-		return nil, fmt.Errorf("reading section schema labels: %w", err)
-	}
-	if !slices.Equal(got, schema) {
-		return nil, fmt.Errorf("section schema %v does not match expected sort schema %v", got, schema)
-	}
-	seq, err := openSectionSequence(ctx, sec, bufferSize)
+	seq, err := openSectionSequence(ctx, sec, bufferSize, nil, input.DropStreamIDs, input.StatsTracker)
 	if err != nil {
 		return nil, err
 	}

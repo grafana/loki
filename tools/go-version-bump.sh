@@ -25,7 +25,7 @@ if [[ -z "${VERSION}" ]]; then
   exit 1
 fi
 
-EXCLUDE_DIRS=(-name operator -prune -o -name vendor -prune -o)
+EXCLUDE_DIRS=(-name vendor -prune -o)
 
 # BSD find requires a path. GNU find defaults to the current directory when the path is omitted.
 find_sources() {

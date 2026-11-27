@@ -45,7 +45,7 @@ The diagram above shows the high-level overview of the data that is stored in th
 
 There is one index format that is currently supported as single store with index shipper:
 
-- [TSDB](../../operations/storage/tsdb/) (recommended)
+- [TSDB](../../operations/storage/tsdb/)
 
   Time Series Database (or short TSDB) is an [index format](https://github.com/prometheus/prometheus/blob/main/tsdb/docs/format/index.md) originally developed by the maintainers of [Prometheus](https://github.com/prometheus/prometheus) for time series (metric) data.
 
@@ -146,6 +146,17 @@ On a high level, the write path in Loki works as follows:
 
 Refer to [Components](../components/) for a more detailed description of the components involved in the write path.
 
+### Kafka-based write path (experimental)
+
+{{< admonition type="warning" >}}
+Kafka-based ingestion is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided.
+{{< /admonition >}}
+
+Loki can optionally use Apache Kafka, or a Kafka-protocol-compatible system, as a durable buffer on the write path. When you enable Kafka-based ingestion, the write path changes: the distributor writes log streams as Kafka records to a configured topic, instead of, or in addition to, pushing them directly to ingesters over gRPC.
+
+Each ingester consumes from exactly one Kafka partition, determined by its position in the partition ring. This decouples ingestion durability from ingester availability, because Kafka buffers writes while an ingester is restarting or unavailable.
+
+Enabling Kafka-based ingestion primarily changes the write path. The read path still works the same way, but the querier must be configured to look up ingesters using the partition ring instead of the classic hash ring. For full details, including configuration, monitoring, and migration guidance, refer to [Kafka-based ingestion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/kafka/).
 
 ## Read path
 
@@ -169,5 +180,6 @@ Refer to [Components](../components/) for a more detailed description of the com
 All data, both in memory and in long-term storage, may be partitioned by a
 tenant ID, pulled from the `X-Scope-OrgID` HTTP header in the request when Grafana Loki
 is running in multi-tenant mode. When Loki is **not** in multi-tenant mode, the
-header is ignored and the tenant ID is set to `fake`, which will appear in the
-index and in stored chunks.
+header is ignored and the tenant ID is set to the value of the `no_auth_tenant`
+configuration option (default `fake`), which will appear in the index and in
+stored chunks.

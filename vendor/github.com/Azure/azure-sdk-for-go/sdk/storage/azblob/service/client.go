@@ -24,6 +24,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/internal/sasurl"
 )
 
 // ClientOptions contains the optional parameters when creating a Client.
@@ -40,7 +41,7 @@ func NewClient(serviceURL string, cred azcore.TokenCredential, options *ClientOp
 	audience := base.GetAudience((*base.ClientOptions)(options))
 	conOptions := shared.GetClientOptions(options)
 	authPolicy := shared.NewStorageChallengePolicy(cred, audience, conOptions.InsecureAllowCredentialWithHTTP)
-	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
+	plOpts := runtime.PipelineOptions{PerCall: []policy.Policy{shared.NewRangePolicy()}, PerRetry: []policy.Policy{authPolicy}}
 	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
 		plOpts.PerRetry = append(plOpts.PerRetry, p)
 	}
@@ -58,7 +59,7 @@ func NewClient(serviceURL string, cred azcore.TokenCredential, options *ClientOp
 //   - options - client options; pass nil to accept the default values
 func NewClientWithNoCredential(serviceURL string, options *ClientOptions) (*Client, error) {
 	conOptions := shared.GetClientOptions(options)
-	plOpts := runtime.PipelineOptions{}
+	plOpts := runtime.PipelineOptions{PerCall: []policy.Policy{shared.NewRangePolicy()}}
 	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
 		plOpts.PerRetry = append(plOpts.PerRetry, p)
 	}
@@ -77,7 +78,7 @@ func NewClientWithNoCredential(serviceURL string, options *ClientOptions) (*Clie
 func NewClientWithSharedKeyCredential(serviceURL string, cred *SharedKeyCredential, options *ClientOptions) (*Client, error) {
 	authPolicy := exported.NewSharedKeyCredPolicy(cred)
 	conOptions := shared.GetClientOptions(options)
-	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
+	plOpts := runtime.PipelineOptions{PerCall: []policy.Policy{shared.NewRangePolicy()}, PerRetry: []policy.Policy{authPolicy}}
 	if p := base.NewExpectContinuePolicy(conOptions.ExpectContinueBehavior); p != nil {
 		plOpts.PerRetry = append(plOpts.PerRetry, p)
 	}
@@ -233,10 +234,7 @@ func (s *Client) NewListContainersPager(o *ListContainersOptions) *runtime.Pager
 			if err != nil {
 				return ListContainersResponse{}, err
 			}
-			if !runtime.HasStatusCode(resp, http.StatusOK) {
-				return ListContainersResponse{}, runtime.NewResponseError(resp)
-			}
-			return s.generated().ListContainersSegmentHandleResponse(resp)
+			return s.generated().ListContainersSegmentHandleResponse(resp, http.StatusOK)
 		},
 	})
 }
@@ -296,14 +294,7 @@ func (s *Client) GetSASURL(resources sas.AccountResourceTypes, permissions sas.A
 		return "", err
 	}
 
-	endpoint := s.URL()
-	if !strings.HasSuffix(endpoint, "/") {
-		// add a trailing slash to be consistent with the portal
-		endpoint += "/"
-	}
-	endpoint += "?" + qps.Encode()
-
-	return endpoint, nil
+	return sasurl.AppendToAccountURL(s.URL(), qps.Encode()), nil
 }
 
 // FilterBlobs operation finds all blobs in the storage account whose tags match a given search expression.
@@ -312,9 +303,7 @@ func (s *Client) GetSASURL(resources sas.AccountResourceTypes, permissions sas.A
 // eg. "dog='germanshepherd' and penguin='emperorpenguin'"
 // To specify a container, eg. "@container=’containerName’ and Name = ‘C’"
 func (s *Client) FilterBlobs(ctx context.Context, where string, o *FilterBlobsOptions) (FilterBlobsResponse, error) {
-	serviceFilterBlobsOptions := o.format()
-	resp, err := s.generated().FilterBlobs(ctx, where, serviceFilterBlobsOptions)
-	return resp, err
+	return s.generated().FilterBlobs(ctx, where, o.format())
 }
 
 // NewBatchBuilder creates an instance of BatchBuilder using the same auth policy as the client.
@@ -365,7 +354,7 @@ func (s *Client) SubmitBatch(ctx context.Context, bb *BatchBuilder, options *Sub
 	rsc := streaming.NopCloser(reader)
 	multipartContentType := "multipart/mixed; boundary=" + batchID
 
-	resp, err := s.generated().SubmitBatch(ctx, int64(len(batchReq)), multipartContentType, rsc, options.format())
+	resp, err := s.generated().SubmitBatch(ctx, multipartContentType, int64(len(batchReq)), rsc, options.format())
 	if err != nil {
 		return SubmitBatchResponse{}, err
 	}

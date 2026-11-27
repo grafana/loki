@@ -42,6 +42,8 @@ type MemoTable interface {
 	TypeTraits() TypeTraits
 	// Reset drops everything in the table allowing it to be reused
 	Reset()
+	// Truncate removes values with an index greater than or equal to size.
+	Truncate(size int)
 	// Size returns the current number of unique values stored in
 	// the table, including whether or not a null value has been
 	// inserted via GetOrInsertNull.
@@ -167,6 +169,35 @@ func (s *BinaryMemoTable) Reset() {
 	s.nullIdx = KeyNotFound
 }
 
+func (s *BinaryMemoTable) Truncate(size int) {
+	if size < 0 {
+		panic("cannot truncate a memo table to a negative size")
+	}
+	if size >= s.Size() {
+		return
+	}
+
+	dataLen := 0
+	for i := 0; i < size; i++ {
+		dataLen += len(s.builder.Value(i))
+	}
+	s.builder.Resize(size)
+	s.builder.ResizeData(dataLen)
+
+	truncated := NewHashTable[int32](uint64(size))
+	s.tbl.VisitEntries(func(e *entry[int32]) {
+		if e.payload.val < 0 || uint64(e.payload.val) >= uint64(size) {
+			return
+		}
+		entry, _ := truncated.Lookup(e.h, func(int32) bool { return false })
+		truncated.Insert(entry, e.h, e.payload.val, -1)
+	})
+	s.tbl = truncated
+	if s.nullIdx >= size {
+		s.nullIdx = KeyNotFound
+	}
+}
+
 // GetNull returns the index of a null that has been inserted into the table or
 // KeyNotFound. The bool returned will be true if there was a null inserted into
 // the table, and false otherwise.
@@ -284,7 +315,7 @@ func (b *BinaryMemoTable) GetOrInsert(val interface{}) (idx int, found bool, err
 // it is inserted into the table. The return value 'found' indicates whether the value
 // was found in the table (true) or inserted (false) along with any possible error.
 func (b *BinaryMemoTable) InsertOrGet(val []byte) (idx int, found bool, err error) {
-	h := b.getHash(val)
+	h := Hash(val, 0)
 	p, found := b.lookup(h, val)
 	if found {
 		idx = int(p.payload.val)
@@ -349,15 +380,14 @@ func (b *BinaryMemoTable) CopyOffsetsSubset(start int, out []int32) {
 		return
 	}
 
-	first := b.findOffset(0)
-	delta := b.findOffset(start)
 	sz := b.Size()
+	offset := 0
 	for i := start; i < sz; i++ {
-		offset := int32(b.findOffset(i) - delta)
-		out[i-start] = offset
+		out[i-start] = int32(offset)
+		offset += len(b.builder.Value(i))
 	}
 
-	out[sz-start] = int32(b.builder.DataLen() - (int(delta) - int(first)))
+	out[sz-start] = int32(offset)
 }
 
 // CopyLargeOffsets copies the list of offsets into the passed in slice, the offsets
@@ -374,15 +404,14 @@ func (b *BinaryMemoTable) CopyLargeOffsetsSubset(start int, out []int64) {
 		return
 	}
 
-	first := b.findOffset(0)
-	delta := b.findOffset(start)
 	sz := b.Size()
+	offset := 0
 	for i := start; i < sz; i++ {
-		offset := int64(b.findOffset(i) - delta)
-		out[i-start] = offset
+		out[i-start] = int64(offset)
+		offset += len(b.builder.Value(i))
 	}
 
-	out[sz-start] = int64(b.builder.DataLen() - (int(delta) - int(first)))
+	out[sz-start] = int64(offset)
 }
 
 // CopyValues copies the raw binary data bytes out, out should be a []byte

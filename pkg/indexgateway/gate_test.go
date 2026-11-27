@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -62,18 +62,33 @@ func TestNewInFlightGate(t *testing.T) {
 	t.Run("zero disables the cap", func(t *testing.T) {
 		g := newInFlightGate(0, prometheus.NewRegistry())
 		for range 100 {
-			require.NoError(t, g.Start(context.Background()))
+			slots, err := g.reserve(context.Background(), 2)
+			require.NoError(t, err)
+			require.Equal(t, 2, slots)
 		}
 	})
 
 	t.Run("rejects immediately once full", func(t *testing.T) {
-		g := newInFlightGate(1, prometheus.NewRegistry())
+		g := newInFlightGate(2, prometheus.NewRegistry())
+		ctx := context.Background()
 
-		require.NoError(t, g.Start(context.Background()))
-		require.ErrorIs(t, g.Start(context.Background()), gate.ErrMaxConcurrent)
+		slots, err := g.reserve(ctx, 1)
+		require.NoError(t, err)
+		require.Equal(t, 1, slots)
 
-		g.Done()
-		require.NoError(t, g.Start(context.Background()))
+		slots, err = g.reserve(ctx, 3)
+		require.NoError(t, err)
+		require.Equal(t, 1, slots)
+
+		slots, err = g.reserve(ctx, 1)
+		require.ErrorIs(t, err, gate.ErrMaxConcurrent)
+		require.Zero(t, slots)
+
+		g.release(2)
+		slots, err = g.reserve(ctx, 2)
+		require.NoError(t, err)
+		require.Equal(t, 2, slots)
+		g.release(slots)
 	})
 }
 
@@ -238,7 +253,7 @@ func TestQueryGate_ValidationRejectsBeforeGate(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			err := call()
-			require.ErrorIs(t, err, logqlmodel.ErrParse)
+			require.ErrorIs(t, err, logqlerr.ErrParse)
 		})
 	}
 }

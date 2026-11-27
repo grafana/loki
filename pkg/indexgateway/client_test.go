@@ -175,7 +175,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 		cfg.Mode = RingMode
 		cfg.Ring = igwRing
 
-		c, err := NewGatewayClient("test", cfg, nil, o, logger, constants.Loki)
+		c, err := NewGatewayClient(cfg, nil, o, logger, constants.Loki)
 		require.NoError(t, err)
 		require.NotNil(t, c)
 
@@ -206,7 +206,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 		cfg.Mode = RingMode
 		cfg.Ring = igwRing
 
-		c, err := NewGatewayClient("test", cfg, nil, o, logger, constants.Loki)
+		c, err := NewGatewayClient(cfg, nil, o, logger, constants.Loki)
 		require.NoError(t, err)
 		require.NotNil(t, c)
 
@@ -230,7 +230,6 @@ func createSimpleGatewayClient(t *testing.T, addrs []string, maxRetries int) (lo
 	r := prometheus.NewRegistry()
 	o, _ := validation.NewOverrides(validation.Limits{}, nil)
 	client, err := NewGatewayClient(
-		"test",
 		ClientConfig{
 			Mode:             "simple",
 			GRPCClientConfig: grpcclient.Config{},
@@ -310,58 +309,6 @@ func TestGatewayClient_SimpleMode_ShuffleSharding(t *testing.T) {
 	require.Len(t, pool.RegisteredAddresses(), 5)
 }
 
-func TestDoubleRegistration(t *testing.T) {
-	logger := log.NewNopLogger()
-	r := prometheus.NewRegistry()
-	o, _ := validation.NewOverrides(validation.Limits{}, nil)
-
-	clientCfg := ClientConfig{
-		Address: "my-store-address:1234",
-	}
-
-	primary, err := NewGatewayClient("primary", clientCfg, r, o, logger, constants.Loki)
-	require.NoError(t, err)
-	defer primary.Stop()
-
-	secondary, err := NewGatewayClient("secondary", clientCfg, r, o, logger, constants.Loki)
-	require.NoError(t, err)
-	defer secondary.Stop()
-
-	// Request metrics are shared, while each client's gate is tracked separately.
-	require.Same(t, primary.storeGatewayClientRequestDuration, secondary.storeGatewayClientRequestDuration)
-	require.Same(t, primary.retriesHistogram, secondary.retriesHistogram)
-	require.NoError(t, primary.inFlight.Start(context.Background()))
-	defer primary.inFlight.Done()
-	for name, want := range map[string]float64{"primary": 1, "secondary": 0} {
-		inFlight := findMetric(t, r, "loki_index_gateway_client_gate_queries_in_flight", map[string]string{"client": name})
-		require.NotNil(t, inFlight)
-		require.Equal(t, want, inFlight.GetGauge().GetValue())
-	}
-}
-
-// gate.NewInstrumented panics when two clients register indistinguishable metrics.
-func TestGatewayClient_SharedRegisterer(t *testing.T) {
-	logger := log.NewNopLogger()
-	reg := prometheus.NewRegistry()
-	o, _ := validation.NewOverrides(validation.Limits{}, nil)
-
-	cfg := ClientConfig{Address: "my-store-address:1234", MaxInFlightRequests: 7}
-
-	require.NotPanics(t, func() {
-		for _, name := range []string{"primary", "secondary"} {
-			client, err := NewGatewayClient(name, cfg, reg, o, logger, constants.Loki)
-			require.NoError(t, err)
-			t.Cleanup(client.Stop)
-		}
-	})
-
-	for _, name := range []string{"primary", "secondary"} {
-		m := findMetric(t, reg, "loki_index_gateway_client_gate_queries_concurrent_max", map[string]string{"client": name})
-		require.NotNil(t, m, "no gate metrics registered for the %s client", name)
-		require.Equal(t, float64(7), m.GetGauge().GetValue())
-	}
-}
-
 type fakeGateways struct {
 	dialErr map[string]error
 	rpcErr  map[string]error
@@ -419,7 +366,7 @@ func newScriptedGatewayClient(t *testing.T, cfg ClientConfig, reg prometheus.Reg
 	cfg.Mode = SimpleMode
 	cfg.Address = "index-gateway"
 
-	client, err := NewGatewayClient("test", cfg, reg, o, logger, constants.Loki)
+	client, err := NewGatewayClient(cfg, reg, o, logger, constants.Loki)
 	require.NoError(t, err)
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), client.pool))
 	t.Cleanup(client.Stop)
@@ -576,17 +523,16 @@ func TestGatewayClient_InFlightCap(t *testing.T) {
 		gateways := &fakeGateways{}
 		client := newScriptedGatewayClient(t, ClientConfig{MaxInFlightRequests: 1}, reg, gateways, addrs)
 
-		require.NoError(t, client.inFlight.Start(ctx))
-		defer client.inFlight.Done()
+		slots, err := client.inFlight.reserve(ctx, 1)
+		require.NoError(t, err)
+		defer client.inFlight.release(slots)
 
-		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		_, err = client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
 
 		requireShedError(t, err)
 		require.Empty(t, gateways.tried())
 
-		m := findMetric(t, reg, "loki_index_gateway_client_gate_duration_seconds", map[string]string{
-			"client": "test", "outcome": "rejected_other",
-		})
+		m := findMetric(t, reg, "loki_index_gateway_client_gate_duration_seconds", map[string]string{"outcome": "rejected_other"})
 		require.NotNil(t, m)
 		require.Equal(t, uint64(1), m.GetHistogram().GetSampleCount())
 	})
@@ -596,21 +542,22 @@ func TestGatewayClient_InFlightCap(t *testing.T) {
 		client := newScriptedGatewayClient(t, ClientConfig{MaxInFlightRequests: 4}, reg, &fakeGateways{}, addrs)
 
 		inFlight := func() float64 {
-			m := findMetric(t, reg, "loki_index_gateway_client_gate_queries_in_flight", map[string]string{"client": "test"})
+			m := findMetric(t, reg, "loki_index_gateway_client_gate_queries_in_flight", nil)
 			require.NotNil(t, m)
 			return m.GetGauge().GetValue()
 		}
 
 		require.Zero(t, inFlight())
 
-		require.NoError(t, client.inFlight.Start(ctx))
-		require.Equal(t, float64(1), inFlight())
-
-		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		slots, err := client.inFlight.reserve(ctx, 1)
 		require.NoError(t, err)
 		require.Equal(t, float64(1), inFlight())
 
-		client.inFlight.Done()
+		_, err = client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
+		require.NoError(t, err)
+		require.Equal(t, float64(1), inFlight())
+
+		client.inFlight.release(slots)
 		require.Zero(t, inFlight())
 	})
 
@@ -619,31 +566,29 @@ func TestGatewayClient_InFlightCap(t *testing.T) {
 		client := newScriptedGatewayClient(t, ClientConfig{MaxInFlightRequests: 0}, reg, &fakeGateways{}, addrs)
 
 		for range 100 {
-			require.NoError(t, client.inFlight.Start(ctx))
+			_, err := client.inFlight.reserve(ctx, 1)
+			require.NoError(t, err)
 		}
 
 		_, err := client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{})
 		require.NoError(t, err)
 
-		metricLabels := map[string]string{"client": "test"}
-		maxConcurrent := findMetric(t, reg, "loki_index_gateway_client_gate_queries_concurrent_max", metricLabels)
+		maxConcurrent := findMetric(t, reg, "loki_index_gateway_client_gate_queries_concurrent_max", nil)
 		require.NotNil(t, maxConcurrent)
 		require.Zero(t, maxConcurrent.GetGauge().GetValue())
 
-		inFlight := findMetric(t, reg, "loki_index_gateway_client_gate_queries_in_flight", metricLabels)
+		inFlight := findMetric(t, reg, "loki_index_gateway_client_gate_queries_in_flight", nil)
 		require.NotNil(t, inFlight)
 		require.Equal(t, float64(100), inFlight.GetGauge().GetValue())
 
 		for range 100 {
-			client.inFlight.Done()
+			client.inFlight.release(1)
 		}
-		inFlight = findMetric(t, reg, "loki_index_gateway_client_gate_queries_in_flight", metricLabels)
+		inFlight = findMetric(t, reg, "loki_index_gateway_client_gate_queries_in_flight", nil)
 		require.NotNil(t, inFlight)
 		require.Zero(t, inFlight.GetGauge().GetValue())
 
-		permitted := findMetric(t, reg, "loki_index_gateway_client_gate_duration_seconds", map[string]string{
-			"client": "test", "outcome": "permitted",
-		})
+		permitted := findMetric(t, reg, "loki_index_gateway_client_gate_duration_seconds", map[string]string{"outcome": "permitted"})
 		require.NotNil(t, permitted)
 		require.Equal(t, uint64(101), permitted.GetHistogram().GetSampleCount())
 	})
@@ -710,6 +655,11 @@ func TestClientConfig_Validate(t *testing.T) {
 			mutate:  func(cfg *ClientConfig) { cfg.MaxRetries = -2 },
 			wantErr: "max-retries",
 		},
+		{
+			name:    "zero per-index concurrent parts",
+			mutate:  func(cfg *ClientConfig) { cfg.PerIndexMaxConcurrentParts = 0 },
+			wantErr: "per-index-max-concurrent-parts",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := ClientConfig{}
@@ -732,6 +682,8 @@ func TestClientConfig_Defaults(t *testing.T) {
 
 	require.Zero(t, cfg.MaxInFlightRequests)
 	require.Equal(t, -1, cfg.MaxRetries)
+	require.False(t, cfg.PerIndexOwnership)
+	require.Equal(t, 8, cfg.PerIndexMaxConcurrentParts)
 }
 
 func Test_jumpHashShuffleSharding(t *testing.T) {

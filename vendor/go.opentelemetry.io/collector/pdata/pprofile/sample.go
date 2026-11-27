@@ -7,14 +7,14 @@ import "fmt"
 
 // switchDictionary updates the Sample, switching its indices from one
 // dictionary to another.
-func (ms Sample) switchDictionary(src, dst ProfilesDictionary) error {
+func (ms Sample) switchDictionary(src, dst ProfilesDictionary, mi *mergeIndex) error {
 	for i, v := range ms.AttributeIndices().All() {
 		if v < 0 || src.AttributeTable().Len() <= int(v) {
 			return fmt.Errorf("invalid attribute index %d", v)
 		}
 
 		attr := src.AttributeTable().At(int(v))
-		idx, err := SetAttribute(dst.AttributeTable(), attr)
+		idx, err := mi.setAttribute(dst.AttributeTable(), attr)
 		if err != nil {
 			return fmt.Errorf("couldn't set attribute %d: %w", i, err)
 		}
@@ -26,7 +26,7 @@ func (ms Sample) switchDictionary(src, dst ProfilesDictionary) error {
 			return fmt.Errorf("invalid link index %d", ms.LinkIndex())
 		}
 
-		idx, err := SetLink(dst.LinkTable(), src.LinkTable().At(int(ms.LinkIndex())))
+		idx, err := mi.setLink(dst.LinkTable(), src.LinkTable().At(int(ms.LinkIndex())))
 		if err != nil {
 			return fmt.Errorf("couldn't set link: %w", err)
 		}
@@ -39,7 +39,7 @@ func (ms Sample) switchDictionary(src, dst ProfilesDictionary) error {
 		}
 
 		stack := src.StackTable().At(int(ms.StackIndex()))
-		idx, err := SetStack(dst.StackTable(), stack)
+		idx, err := mi.setStack(dst.StackTable(), stack)
 		if err != nil {
 			return fmt.Errorf("couldn't set stack: %w", err)
 		}

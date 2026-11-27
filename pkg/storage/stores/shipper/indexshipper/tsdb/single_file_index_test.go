@@ -3,7 +3,10 @@ package tsdb
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
+	"os"
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -67,12 +70,16 @@ func TestSingleIdx(t *testing.T) {
 	for _, variant := range []struct {
 		desc string
 		fn   func() Index
+		// partialLabels is whether a chunk filterer is only given the labels it requires.
+		// The head ignores this and hands out all labels, which it already holds in memory.
+		partialLabels bool
 	}{
 		{
 			desc: "file",
 			fn: func() Index {
 				return BuildIndex(t, t.TempDir(), cases)
 			},
+			partialLabels: true,
 		},
 		{
 			desc: "head",
@@ -131,6 +138,34 @@ func TestSingleIdx(t *testing.T) {
 					},
 				}
 				require.Equal(t, expected, refs)
+			})
+
+			t.Run("GetChunkRefsWithFilterer", func(t *testing.T) {
+				// The first series has no bazz label, so it reads as "" and is kept.
+				filterer := &policyFilterer{
+					policies: [][]*labels.Matcher{{labels.MustNewMatcher(labels.MatchNotEqual, "bazz", "buzz")}},
+					record:   true,
+				}
+				idx.SetChunkFilterer(filterer)
+				defer idx.SetChunkFilterer(nil)
+
+				refs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 10, nil, nil, labels.MustNewMatcher(labels.MatchRegexp, "foo", "bar.*"))
+				require.NoError(t, err)
+
+				var checksums []uint32
+				for _, ref := range refs {
+					checksums = append(checksums, ref.Checksum)
+				}
+				require.ElementsMatch(t, []uint32{0, 1, 2, 4}, checksums)
+
+				require.Len(t, filterer.seen, len(cases))
+				if variant.partialLabels {
+					for _, ls := range filterer.seen {
+						ls.Range(func(l labels.Label) {
+							require.Equal(t, "bazz", l.Name, "filterer got a label it doesn't require: %s", ls)
+						})
+					}
+				}
 			})
 
 			t.Run("GetChunkRefsSharded", func(t *testing.T) {
@@ -212,6 +247,68 @@ func TestSingleIdx(t *testing.T) {
 				require.Nil(t, err)
 				require.Equal(t, []string{"bar"}, vs)
 			})
+		})
+	}
+}
+
+// TestTSDBIndex_ForSeriesLabelsOutliveIndex checks that ForSeries hands out labels which aren't reused across
+// series and survive the index being closed, so the compactor can retain them without copying. With stringlabels
+// it catches a reused label buffer; with slicelabels it also catches label strings aliasing the unmapped file and
+// the head reusing the caller's label slice.
+func TestTSDBIndex_ForSeriesLabelsOutliveIndex(t *testing.T) {
+	var streams []stream
+	for i := range 100 {
+		streams = append(streams, buildStream(labels.FromStrings("foo", fmt.Sprintf("bar-%d", i), "pod", fmt.Sprintf("pod-%d", i)), buildChunkMetas(0, 1), ""))
+	}
+
+	for _, tc := range []struct {
+		name string
+		// open returns the index and a func that closes it and releases what backs it.
+		open func(t *testing.T) (*TSDBIndex, func())
+	}{
+		{
+			name: "file",
+			open: func(t *testing.T) (*TSDBIndex, func()) {
+				path := setupPerTenantIndex(t, index.FormatV3, streams, t.TempDir(), time.Unix(0, 0))
+				idx, err := OpenShippableTSDB(path, index.MmapOptions{})
+				require.NoError(t, err)
+				return idx.(*TSDBFile).Index.(*TSDBIndex), func() {
+					require.NoError(t, idx.Close())
+					require.NoError(t, os.Remove(path))
+				}
+			},
+		},
+		{
+			name: "head",
+			open: func(_ *testing.T) (*TSDBIndex, func()) {
+				head := NewHead("fake", NewMetrics(nil), log.NewNopLogger())
+				for _, s := range streams {
+					_, _ = head.Append(s.labels, uint64(s.fp), s.chunks)
+				}
+				return NewTSDBIndex(head.Index()), func() {}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			idx, closeIdx := tc.open(t)
+
+			var retained []labels.Labels
+			err := idx.ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(ls labels.Labels, _ model.Fingerprint, _ []index.ChunkMeta) (stop bool) {
+				retained = append(retained, ls)
+				return false
+			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+			closeIdx()
+			require.NoError(t, err)
+
+			expected := make([]string, 0, len(streams))
+			for _, s := range streams {
+				expected = append(expected, s.labels.String())
+			}
+			actual := make([]string, 0, len(retained))
+			for _, ls := range retained {
+				actual = append(actual, ls.String())
+			}
+			require.ElementsMatch(t, expected, actual)
 		})
 	}
 }
@@ -810,4 +907,120 @@ func (f *filterAllFilterer) ShouldFilter(_ labels.Labels) bool {
 
 func (f *filterAllFilterer) RequiredLabelNames() []string {
 	return nil
+}
+
+func (f *filterAllFilterer) PushableLabelMatchers() []*labels.Matcher {
+	// Pushing down matchers is not supported.
+	return nil
+}
+
+// policyFilterer is a chunk.Filterer with the same semantics as the LBAC filterer: a series is kept
+// if it matches every matcher of at least one policy, and nothing is filtered without policies.
+// If record is set, it records every label set ShouldFilter is given.
+type policyFilterer struct {
+	policies [][]*labels.Matcher
+	record   bool
+	seen     []labels.Labels
+}
+
+func (f *policyFilterer) ForRequest(_ context.Context) chunk.Filterer { return f }
+
+func (f *policyFilterer) ShouldFilter(ls labels.Labels) bool {
+	if f.record {
+		f.seen = append(f.seen, ls)
+	}
+	return !f.matches(ls)
+}
+
+func (f *policyFilterer) matches(ls labels.Labels) bool {
+	if len(f.policies) == 0 {
+		return true
+	}
+	for _, policy := range f.policies {
+		matching := true
+		for _, m := range policy {
+			if !m.Matches(ls.Get(m.Name)) {
+				matching = false
+				break
+			}
+		}
+		if matching {
+			return true
+		}
+	}
+	return false
+}
+
+func (f *policyFilterer) RequiredLabelNames() []string {
+	var names []string
+	for _, policy := range f.policies {
+		for _, m := range policy {
+			if !slices.Contains(names, m.Name) {
+				names = append(names, m.Name)
+			}
+		}
+	}
+	return names
+}
+
+func (f *policyFilterer) PushableLabelMatchers() []*labels.Matcher { return nil }
+
+// BenchmarkTSDBIndex_GetChunkRefsWithFilterer measures GetChunkRefs with a chunk filterer, as LBAC
+// requests use, over many series with a realistic number of labels and a selector matching all of them.
+func BenchmarkTSDBIndex_GetChunkRefsWithFilterer(b *testing.B) {
+	const numSeries = 10_000
+	series := make([]LoadableSeries, 0, numSeries)
+	for i := range numSeries {
+		series = append(series, LoadableSeries{
+			Labels: labels.FromStrings(
+				"app", fmt.Sprintf("app-%d", i%50),
+				"container", fmt.Sprintf("container-%d", i%20),
+				"env", []string{"dev", "prod", "staging"}[i%3],
+				"host", fmt.Sprintf("host-%d", i%500),
+				"job", fmt.Sprintf("job-%d", i%100),
+				"level", []string{"debug", "info", "warn", "error"}[i%4],
+				"pod", fmt.Sprintf("pod-%d", i),
+				"region", fmt.Sprintf("region-%d", i%5),
+				"service", fmt.Sprintf("service-%d", i%200),
+				"stream", []string{"stdout", "stderr"}[i%2],
+				"team", fmt.Sprintf("team-%d", i%10),
+				"zone", fmt.Sprintf("zone-%d", i%15),
+			),
+			Chunks: []index.ChunkMeta{
+				{MinTime: 0, MaxTime: 10, Checksum: uint32(i)},
+				{MinTime: 10, MaxTime: 20, Checksum: uint32(i) + 1},
+			},
+		})
+	}
+
+	f := BuildIndex(b, b.TempDir(), series)
+	defer f.Close()
+	idx := f.Index.(*TSDBIndex)
+
+	for _, tc := range []struct {
+		name     string
+		policies [][]*labels.Matcher
+	}{
+		{"one policy", [][]*labels.Matcher{
+			{labels.MustNewMatcher(labels.MatchRegexp, "team", "team-[0-4]")},
+		}},
+		{"two policies", [][]*labels.Matcher{
+			{labels.MustNewMatcher(labels.MatchEqual, "env", "prod")},
+			{labels.MustNewMatcher(labels.MatchEqual, "team", "team-1"), labels.MustNewMatcher(labels.MatchNotEqual, "level", "debug")},
+		}},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			idx.SetChunkFilterer(&policyFilterer{policies: tc.policies})
+			defer idx.SetChunkFilterer(nil)
+			matcher := labels.MustNewMatcher(labels.MatchRegexp, "app", ".+")
+
+			b.ReportAllocs()
+			for b.Loop() {
+				refs, err := idx.GetChunkRefs(context.Background(), "fake", 0, 20, nil, nil, matcher)
+				require.NoError(b, err)
+				require.NotEmpty(b, refs)
+				ChunkRefsPool.Put(refs)
+			}
+		})
+	}
 }

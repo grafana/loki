@@ -786,24 +786,25 @@ type InventoryOptionalField string
 
 // Enum values for InventoryOptionalField
 const (
-	InventoryOptionalFieldSize                         InventoryOptionalField = "Size"
-	InventoryOptionalFieldLastModifiedDate             InventoryOptionalField = "LastModifiedDate"
-	InventoryOptionalFieldStorageClass                 InventoryOptionalField = "StorageClass"
-	InventoryOptionalFieldETag                         InventoryOptionalField = "ETag"
-	InventoryOptionalFieldIsMultipartUploaded          InventoryOptionalField = "IsMultipartUploaded"
-	InventoryOptionalFieldReplicationStatus            InventoryOptionalField = "ReplicationStatus"
-	InventoryOptionalFieldEncryptionStatus             InventoryOptionalField = "EncryptionStatus"
-	InventoryOptionalFieldObjectLockRetainUntilDate    InventoryOptionalField = "ObjectLockRetainUntilDate"
-	InventoryOptionalFieldObjectLockMode               InventoryOptionalField = "ObjectLockMode"
-	InventoryOptionalFieldObjectLockLegalHoldStatus    InventoryOptionalField = "ObjectLockLegalHoldStatus"
-	InventoryOptionalFieldObjectLockEventHoldStatus    InventoryOptionalField = "ObjectLockEventHoldStatus"
-	InventoryOptionalFieldObjectLockEventHoldDuration  InventoryOptionalField = "ObjectLockEventHoldDuration"
-	InventoryOptionalFieldIntelligentTieringAccessTier InventoryOptionalField = "IntelligentTieringAccessTier"
-	InventoryOptionalFieldBucketKeyStatus              InventoryOptionalField = "BucketKeyStatus"
-	InventoryOptionalFieldChecksumAlgorithm            InventoryOptionalField = "ChecksumAlgorithm"
-	InventoryOptionalFieldObjectAccessControlList      InventoryOptionalField = "ObjectAccessControlList"
-	InventoryOptionalFieldObjectOwner                  InventoryOptionalField = "ObjectOwner"
-	InventoryOptionalFieldLifecycleExpirationDate      InventoryOptionalField = "LifecycleExpirationDate"
+	InventoryOptionalFieldSize                            InventoryOptionalField = "Size"
+	InventoryOptionalFieldLastModifiedDate                InventoryOptionalField = "LastModifiedDate"
+	InventoryOptionalFieldStorageClass                    InventoryOptionalField = "StorageClass"
+	InventoryOptionalFieldETag                            InventoryOptionalField = "ETag"
+	InventoryOptionalFieldIsMultipartUploaded             InventoryOptionalField = "IsMultipartUploaded"
+	InventoryOptionalFieldReplicationStatus               InventoryOptionalField = "ReplicationStatus"
+	InventoryOptionalFieldEncryptionStatus                InventoryOptionalField = "EncryptionStatus"
+	InventoryOptionalFieldObjectLockRetainUntilDate       InventoryOptionalField = "ObjectLockRetainUntilDate"
+	InventoryOptionalFieldObjectLockMode                  InventoryOptionalField = "ObjectLockMode"
+	InventoryOptionalFieldObjectLockLegalHoldStatus       InventoryOptionalField = "ObjectLockLegalHoldStatus"
+	InventoryOptionalFieldObjectLockEventHoldStatus       InventoryOptionalField = "ObjectLockEventHoldStatus"
+	InventoryOptionalFieldObjectLockEventHoldDuration     InventoryOptionalField = "ObjectLockEventHoldDuration"
+	InventoryOptionalFieldIntelligentTieringAccessTier    InventoryOptionalField = "IntelligentTieringAccessTier"
+	InventoryOptionalFieldBucketKeyStatus                 InventoryOptionalField = "BucketKeyStatus"
+	InventoryOptionalFieldChecksumAlgorithm               InventoryOptionalField = "ChecksumAlgorithm"
+	InventoryOptionalFieldObjectAccessControlList         InventoryOptionalField = "ObjectAccessControlList"
+	InventoryOptionalFieldObjectOwner                     InventoryOptionalField = "ObjectOwner"
+	InventoryOptionalFieldLifecycleExpirationDate         InventoryOptionalField = "LifecycleExpirationDate"
+	InventoryOptionalFieldIntelligentTieringReferenceDate InventoryOptionalField = "IntelligentTieringReferenceDate"
 )
 
 // Values returns all known values for InventoryOptionalField. Note that this can
@@ -830,6 +831,7 @@ func (InventoryOptionalField) Values() []InventoryOptionalField {
 		"ObjectAccessControlList",
 		"ObjectOwner",
 		"LifecycleExpirationDate",
+		"IntelligentTieringReferenceDate",
 	}
 }
 
@@ -1715,5 +1717,25 @@ func (Type) Values() []Type {
 		"CanonicalUser",
 		"AmazonCustomerByEmail",
 		"Group",
+	}
+}
+
+type UseSourceMultiRegionKeyStatus string
+
+// Enum values for UseSourceMultiRegionKeyStatus
+const (
+	UseSourceMultiRegionKeyStatusEnabled  UseSourceMultiRegionKeyStatus = "Enabled"
+	UseSourceMultiRegionKeyStatusDisabled UseSourceMultiRegionKeyStatus = "Disabled"
+)
+
+// Values returns all known values for UseSourceMultiRegionKeyStatus. Note that
+// this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (UseSourceMultiRegionKeyStatus) Values() []UseSourceMultiRegionKeyStatus {
+	return []UseSourceMultiRegionKeyStatus{
+		"Enabled",
+		"Disabled",
 	}
 }

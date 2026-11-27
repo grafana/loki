@@ -42,7 +42,7 @@ dependency on and install with the following command:
 go get github.com/parquet-go/parquet-go
 ```
 
-Go 1.22 or later is required to use the package.
+Go 1.26 or later is required to use the package.
 
 ### Compatibility Guarantees
 
@@ -662,6 +662,51 @@ wg.Wait()
 ```
 
 This approach can significantly reduce the time required to write wide tables or large datasets, especially on multi-core systems. However, you should ensure proper error handling and synchronization, as shown above.
+
+### SIMD Acceleration with GOAMD64 and GOEXPERIMENT=simd
+
+On amd64, performance-critical kernels of this library (bloom filters, byte
+scanning, page statistics, encodings) are accelerated with SIMD. For the best
+results, we encourage building applications with a `GOAMD64` microarchitecture
+level that matches the deployment target:
+
+```sh
+GOAMD64=v3 go build ...  # CPUs with AVX2 (Haswell/Zen 1 and newer)
+GOAMD64=v4 go build ...  # CPUs with AVX-512 (Skylake-SP, Ice Lake, Zen 4 and newer)
+```
+
+At the default `GOAMD64=v1`, functions like `math/bits.OnesCount` compile to a
+runtime CPU feature check with a fallback call; in hot loops the check and the
+register spills it forces are measurable (we observed some kernels run near 2x
+slower than at `v3`/`v4`). Raising the level makes these intrinsics
+unconditional single instructions.
+
+The library also ships experimental implementations of its assembly kernels
+written with the `simd/archsimd` package, enabled by building with:
+
+```sh
+GOEXPERIMENT=simd GOAMD64=v4 go build ...
+```
+
+These pure Go implementations benchmark at parity with the hand-written
+assembly for most kernels (and ahead of it for some, e.g. bloom filter checks
+and large byte broadcasts), while remaining maintainable Go code with
+explicit, correct CPU feature gating.
+
+Once [CL 813420](https://go-review.googlesource.com/c/go/+/813420) is merged,
+`archsimd` CPU feature checks become compile-time constants at matching
+`GOAMD64` levels, allowing the compiler to eliminate the runtime feature
+branches and dead fallback paths entirely: in our benchmarks this improved the
+`GOEXPERIMENT=simd` bloom filter kernels by a further 12% on average, bringing
+them to overall parity with the assembly.
+
+Note that the `GOEXPERIMENT=simd` build is currently supported with **Go 1.26
+only**: the `simd/archsimd` package is experimental and Go 1.27 introduced
+breaking renames to its API (for example `LoadUint8x64Slice` became
+`LoadUint8x64`, `StoreSlice` became `Store`, and `SumAbsDiff` became
+`SumOf8AbsDiff`). Support for newer Go versions will follow as the API
+stabilizes. Builds without `GOEXPERIMENT=simd` are unaffected and continue to
+use the assembly kernels on all supported Go versions.
 
 ## Maintenance
 

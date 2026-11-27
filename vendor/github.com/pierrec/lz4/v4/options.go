@@ -1,9 +1,11 @@
 package lz4
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"runtime"
+	"slices"
 
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
@@ -59,7 +61,7 @@ func BlockSizeOption(size BlockSize) Option {
 			return nil
 		case *CompressingReader:
 			size := uint32(size)
-			if !lz4block.IsValid(size) {
+			if !lz4block.Index(size).IsValid() { // never legacy, so no Block8Mb
 				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidBlockSize, size)
 			}
 			w.frame.Descriptor.Flags.BlockSizeIndexSet(lz4block.Index(size))
@@ -106,7 +108,8 @@ func ChecksumOption(flag bool) Option {
 }
 
 // SizeOption sets the size of the original uncompressed data (default=0). It is useful to know the size of the
-// whole uncompressed data stream.
+// whole uncompressed data stream. It must be exact: readers reject a frame whose data differs from it, so
+// closing a Writer, or reading to the end of a CompressingReader, fails with ErrInvalidContentSize if it does.
 func SizeOption(size uint64) Option {
 	return func(a applier) error {
 		switch w := a.(type) {
@@ -164,6 +167,11 @@ const (
 	Level9
 )
 
+// CCompatFast compresses with CompressorCCompat, whose output is that of the
+// reference implementation's LZ4_compress_fast. Fast suits most data better;
+// see CompressorCCompat.
+const CCompatFast CompressionLevel = 1
+
 // CompressionLevelOption defines the compression level (default=Fast).
 func CompressionLevelOption(level CompressionLevel) Option {
 	return func(a applier) error {
@@ -173,17 +181,23 @@ func CompressionLevelOption(level CompressionLevel) Option {
 			return lz4errors.Error(s)
 		case *Writer:
 			switch level {
-			case Fast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
+			case Fast, CCompatFast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
 			default:
 				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, level)
+			}
+			if len(w.dict) > 0 && level != Fast {
+				return lz4errors.ErrOptionNotApplicable
 			}
 			w.level = lz4block.CompressionLevel(level)
 			return nil
 		case *CompressingReader:
 			switch level {
-			case Fast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
+			case Fast, CCompatFast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
 			default:
 				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, level)
+			}
+			if len(w.dict) > 0 && level != Fast {
+				return lz4errors.ErrOptionNotApplicable
 			}
 			w.level = lz4block.CompressionLevel(level)
 			return nil
@@ -194,8 +208,12 @@ func CompressionLevelOption(level CompressionLevel) Option {
 
 func onBlockDone(int) {}
 
-// OnBlockDoneOption is triggered when a block has been processed. For a Writer, it is when is has been compressed,
-// for a Reader, it is when it has been uncompressed.
+// OnBlockDoneOption is triggered when a block has been processed: for a Writer,
+// once per block when it has been compressed, with the compressed size, and in
+// full before Close returns; for a Reader, as uncompressed data is read out,
+// with the number of bytes read. A Writer with a concurrency level above one
+// may run the handler from several goroutines at the same time, so it must be
+// safe for concurrent use.
 func OnBlockDoneOption(handler func(size int)) Option {
 	if handler == nil {
 		handler = onBlockDone
@@ -234,7 +252,57 @@ func LegacyOption(legacy bool) Option {
 			s := fmt.Sprintf("LegacyOption(%v)", legacy)
 			return lz4errors.Error(s)
 		case *Writer:
+			if legacy && len(rw.dict) > 0 {
+				return lz4errors.ErrOptionNotApplicable
+			}
 			rw.legacy = legacy
+			return nil
+		}
+		return lz4errors.ErrOptionNotApplicable
+	}
+}
+
+// DictionaryOption defines the dictionary to use for compression and decompression.
+// Concurrency is disabled for Writer and Reader when a dictionary is set.
+// Compression with a dictionary supports only the Fast level and non-legacy
+// frames: with any other CompressionLevelOption, or LegacyOption(true), on a
+// Writer or CompressingReader, either option returns ErrOptionNotApplicable.
+func DictionaryOption(dict []byte) Option {
+	dict = slices.Clip(bytes.Clone(dict))
+	return func(a applier) error {
+		switch rw := a.(type) {
+		case nil:
+			s := fmt.Sprintf("DictionaryOption(%d bytes)", len(dict))
+			return lz4errors.Error(s)
+		case *Writer:
+			if len(dict) > 0 && (rw.level != lz4block.Fast || rw.legacy) {
+				return lz4errors.ErrOptionNotApplicable
+			}
+			rw.dict = dict
+			if len(dict) > 0 {
+				if rw.compressor == nil {
+					rw.compressor = new(lz4block.Compressor)
+				}
+			} else {
+				rw.compressor = nil
+			}
+			return nil
+		case *Reader:
+			rw.presetDict = slices.Clip(bytes.Clone(dict))
+			rw.dict = rw.presetDict
+			return nil
+		case *CompressingReader:
+			if len(dict) > 0 && rw.level != lz4block.Fast {
+				return lz4errors.ErrOptionNotApplicable
+			}
+			rw.dict = dict
+			if len(dict) > 0 {
+				if rw.compressor == nil {
+					rw.compressor = new(lz4block.Compressor)
+				}
+			} else {
+				rw.compressor = nil
+			}
 			return nil
 		}
 		return lz4errors.ErrOptionNotApplicable

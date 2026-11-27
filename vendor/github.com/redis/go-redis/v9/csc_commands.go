@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/redis/go-redis/v9/internal/proto"
 )
@@ -70,7 +71,7 @@ func isCacheable(cmd Cmder) bool {
 	if cmd.Name() == "sort_ro" && sortROHasByGet(cmd) {
 		return false
 	}
-	return cmdFirstKeyPosWithInfo(cmd, nil) != 0
+	return cmdFirstKeyPosWithInfo(cmd, nil) > 0
 }
 
 // sortROHasByGet reports whether a SORT_RO invocation uses BY or GET
@@ -137,121 +138,159 @@ func isSubscribeCmd(cmd Cmder) bool {
 // used as a collision-free canonical cache key. ok is false when the writer
 // cannot marshal the arguments, in which case the caller must skip caching
 // rather than bucket the command under an empty key.
-func buildCacheKey(cmd Cmder) (string, bool) {
+// (The un-namespaced form is only needed by tests; it lives in
+// csc_cachekey_test.go so production code has a single entry point.)
+
+// cacheKeyScratch is the reusable buffer+writer pair buildCacheKeyNS encodes
+// into. Building a cache key was the single largest allocator on the cached
+// read path -- 32% of all bytes allocated -- because every call heap-allocated
+// a bytes.Buffer, a proto.Writer (which itself allocates two 64-byte scratch
+// slices), grew the buffer, and then copied it out with String(). Only the
+// final String() is inherent: the key is retained, the scratch is not.
+type cacheKeyScratch struct {
+	buf bytes.Buffer
+	wr  *proto.Writer
+}
+
+var cacheKeyScratchPool = sync.Pool{
+	New: func() any {
+		s := &cacheKeyScratch{}
+		s.wr = proto.NewWriter(&s.buf)
+		return s
+	},
+}
+
+// buildCacheKeyNS renders cmd's RESP encoding prefixed by ns, in ONE
+// allocation (the returned string).
+//
+// Fusing the namespace in matters as much as pooling: the caller used to take
+// this function's result and then do prefix+key, a second full copy of every
+// cache key on every cached read. Writing the prefix into the buffer first
+// makes the single String() produce the namespaced key directly, and the
+// suffix after ns is still exactly the wire encoding -- which the refresher
+// relies on when it slices the namespace back off to re-issue the command.
+func buildCacheKeyNS(cmd Cmder, ns string) (string, bool) {
 	args := cmd.Args()
 	if len(args) == 0 {
 		return "", false
 	}
-	var buf bytes.Buffer
-	if err := proto.NewWriter(&buf).WriteArgs(args); err != nil {
+	s := cacheKeyScratchPool.Get().(*cacheKeyScratch)
+	defer func() {
+		// Drop an oversized buffer instead of pooling it, so one huge command
+		// does not pin that capacity for the process lifetime.
+		if s.buf.Cap() > cacheKeyScratchMaxCap {
+			return
+		}
+		s.buf.Reset()
+		cacheKeyScratchPool.Put(s)
+	}()
+	s.buf.Reset()
+	s.buf.WriteString(ns)
+	// The pooled writer targets s.buf for its whole life; Reset here only
+	// guards against a zero-value scratch reaching this path.
+	if s.wr == nil {
+		s.wr = proto.NewWriter(&s.buf)
+	}
+	if err := s.wr.WriteArgs(args); err != nil {
 		return "", false
 	}
-	return buf.String(), true
+	return s.buf.String(), true
 }
 
-// keyArg renders the key argument at pos exactly as proto.Writer sends it to
-// the server, so invalidation lookups match the key names in the server's
-// "invalidate" pushes. Only types whose stringArg rendering is byte-identical
-// to the wire encoding are accepted (fmt.Sprint of any integer matches the
+// cacheKeyScratchMaxCap bounds the buffer capacity kept in the pool.
+const cacheKeyScratchMaxCap = 64 << 10
+
+// isWireKeyType reports whether a key argument of v's type renders, through
+// stringArg, exactly as proto.Writer sends it to the server, so invalidation
+// lookups match the key names in the server's "invalidate" pushes. Only
+// byte-identical types are accepted (fmt.Sprint of any integer matches the
 // writer's base-10 strconv output); for anything else — pointers, bools,
 // times, durations, floats, BinaryMarshaler values — the rendering can
 // diverge, the invalidation would never match, and the entry would be served
-// stale forever, so ok=false and the caller skips caching (see processCached).
-func keyArg(cmd Cmder, pos int) (string, bool) {
-	args := cmd.Args()
-	if pos < 0 || pos >= len(args) {
-		return "", false
-	}
-	switch args[pos].(type) {
+// stale forever, so the caller skips caching (see processCached).
+func isWireKeyType(v any) bool {
+	switch v.(type) {
 	case string, []byte,
 		int, int8, int16, int32, int64,
 		uint, uint8, uint16, uint32, uint64:
-		return cmd.stringArg(pos), true
+		return true
 	}
-	return "", false
+	return false
 }
 
-// extractRedisKeys returns the Redis key arguments from cmd. The result lets
-// the cache map incoming invalidations back to affected entries. Returns nil
-// (caller skips caching) when any key
-// argument cannot be rendered in its wire form (see keyArg).
-func extractRedisKeys(cmd Cmder) []string {
+// cscKeySpan returns the inclusive argument range [lo, hi] that holds cmd's
+// Redis keys. For every cacheable command shape the keys are contiguous.
+// ok is false when cmd has no key.
+func cscKeySpan(cmd Cmder) (lo, hi int, ok bool) {
 	firstKey := cmdFirstKeyPosWithInfo(cmd, nil)
-	if firstKey == 0 {
-		return nil
+	// SetFirstKeyPos is public and takes any int8, so a negative position is
+	// possible. It is not a key: reject it here rather than index args with it.
+	if firstKey <= 0 {
+		return 0, 0, false
 	}
-
 	argsLen := len(cmd.Args())
 	if firstKey >= argsLen {
-		return nil
+		return 0, 0, false
 	}
 
 	switch cmd.Name() {
 	// All remaining args from firstKeyPos are keys.
 	case "mget", "exists", "sdiff", "sinter", "sunion":
-		keys := make([]string, 0, argsLen-firstKey)
-		for i := firstKey; i < argsLen; i++ {
-			k, ok := keyArg(cmd, i)
-			if !ok {
-				return nil
-			}
-			keys = append(keys, k)
-		}
-		return keys
+		return firstKey, argsLen - 1, true
 
 	// Numkeys pattern: numkeys at args[1], keys from args[2].
 	case "sintercard", "zdiff", "zinter", "zunion":
 		if argsLen < 3 {
-			return nil
+			return 0, 0, false
 		}
-		numKeys, err := strconv.Atoi(cmd.stringArg(1))
-		if err != nil || numKeys <= 0 {
-			return nil
+		numKeys, ok := cscNumKeys(cmd)
+		if !ok || numKeys <= 0 {
+			return 0, 0, false
 		}
-		keys := make([]string, 0, numKeys)
-		for i := 2; i < 2+numKeys && i < argsLen; i++ {
-			k, ok := keyArg(cmd, i)
-			if !ok {
-				return nil
-			}
-			keys = append(keys, k)
-		}
-		return keys
+		return 2, min(2+numKeys, argsLen) - 1, true
 
 	// LCS: exactly two consecutive keys starting at firstKeyPos.
 	case "lcs":
 		if firstKey+1 >= argsLen {
-			return nil
+			return 0, 0, false
 		}
-		k1, ok1 := keyArg(cmd, firstKey)
-		k2, ok2 := keyArg(cmd, firstKey+1)
-		if !ok1 || !ok2 {
-			return nil
-		}
-		return []string{k1, k2}
+		return firstKey, firstKey + 1, true
 
 	// JSON.MGET: keys from firstKeyPos to second-to-last (last arg is the
 	// JSON path, not a key).
 	case "json.mget":
-		lastKey := argsLen - 2
-		if lastKey < firstKey {
-			return nil
+		if argsLen-2 < firstKey {
+			return 0, 0, false
 		}
-		keys := make([]string, 0, lastKey-firstKey+1)
-		for i := firstKey; i <= lastKey; i++ {
-			k, ok := keyArg(cmd, i)
-			if !ok {
-				return nil
-			}
-			keys = append(keys, k)
-		}
-		return keys
+		return firstKey, argsLen - 2, true
 	}
 
 	// Single key at firstKeyPos (GET, HGET, LRANGE, ...).
-	k, ok := keyArg(cmd, firstKey)
-	if !ok {
-		return nil
+	return firstKey, firstKey, true
+}
+
+// cscNumKeys parses the numkeys argument (args[1]). The typed commands pass
+// an int, which is read without rendering it to a string.
+func cscNumKeys(cmd Cmder) (int, bool) {
+	switch v := cmd.Args()[1].(type) {
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
 	}
-	return []string{k}
+	n, err := strconv.Atoi(cmd.stringArg(1))
+	return n, err == nil
+}
+
+// cscKeysRenderable reports whether every key in [lo, hi] is a type
+// isWireKeyType accepts. It allocates nothing, so processCached runs it on every read,
+// before it builds the cache key.
+func cscKeysRenderable(cmd Cmder, lo, hi int) bool {
+	args := cmd.Args()
+	for i := lo; i <= hi; i++ {
+		if !isWireKeyType(args[i]) {
+			return false
+		}
+	}
+	return true
 }

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bits-and-blooms/bloom/v3"
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -18,10 +19,10 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/fixtures"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/logsobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
@@ -31,7 +32,7 @@ type failingBucket struct {
 	objstore.Bucket
 }
 
-func (failingBucket) Upload(_ context.Context, _ string, _ io.Reader) error {
+func (failingBucket) Upload(_ context.Context, _ string, _ io.Reader, _ ...objstore.ObjectUploadOption) error {
 	return errors.New("mock upload error")
 }
 
@@ -48,7 +49,7 @@ func newTestSimpleIndexerWithMetrics(t *testing.T, bucket objstore.Bucket, reg p
 	metrics := NewIndexerMetrics(reg)
 
 	return NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
-		metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
+		metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg), fakeTenantOverrides{})
 }
 
 func TestSimpleIndexer_Index(t *testing.T) {
@@ -57,49 +58,72 @@ func TestSimpleIndexer_Index(t *testing.T) {
 		idx, _ := newTestSimpleIndexer(t, bucket)
 
 		const objPath = "objects/test"
-		res, err := idx.Index(t.Context(), createTestLogObject(t, 2), objPath)
+		res, err := idx.Index(t.Context(), createTestLogObject(t, 1), objPath)
 		require.NoError(t, err)
 
 		require.Contains(t, bucket.Objects(), res.Path)
 		require.Len(t, bucket.Objects(), 1, "one index object per data object")
 
-		// The ranges are what the caller records in the Table of Contents, so
-		// they must describe the data object: both of its tenants, the span of
-		// the fixture's entries, and the size of the index just uploaded.
-		require.Len(t, res.TimeRanges, 2)
-		require.ElementsMatch(t, []string{"tenant-0", "tenant-1"}, tenantsOf(res.TimeRanges))
-		for _, tr := range res.TimeRanges {
-			require.Equal(t, uint64(len(bucket.Objects()[res.Path])), tr.FileSize)
-			require.Equal(t, time.Unix(10, 0).UTC(), tr.MinTime)
-			require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
-			require.Positive(t, tr.UncompressedLogsSize)
-		}
+		// The range is what the caller records in the Table of Contents, so it
+		// must describe the data object: its tenant and the span of the
+		// fixture's entries.
+		tr := res.TimeRange
+		require.Equal(t, "tenant-0", tr.Tenant)
+		require.Equal(t, time.Unix(10, 0).UTC(), tr.MinTime)
+		require.Equal(t, time.Unix(25, 0).UTC(), tr.MaxTime)
 
 		// Read the uploaded bytes back: they must decode as an index object
-		// holding a streams and a pointers section for each tenant.
+		// holding postings, and no streams section.
 		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
 		require.NoError(t, err)
-		require.Equal(t, 2, idxObj.Sections().Count(streams.CheckSection))
-		require.GreaterOrEqual(t, idxObj.Sections().Count(pointers.CheckSection), 2)
-
-		// Every stream of the data object is recorded, per tenant.
-		for _, tenant := range []string{"tenant-0", "tenant-1"} {
-			require.ElementsMatch(t, []string{
-				`{app="bar", cluster="test", env="dev"}`,
-				`{app="foo", cluster="test", env="prod"}`,
-			}, indexedStreams(t, idxObj, tenant), "tenant %s", tenant)
-		}
+		require.GreaterOrEqual(t, idxObj.Sections().Count(postings.CheckSection), 1)
+		require.Zero(t, idxObj.Sections().Count(streams.CheckSection))
 
 		// The index points back at the data object it was built from.
-		require.Equal(t, []string{objPath}, indexedPointerPaths(t, idxObj))
+		require.Equal(t, []string{objPath}, indexedObjectPaths(t, idxObj))
 	})
 
-	t.Run("should index every tenant in the data object", func(t *testing.T) {
-		idx, _ := newTestSimpleIndexer(t, objstore.NewInMemBucket())
+	t.Run("should report the shard layout that a reader finds in the uploaded index", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		idx, _ := newTestSimpleIndexer(t, bucket)
 
-		res, err := idx.Index(t.Context(), createTestLogObject(t, 3), "objects/test")
+		layout := streams.NewLayout(streams.MustShardLayoutFromBuckets(8), []string{"label:app"})
+		lr := fixtures.NewLogsFixtureBuilder(t, fixtures.WithLayout(layout))
+		lr.ForStream(`{app="foo"}`).Entry(10, `{}`, "hello")
+		lr.ForStream(`{app="bar"}`).Entry(20, `{}`, "world")
+		obj, closer := fixtures.DataObject(t,
+			fixtures.LogsSection(t, "tenant-0", lr.Logs()),
+			fixtures.StreamsSection(t, "tenant-0", lr.Streams(), fixtures.WithStreamsLayout(layout)),
+		)
+		t.Cleanup(func() { closer.Close() })
+
+		res, err := idx.Index(t.Context(), obj, "objects/test")
 		require.NoError(t, err)
-		require.Len(t, res.TimeRanges, 3)
+
+		got, ok := res.ShardBuckets.Layout()
+		require.True(t, ok)
+		require.Equal(t, layout.ShardLayout(), got)
+
+		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
+		require.NoError(t, err)
+		want, err := indexobj.TenantShardBuckets(t.Context(), idxObj, "tenant-0")
+		require.NoError(t, err)
+		require.Equal(t, want, res.ShardBuckets)
+	})
+
+	t.Run("should reject a data object with more than one tenant before it builds anything", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		idx, reg := newTestSimpleIndexer(t, bucket)
+
+		res, err := idx.Index(t.Context(), createTestLogObject(t, 2), "objects/test")
+		require.ErrorIs(t, err, ErrUnprocessableObject)
+		require.Empty(t, res.Path)
+		require.Empty(t, bucket.Objects(), "a rejected index must not be uploaded")
+		require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP loki_indexobj_appends_total Total number of appends
+		# TYPE loki_indexobj_appends_total counter
+		loki_indexobj_appends_total 0
+		`), "loki_indexobj_appends_total"))
 	})
 
 	t.Run("should propagate an upload failure", func(t *testing.T) {
@@ -212,7 +236,7 @@ func TestSimpleIndexer_IndexConcurrently(t *testing.T) {
 	// Build the objects up front: the fixtures are not concurrency-safe.
 	objs := make([]*dataobj.Object, objects)
 	for i := range objs {
-		objs[i] = createTestLogObject(t, i+1)
+		objs[i] = createTestLogObject(t, 1)
 	}
 
 	var wg sync.WaitGroup
@@ -227,11 +251,13 @@ func TestSimpleIndexer_IndexConcurrently(t *testing.T) {
 
 	require.NoError(t, errors.Join(errs...))
 
-	// Each data object gets its own index, covering only its own tenants.
+	// Each data object gets its own index, pointing only at that object.
 	paths := make(map[string]struct{}, objects)
 	for i, res := range results {
 		require.NotEmpty(t, res.Path)
-		require.Len(t, res.TimeRanges, i+1)
+		idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
+		require.NoError(t, err)
+		require.Equal(t, []string{fmt.Sprintf("objects/test-%d", i)}, indexedObjectPaths(t, idxObj))
 		paths[res.Path] = struct{}{}
 	}
 	require.Len(t, paths, objects)
@@ -276,7 +302,7 @@ func TestSimpleIndexer_MultipleInstances(t *testing.T) {
 	obj := createTestLogObject(t, 1)
 	for i := range 2 {
 		idx, err := NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
-			metrics, builderMetrics, calculatorMetrics)
+			metrics, builderMetrics, calculatorMetrics, fakeTenantOverrides{})
 		require.NoError(t, err)
 
 		_, err = idx.Index(t.Context(), obj, fmt.Sprintf("objects/test-%d", i))
@@ -294,77 +320,17 @@ func TestSimpleIndexer_RejectsInvalidConfig(t *testing.T) {
 	metrics := NewIndexerMetrics(reg)
 
 	_, err := NewSimpleIndexer(logsobj.BuilderBaseConfig{}, nil, log.NewNopLogger(),
-		objstore.NewInMemBucket(), metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg))
+		objstore.NewInMemBucket(), metrics, indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg), fakeTenantOverrides{})
 	require.Error(t, err)
 }
 
-func tenantsOf(ranges []multitenancy.TimeRange) []string {
-	tenants := make([]string, 0, len(ranges))
-	for _, tr := range ranges {
-		tenants = append(tenants, tr.Tenant)
-	}
-	return tenants
-}
-
-// indexedStreams returns the label sets the index object records for tenant.
-func indexedStreams(t *testing.T, obj *dataobj.Object, tenant string) []string {
-	t.Helper()
-
-	var got []string
-	for _, section := range obj.Sections().Filter(streams.CheckSection) {
-		if section.Tenant != tenant {
-			continue
-		}
-		sec, err := streams.Open(t.Context(), section)
-		require.NoError(t, err)
-
-		reader := streams.NewRowReader(sec)
-		t.Cleanup(func() { _ = reader.Close() })
-		require.NoError(t, reader.Open(t.Context()))
-
-		buf := make([]streams.Stream, 128)
-		for {
-			n, err := reader.Read(t.Context(), buf)
-			if !errors.Is(err, io.EOF) {
-				require.NoError(t, err)
-			}
-			if n == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, stream := range buf[:n] {
-				got = append(got, stream.Labels.String())
-			}
-		}
-	}
-	return got
-}
-
-// indexedPointerPaths returns the distinct data object paths the index points at.
-func indexedPointerPaths(t *testing.T, obj *dataobj.Object) []string {
+// indexedObjectPaths returns the distinct data object paths the stats sections point at.
+func indexedObjectPaths(t *testing.T, obj *dataobj.Object) []string {
 	t.Helper()
 
 	seen := make(map[string]struct{})
-	for _, section := range obj.Sections().Filter(pointers.CheckSection) {
-		sec, err := pointers.Open(t.Context(), section)
-		require.NoError(t, err)
-
-		reader := pointers.NewRowReader(sec)
-		t.Cleanup(func() { _ = reader.Close() })
-		require.NoError(t, reader.Open(t.Context()))
-
-		buf := make([]pointers.SectionPointer, 128)
-		for {
-			n, err := reader.Read(t.Context(), buf)
-			if !errors.Is(err, io.EOF) {
-				require.NoError(t, err)
-			}
-			if n == 0 && errors.Is(err, io.EOF) {
-				break
-			}
-			for _, pointer := range buf[:n] {
-				seen[pointer.Path] = struct{}{}
-			}
-		}
+	for _, row := range readAllStatsRows(t, obj) {
+		seen[row["object_path.utf8"].(string)] = struct{}{}
 	}
 
 	paths := make([]string, 0, len(seen))
@@ -373,4 +339,76 @@ func indexedPointerPaths(t *testing.T, obj *dataobj.Object) []string {
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+// fakeTenantOverrides is a [TenantOverrides] that gives each tenant its own
+// bloom deny list. A tenant that is not in the map has an empty list.
+type fakeTenantOverrides map[string][]string
+
+func (o fakeTenantOverrides) DataObjBloomDenyList(tenant string) []string { return o[tenant] }
+
+func TestSimpleIndexer_BloomDenyList(t *testing.T) {
+	overrides := fakeTenantOverrides{"tenant-a": {"observed_timestamp"}}
+
+	for _, tc := range []struct {
+		tenant      string
+		wantPassAll bool
+	}{
+		{tenant: "tenant-a", wantPassAll: true},
+		{tenant: "tenant-b", wantPassAll: false},
+	} {
+		t.Run("indexes the data object of "+tc.tenant, func(t *testing.T) {
+			bucket := objstore.NewInMemBucket()
+			reg := prometheus.NewRegistry()
+			idx, err := NewSimpleIndexer(testCalculatorConfig, nil, log.NewNopLogger(), bucket,
+				NewIndexerMetrics(reg), indexobj.NewBuilderMetrics(reg), NewCalculatorMetrics(reg), overrides)
+			require.NoError(t, err)
+
+			// Every line has a real value in both columns.
+			lr := fixtures.NewLogsFixtureBuilder(t)
+			lr.ForStream(`{app="foo"}`).Entry(10, `{observed_timestamp="1", trace_id="1"}`, "hello")
+			obj, closer := fixtures.DataObject(t,
+				fixtures.LogsSection(t, tc.tenant, lr.Logs()),
+				fixtures.StreamsSection(t, tc.tenant, lr.Streams()),
+			)
+			t.Cleanup(func() { closer.Close() })
+
+			res, err := idx.Index(t.Context(), obj, "objects/test")
+			require.NoError(t, err)
+
+			idxObj, err := dataobj.FromBucket(t.Context(), bucket, res.Path, 0)
+			require.NoError(t, err)
+
+			matches := func(row postings.Row, value string) bool {
+				var filter bloom.BloomFilter
+				require.NoError(t, filter.UnmarshalBinary(row.BloomFilter))
+				return filter.Test([]byte(value))
+			}
+			seen := map[string]bool{}
+			for _, sec := range idxObj.Sections().Filter(postings.CheckSection) {
+				section, err := postings.Open(t.Context(), sec)
+				require.NoError(t, err)
+				r := postings.NewReader(postings.ReaderOptions{Columns: section.Columns()})
+				require.NoError(t, r.Open(t.Context()))
+				t.Cleanup(func() { _ = r.Close() })
+				rows := postings.NewRowReader(t.Context(), r)
+				for rows.Next() {
+					row := rows.At()
+					if row.Kind != postings.KindBloom {
+						continue
+					}
+					seen[row.ColumnName] = true
+					require.True(t, matches(row, "1"), "column %s must match its own value", row.ColumnName)
+					switch row.ColumnName {
+					case "observed_timestamp":
+						require.Equal(t, tc.wantPassAll, matches(row, "2"))
+					case "trace_id":
+						require.False(t, matches(row, "2"))
+					}
+				}
+				require.NoError(t, rows.Err())
+			}
+			require.Equal(t, map[string]bool{"observed_timestamp": true, "trace_id": true}, seen)
+		})
+	}
 }

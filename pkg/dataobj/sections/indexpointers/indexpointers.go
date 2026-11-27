@@ -5,13 +5,14 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/format"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 var sectionType = dataobj.SectionType{
-	Namespace: "github.com/grafana/loki",
-	Kind:      "indexpointers",
-	Version:   columnar.FormatVersion,
+	Namespace: format.SectionNamespace,
+	Kind:      format.IndexPointersSectionKind,
+	Version:   columnar.DefaultFormatVersion,
 }
 
 // CheckSection returns true if section is a indexpointers section.
@@ -29,8 +30,8 @@ type Section struct {
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
-	} else if section.Type.Version != columnar.FormatVersion {
-		return nil, fmt.Errorf("unsupported section version: got=%d want=%d", section.Type.Version, columnar.FormatVersion)
+	} else if !columnar.IsSupportedVersion(section.Type.Version) {
+		return nil, fmt.Errorf("unsupported section version: got=%d", section.Type.Version)
 	}
 
 	dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
@@ -82,21 +83,27 @@ func (s *Section) Columns() []*Column { return s.columns }
 type ColumnType int
 
 const (
-	ColumnTypeInvalid              ColumnType = iota // ColumnTypeInvalid is an invalid column.
-	ColumnTypePath                                   // ColumnTypePath is a column containing the path to the index object.
-	ColumnTypeMinTimestamp                           // ColumnTypeMinTimestamp is a column containing the minimum timestamp of the index object.
-	ColumnTypeMaxTimestamp                           // ColumnTypeMaxTimestamp is a column containing the maximum timestamp of the index object.
-	ColumnTypeFileSize                               // ColumnTypeFileSize is the encoded on-disk size of the index object in bytes.
-	ColumnTypeUncompressedLogsSize                   // ColumnTypeUncompressedLogsSize is the uncompressed log volume (bytes) referenced by the index object.
+	ColumnTypeInvalid       ColumnType = iota // ColumnTypeInvalid is an invalid column.
+	ColumnTypePath                            // ColumnTypePath is a column containing the path to the index object.
+	ColumnTypeMinTimestamp                    // ColumnTypeMinTimestamp is a column containing the minimum timestamp of the index object.
+	ColumnTypeMaxTimestamp                    // ColumnTypeMaxTimestamp is a column containing the maximum timestamp of the index object.
+	ColumnTypeRunID                           // ColumnTypeRunID is an optional column containing the ID of the run that holds the index object.
+	ColumnTypeMinPostingKey                   // ColumnTypeMinPostingKey is an optional column containing the encoded smallest posting key of the index object.
+	ColumnTypeMaxPostingKey                   // ColumnTypeMaxPostingKey is an optional column containing the encoded largest posting key of the index object.
+	ColumnTypeShardBuckets                    // ColumnTypeShardBuckets is an optional column containing the shard bucket count of the tenant's layout in the index object.
+	ColumnTypeRunLength                       // ColumnTypeRunLength is an optional column containing the number of index objects of the run that holds the index object.
 )
 
 var columnTypeNames = map[ColumnType]string{
-	ColumnTypeInvalid:              "invalid",
-	ColumnTypePath:                 "path",
-	ColumnTypeMinTimestamp:         "min_timestamp",
-	ColumnTypeMaxTimestamp:         "max_timestamp",
-	ColumnTypeFileSize:             "file_size",
-	ColumnTypeUncompressedLogsSize: "uncompressed_logs_size",
+	ColumnTypeInvalid:       "invalid",
+	ColumnTypePath:          "path",
+	ColumnTypeMinTimestamp:  "min_timestamp",
+	ColumnTypeMaxTimestamp:  "max_timestamp",
+	ColumnTypeRunID:         "run_id",
+	ColumnTypeMinPostingKey: "min_posting_key",
+	ColumnTypeMaxPostingKey: "max_posting_key",
+	ColumnTypeShardBuckets:  "shard_buckets",
+	ColumnTypeRunLength:     "run_length",
 }
 
 // ParseColumnType parses a [ColumnType] from a string. The expected string
@@ -111,10 +118,16 @@ func ParseColumnType(text string) (ColumnType, error) {
 		return ColumnTypeMinTimestamp, nil
 	case "max_timestamp":
 		return ColumnTypeMaxTimestamp, nil
-	case "file_size":
-		return ColumnTypeFileSize, nil
-	case "uncompressed_logs_size":
-		return ColumnTypeUncompressedLogsSize, nil
+	case "run_id":
+		return ColumnTypeRunID, nil
+	case "min_posting_key":
+		return ColumnTypeMinPostingKey, nil
+	case "max_posting_key":
+		return ColumnTypeMaxPostingKey, nil
+	case "shard_buckets":
+		return ColumnTypeShardBuckets, nil
+	case "run_length":
+		return ColumnTypeRunLength, nil
 	}
 
 	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)

@@ -705,6 +705,59 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 	}
 }
 
+func Test_normalizeLogLevel_singleLetterSeverityText(t *testing.T) {
+	for _, tc := range []struct {
+		severityText string
+		want         string
+	}{
+		{severityText: "I", want: constants.LogLevelInfo},
+		{severityText: "i", want: constants.LogLevelInfo},
+		{severityText: "D", want: constants.LogLevelDebug},
+		{severityText: "d", want: constants.LogLevelDebug},
+		{severityText: "W", want: constants.LogLevelWarn},
+		{severityText: "w", want: constants.LogLevelWarn},
+		{severityText: "E", want: constants.LogLevelError},
+		{severityText: "e", want: constants.LogLevelError},
+		{severityText: "C", want: constants.LogLevelCritical},
+		{severityText: "c", want: constants.LogLevelCritical},
+		{severityText: "custom-level", want: "custom-level"},
+	} {
+		t.Run(tc.severityText, func(t *testing.T) {
+			require.Equal(t, tc.want, normalizeLogLevel(tc.severityText))
+		})
+	}
+}
+
+func Test_extractLogLevel_normalizesSingleLetterOTLPSeverityText(t *testing.T) {
+	for _, tc := range []struct {
+		severityText   string
+		severityNumber plog.SeverityNumber
+		want           string
+	}{
+		{severityText: "I", severityNumber: plog.SeverityNumberInfo, want: constants.LogLevelInfo},
+		{severityText: "D", severityNumber: plog.SeverityNumberDebug, want: constants.LogLevelDebug},
+		{severityText: "W", severityNumber: plog.SeverityNumberWarn, want: constants.LogLevelWarn},
+		{severityText: "E", severityNumber: plog.SeverityNumberError, want: constants.LogLevelError},
+		{severityText: "C", severityNumber: plog.SeverityNumberFatal, want: constants.LogLevelCritical},
+	} {
+		t.Run(tc.severityText, func(t *testing.T) {
+			ld := newFieldDetector(validationContext{discoverLogLevels: true, allowStructuredMetadata: true})
+			entry := logproto.Entry{
+				Line: "a message without a severity word",
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: loghttp_push.OTLPSeverityText, Value: tc.severityText},
+					{Name: loghttp_push.OTLPSeverityNumber, Value: fmt.Sprintf("%d", tc.severityNumber)},
+				},
+			}
+			structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+			level, ok := ld.extractLogLevel(labels.EmptyLabels(), structuredMetadata, entry)
+			require.True(t, ok)
+			require.Equal(t, constants.LevelLabel, level.Name)
+			require.Equal(t, tc.want, level.Value)
+		})
+	}
+}
+
 func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
 	ld := newFieldDetector(
 		validationContext{
@@ -1595,6 +1648,16 @@ func Test_detectLevelFromLogLine_earliestPosition(t *testing.T) {
 			expected: constants.LogLevelError,
 		},
 		{
+			name:     "non-ASCII text around a bounded keyword",
+			log:      "größe=ünï [ERROR] fehlgeschlagen — ñ",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "non-ASCII character adjacent to keyword is not a boundary",
+			log:      "éerror erroré",
+			expected: constants.LogLevelUnknown,
+		},
+		{
 			name:     "all occurrences unbounded returns unknown",
 			log:      "fooerror errorbar misc:error error_code",
 			expected: constants.LogLevelUnknown,
@@ -1683,6 +1746,51 @@ func Test_detectLevelFromLogLine_earliestPosition(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			result := detectLevelFromLogLine(tc.log)
 			require.Equal(t, tc.expected, result, "log: %q", tc.log)
+		})
+	}
+}
+
+func Benchmark_detectLevelFromLogLine(b *testing.B) {
+	longPrefix := strings.Repeat("the quick brown fox jumped over the lazy dog ", 32)
+
+	for _, bm := range []struct {
+		name     string
+		log      string
+		expected string
+	}{
+		{
+			name:     "level at start",
+			log:      "ERROR 1234 --- [main] com.example.App : Application startup failed due to connection refused",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "level in middle",
+			log:      "2024-01-01 10:00:00.000 ERROR 1234 --- [main] com.example.App : Application startup failed",
+			expected: constants.LogLevelError,
+		},
+		{
+			name:     "level at end of long line",
+			log:      longPrefix + "info",
+			expected: constants.LogLevelInfo,
+		},
+		{
+			name:     "no level in long line",
+			log:      longPrefix,
+			expected: constants.LogLevelUnknown,
+		},
+		{
+			name:     "unbounded keywords only",
+			log:      "fooerror errorbar misc:error error_code " + longPrefix,
+			expected: constants.LogLevelUnknown,
+		},
+	} {
+		b.Run(bm.name, func(b *testing.B) {
+			b.ReportAllocs()
+			var level string
+			for i := 0; i < b.N; i++ {
+				level = detectLevelFromLogLine(bm.log)
+			}
+			require.Equal(b, bm.expected, level)
 		})
 	}
 }

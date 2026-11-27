@@ -60,6 +60,15 @@ func NewServerTLS(addr string, cfg *tls.Config) (*Server, error) {
 	return newServer(l), nil
 }
 
+// NewServerConn makes a server without a listener. Connections are added
+// with ServeConn. Close with .Close().
+func NewServerConn() *Server {
+	return &Server{
+		cmds:  map[string]*cmdMeta{},
+		peers: map[net.Conn]struct{}{},
+	}
+}
+
 func newServer(l net.Listener) *Server {
 	s := Server{
 		cmds:  map[string]*cmdMeta{},
@@ -136,6 +145,9 @@ func (s *Server) Close() {
 		s.l.Close()
 	}
 	s.l = nil
+	for c := range s.peers {
+		c.Close()
+	}
 	s.mu.Unlock()
 
 	s.wg.Wait()

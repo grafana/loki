@@ -12,10 +12,10 @@ func X__vm_wait(tls *TLS) {}
 //
 // weak_alias(dummy_lockptr, __atexit_lockptr);
 // weak_alias(dummy_lockptr, __bump_lockptr);
-// weak_alias(dummy_lockptr, __sem_open_lockptr);
+//
+// __sem_open_lockptr comes from the transpiled sem_open.c.
 var X__atexit_lockptr int32
 var X__bump_lockptr int32
-var X__sem_open_lockptr int32
 
 // static int dummy(int fd)
 //

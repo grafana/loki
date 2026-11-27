@@ -9,12 +9,7 @@ import (
 
 func DebugRun(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]byte, error) {
 	defer func() {
-		var code *encoder.Opcode
-		if (ctx.Option.Flag & encoder.HTMLEscapeOption) != 0 {
-			code = codeSet.EscapeKeyCode
-		} else {
-			code = codeSet.NoescapeKeyCode
-		}
+		code := codeSet.KeyCodes[ctx.Option.Flag&encoder.KeyEscapeOptions]
 		if wc := ctx.Option.DebugDOTOut; wc != nil {
 			_, _ = io.WriteString(wc, code.DumpDOT())
 			wc.Close()

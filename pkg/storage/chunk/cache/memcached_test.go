@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 func TestMemcached_fetchKeysBatched(t *testing.T) {
@@ -115,6 +116,67 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 	}
 }
 
+func TestMemcached_WithShardKey(t *testing.T) {
+	keys := []string{"a", "b", "c", "d", "e"}
+	bufs := [][]byte{[]byte("1"), []byte("2"), []byte("3"), []byte("4"), []byte("5")}
+
+	// newCache wraps Memcached like the production cache does: stats, background
+	// writes and instrumentation. It returns the cache, the background cache to
+	// flush, and the mock client.
+	newCache := func(t *testing.T, cfg cache.MemcachedConfig) (c, background cache.Cache, client *mockMemcache) {
+		client = newMockMemcache()
+		memcached := cache.NewMemcached(cfg, client, "test", nil, log.NewNopLogger(), "test")
+		background = cache.NewBackground("test", cache.BackgroundConfig{
+			WriteBackGoroutines: 1,
+			WriteBackBuffer:     10,
+			WriteBackSizeLimit:  flagext.ByteSize(1 << 20),
+		}, cache.Instrument("test", memcached, nil), nil)
+		c = cache.CollectStats(background)
+		t.Cleanup(c.Stop)
+		return c, background, client
+	}
+
+	t.Run("a fetch finds the items that a store wrote with the same shard key", func(t *testing.T) {
+		c, background, _ := newCache(t, cache.MemcachedConfig{})
+
+		require.NoError(t, c.Store(t.Context(), keys, bufs, cache.WithShardKey("object-1")))
+		cache.Flush(background)
+
+		found, got, missing, err := c.Fetch(t.Context(), keys, cache.WithShardKey("object-1"))
+		require.NoError(t, err)
+		require.Equal(t, keys, found)
+		require.Equal(t, bufs, got)
+		require.Empty(t, missing)
+	})
+
+	t.Run("a fetch with another shard key, or with none, misses the items", func(t *testing.T) {
+		c, background, _ := newCache(t, cache.MemcachedConfig{})
+
+		require.NoError(t, c.Store(t.Context(), keys, bufs, cache.WithShardKey("object-1")))
+		cache.Flush(background)
+
+		_, _, missing, err := c.Fetch(t.Context(), keys, cache.WithShardKey("object-2"))
+		require.NoError(t, err)
+		require.Equal(t, keys, missing)
+
+		_, _, missing, err = c.Fetch(t.Context(), keys)
+		require.NoError(t, err)
+		require.Equal(t, keys, missing)
+	})
+
+	t.Run("a fetch with a shard key finds the items in every batch of BatchSize", func(t *testing.T) {
+		c, background, client := newCache(t, cache.MemcachedConfig{BatchSize: 2, Parallelism: 2})
+
+		require.NoError(t, c.Store(t.Context(), keys, bufs, cache.WithShardKey("object-1")))
+		cache.Flush(background)
+
+		found, _, _, err := c.Fetch(t.Context(), keys, cache.WithShardKey("object-1"))
+		require.NoError(t, err)
+		require.Equal(t, keys, found)
+		require.Equal(t, []int{1, 2, 2}, client.getMultiBatchSizes())
+	})
+}
+
 func TestMemcached_fetchKeysBatched_contextCancellation(t *testing.T) {
 	// With Parallelism=1, batches run sequentially. Each GetMulti call takes
 	// 10ms (simulated delay). A 25ms timeout allows the first two batches to
@@ -141,6 +203,58 @@ func TestMemcached_fetchKeysBatched_contextCancellation(t *testing.T) {
 		require.ElementsMatch(t, []string{"k1", "k2", "k3", "k4"}, found)
 		require.ElementsMatch(t, []string{"k5", "k6"}, missed)
 	})
+}
+
+func TestMemcachedFetchWithServerDown(t *testing.T) {
+	const (
+		numKeys         = 40
+		downKeyInterval = 10
+	)
+
+	for _, tc := range []struct {
+		name string
+		cfg  cache.MemcachedConfig
+	}{
+		{
+			name: "unbatched fetch returns the keys of the healthy servers and the server error",
+			cfg:  cache.MemcachedConfig{},
+		},
+		{
+			name: "batched fetch returns the keys of the healthy servers and the server error",
+			cfg:  cache.MemcachedConfig{BatchSize: 4, Parallelism: 2},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			serverDownErr := errors.New("dial tcp 10.0.0.3:11211: connect: connection refused")
+			client := newMockMemcacheServerDown(serverDownErr)
+
+			var keys, wantFound, wantMissed []string
+			var wantBufs [][]byte
+			for i := range numKeys {
+				key := fmt.Sprintf("key-%d", i)
+				keys = append(keys, key)
+				require.NoError(t, client.Set(&memcache.Item{Key: key, Value: []byte(key)}))
+
+				if i%downKeyInterval == 0 {
+					client.downKeys[key] = struct{}{}
+					wantMissed = append(wantMissed, key)
+					continue
+				}
+				wantFound = append(wantFound, key)
+				wantBufs = append(wantBufs, []byte(key))
+			}
+
+			mc := cache.NewMemcached(tc.cfg, client, "test", nil, log.NewNopLogger(), "test")
+			defer mc.Stop()
+
+			found, bufs, missed, err := mc.Fetch(t.Context(), keys)
+
+			require.EqualError(t, err, serverDownErr.Error())
+			require.Equal(t, wantFound, found)
+			require.Equal(t, wantBufs, bufs)
+			require.Equal(t, wantMissed, missed)
+		})
+	}
 }
 
 // mockMemcache whose calls fail 1/3rd of the time.
@@ -230,4 +344,39 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 			require.True(t, ok, "key missing %s", key)
 		}
 	}
+}
+
+// mockMemcacheServerDown simulates a cluster with one server down. The keys in
+// downKeys belong to that server. Like the real client, GetMulti returns the
+// items of the other servers together with the error of the down server.
+type mockMemcacheServerDown struct {
+	*mockMemcache
+	downKeys map[string]struct{}
+	err      error
+}
+
+func newMockMemcacheServerDown(err error) *mockMemcacheServerDown {
+	return &mockMemcacheServerDown{
+		mockMemcache: newMockMemcache(),
+		downKeys:     map[string]struct{}{},
+		err:          err,
+	}
+}
+
+func (m *mockMemcacheServerDown) GetMulti(ctx context.Context, keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
+	var err error
+	healthy := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if _, down := m.downKeys[key]; down {
+			err = m.err
+			continue
+		}
+		healthy = append(healthy, key)
+	}
+
+	items, getErr := m.mockMemcache.GetMulti(ctx, healthy)
+	if getErr != nil {
+		return nil, getErr
+	}
+	return items, err
 }

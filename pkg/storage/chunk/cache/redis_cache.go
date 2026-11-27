@@ -7,7 +7,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -35,7 +35,7 @@ func NewRedisCache(name string, redisClient *RedisClient, logger log.Logger, cac
 }
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
-func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
+func (c *RedisCache) Fetch(ctx context.Context, keys []string, _ ...Option) (found []string, bufs [][]byte, missed []string, err error) {
 	data, err := c.redis.MGet(ctx, keys)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to get from redis", "name", c.name, "err", err)
@@ -55,7 +55,7 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 }
 
 // Store stores the key in the cache.
-func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
+func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte, _ ...Option) error {
 	err := c.redis.MSet(ctx, keys, bufs)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to put to redis", "name", c.name, "err", err)

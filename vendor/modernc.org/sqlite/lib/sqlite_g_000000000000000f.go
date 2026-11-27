@@ -13,46 +13,6 @@ import (
 // C documentation
 //
 //	/*
-//	** Compare the 19-character string zNum against the text representation
-//	** value 2^63:  9223372036854775808.  Return negative, zero, or positive
-//	** if zNum is less than, equal to, or greater than the string.
-//	** Note that zNum must contain exactly 19 characters.
-//	**
-//	** Unlike memcmp() this routine is guaranteed to return the difference
-//	** in the values of the last digit if the only difference is in the
-//	** last digit.  So, for example,
-//	**
-//	**      compare2pow63("9223372036854775800", 1)
-//	**
-//	** will return -8.
-//	*/
-func _compare2pow63(tls *libc.TLS, zNum uintptr, incr int32) (r int32) {
-	var c, i int32
-	var pow63 uintptr
-	_, _, _ = c, i, pow63
-	c = 0
-	/* 012345678901234567 */
-	pow63 = __ccgo_ts + 1813
-	i = 0
-	for {
-		if !(c == 0 && i < int32(18)) {
-			break
-		}
-		c = (int32(**(**int8)(__ccgo_up(zNum + uintptr(i*incr)))) - int32(**(**int8)(__ccgo_up(pow63 + uintptr(i))))) * int32(10)
-		goto _1
-	_1:
-		;
-		i = i + 1
-	}
-	if c == 0 {
-		c = int32(**(**int8)(__ccgo_up(zNum + uintptr(int32(18)*incr)))) - int32('8')
-	}
-	return c
-}
-
-// C documentation
-//
-//	/*
 //	** Parse times of the form HH:MM or HH:MM:SS or HH:MM:SS.FFFF.
 //	** The HH, MM, and SS must each be exactly 2 digits.  The
 //	** fractional seconds FFFF can be one or more digits.
@@ -68,13 +28,13 @@ func _parseHhMmSs(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 	var _ /* s at bp+8 */ int32
 	_, _ = ms, rScale
 	ms = float64(0)
-	if _getDigits(tls, zDate, __ccgo_ts+1202, libc.VaList(bp+24, bp, bp+4)) != int32(2) {
+	if _getDigits(tls, zDate, __ccgo_ts+1222, libc.VaList(bp+24, bp, bp+4)) != int32(2) {
 		return int32(1)
 	}
 	zDate = zDate + uintptr(5)
 	if int32(**(**int8)(__ccgo_up(zDate))) == int32(':') {
 		zDate = zDate + 1
-		if _getDigits(tls, zDate, __ccgo_ts+1210, libc.VaList(bp+24, bp+8)) != int32(1) {
+		if _getDigits(tls, zDate, __ccgo_ts+1230, libc.VaList(bp+24, bp+8)) != int32(1) {
 			return int32(1)
 		}
 		zDate = zDate + uintptr(2)
@@ -95,6 +55,9 @@ func _parseHhMmSs(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 		}
 	} else {
 		**(**int32)(__ccgo_up(bp + 8)) = 0
+	}
+	if **(**int32)(__ccgo_up(bp)) == int32(24) && (**(**int32)(__ccgo_up(bp + 4)) != 0 || **(**int32)(__ccgo_up(bp + 8)) != 0 || ms != float64(0)) {
+		return int32(1)
 	}
 	(*TDateTime)(unsafe.Pointer(p)).FvalidJD = 0
 	libc.SetBitFieldPtr8Uint32(p+44, libc.Uint32FromInt32(0), 0, 0x1)
@@ -156,7 +119,7 @@ func _parseTimezone(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 		}
 	}
 	zDate = zDate + 1
-	if _getDigits(tls, zDate, __ccgo_ts+1194, libc.VaList(bp+16, bp, bp+4)) != int32(2) {
+	if _getDigits(tls, zDate, __ccgo_ts+1214, libc.VaList(bp+16, bp, bp+4)) != int32(2) {
 		return int32(1)
 	}
 	zDate = zDate + uintptr(5)
@@ -191,18 +154,18 @@ zulu_time:
 func _parseYyyyMmDd(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 	bp := tls.Alloc(48)
 	defer tls.Free(48)
-	var neg, v1 int32
+	var mxD, neg, v1 int32
 	var _ /* D at bp+8 */ int32
 	var _ /* M at bp+4 */ int32
 	var _ /* Y at bp+0 */ int32
-	_, _ = neg, v1
+	_, _, _ = mxD, neg, v1
 	if int32(**(**int8)(__ccgo_up(zDate))) == int32('-') {
 		zDate = zDate + 1
 		neg = int32(1)
 	} else {
 		neg = 0
 	}
-	if _getDigits(tls, zDate, __ccgo_ts+1214, libc.VaList(bp+24, bp, bp+4, bp+8)) != int32(3) {
+	if _getDigits(tls, zDate, __ccgo_ts+1234, libc.VaList(bp+24, bp, bp+4, bp+8)) != int32(3) {
 		return int32(1)
 	}
 	zDate = zDate + uintptr(10)
@@ -210,7 +173,19 @@ func _parseYyyyMmDd(tls *libc.TLS, zDate uintptr, p uintptr) (r int32) {
 		zDate = zDate + 1
 	}
 	if _parseHhMmSs(tls, zDate, p) == 0 {
-		/* We got the time */
+		if (*TDateTime)(unsafe.Pointer(p)).Fh == int32(24) {
+			mxD = _daysOfMonth(tls, **(**int32)(__ccgo_up(bp)), **(**int32)(__ccgo_up(bp + 4)))
+			(*TDateTime)(unsafe.Pointer(p)).Fh = 0
+			**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) + 1
+			if **(**int32)(__ccgo_up(bp + 8)) > mxD {
+				**(**int32)(__ccgo_up(bp + 8)) = **(**int32)(__ccgo_up(bp + 8)) - mxD
+				**(**int32)(__ccgo_up(bp + 4)) = **(**int32)(__ccgo_up(bp + 4)) + 1
+				if **(**int32)(__ccgo_up(bp + 4)) > int32(12) {
+					**(**int32)(__ccgo_up(bp + 4)) = int32(1)
+					**(**int32)(__ccgo_up(bp)) = **(**int32)(__ccgo_up(bp)) + 1
+				}
+			}
+		}
 	} else {
 		if int32(**(**int8)(__ccgo_up(zDate))) == 0 {
 			(*TDateTime)(unsafe.Pointer(p)).FvalidHMS = 0

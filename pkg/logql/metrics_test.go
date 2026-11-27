@@ -3,25 +3,31 @@ package logql
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 func TestQueryType(t *testing.T) {
@@ -40,6 +46,8 @@ func TestQueryType(t *testing.T) {
 		{"metrics binary", `rate({app="foo"} |= "foo"[5m]) + count_over_time({app="foo"} |= "foo"[5m]) / rate({app="foo"} |= "foo"[5m]) `, QueryTypeMetric},
 		{"filters", `{app="foo"} |= "foo" |= "f" != "b"`, QueryTypeFilter},
 		{"filters and labels filters", `{app="foo"} |= "foo" |= "f" != "b" | json | a > 5`, QueryTypeFilter},
+		{"filter followed by empty filter", `{app="foo"} |= "foo" |= ""`, QueryTypeFilter},
+		{"limited with empty filters", `{app="foo"} |= "" |= ""`, QueryTypeLimited},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -80,7 +88,7 @@ func TestLogSlowQuery(t *testing.T) {
 			TotalBytesProcessed:     100000,
 			TotalEntriesReturned:    10,
 		},
-	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
+	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}}, nil)
 	require.Regexp(t,
 		regexp.MustCompile(fmt.Sprintf(
 			`level=info org_id=foo traceID=%s sampled=true latency=slow user_agent= query=".*" query_hash=.* query_type=filter range_type=range length=1h0m0s .*\n`,
@@ -88,6 +96,268 @@ func TestLogSlowQuery(t *testing.T) {
 		)),
 		buf.String())
 	util_log.Logger = log.NewNopLogger()
+}
+
+func TestRecordRangeAndInstantQueryMetrics(t *testing.T) {
+	params := LiteralParams{
+		queryString: `{foo="bar"} |= "buzz"`,
+		direction:   logproto.BACKWARD,
+		limit:       1000,
+		step:        time.Minute,
+		queryExpr:   syntax.MustParseExpr(`{foo="bar"} |= "buzz"`),
+	}
+	params.end = time.Now()
+	params.start = params.end.Add(-time.Hour)
+
+	record := func(t *testing.T, queryErr error) string {
+		t.Helper()
+
+		buf := bytes.NewBuffer(nil)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "500", stats.Result{}, nil, queryErr)
+		return buf.String()
+	}
+
+	cases := []struct {
+		name         string
+		err          error
+		wantErr      string
+		wantCategory string
+		wantReason   string
+	}{
+		{
+			name:         "adds the error and the internal category when a plain error fails the query",
+			err:          errors.New("data object listed a section twice"),
+			wantErr:      `err="data object listed a section twice"`,
+			wantCategory: server.FailureInternal,
+			wantReason:   "downstream_error",
+		},
+		{
+			name:         "adds the internal category when a downstream HTTP 500 fails the query",
+			err:          httpgrpc.Errorf(http.StatusInternalServerError, "store unavailable"),
+			wantErr:      `err="rpc error: code = Code(500) desc = store unavailable"`,
+			wantCategory: server.FailureInternal,
+			wantReason:   "downstream_error",
+		},
+		{
+			name:         "adds the syntax category when the query does not parse",
+			err:          logqlerr.ErrParse,
+			wantErr:      "err=",
+			wantCategory: server.FailureSyntax,
+			wantReason:   "parse",
+		},
+		{
+			name:         "adds the limit category when the query hits a limit",
+			err:          logqlerr.ErrLimit,
+			wantErr:      "err=",
+			wantCategory: server.FailureLimit,
+			wantReason:   "series_limit",
+		},
+		{
+			name:         "adds the canceled category when the client cancels the query",
+			err:          context.Canceled,
+			wantErr:      "err=",
+			wantCategory: server.FailureCanceled,
+			wantReason:   "client_canceled",
+		},
+		{
+			name:         "adds the timeout category when the query times out",
+			err:          context.DeadlineExceeded,
+			wantErr:      "err=",
+			wantCategory: server.FailureTimeout,
+			wantReason:   "query_timeout",
+		},
+		{
+			name:         "adds the blocked category when a policy blocks the query",
+			err:          logqlerr.ErrBlocked,
+			wantErr:      "err=",
+			wantCategory: server.FailureBlocked,
+			wantReason:   "blocked_by_policy",
+		},
+		{
+			name:         "adds the user error category when the user caused the error",
+			err:          server.UserError("bad input"),
+			wantErr:      `err="bad input"`,
+			wantCategory: server.FailureUserError,
+			wantReason:   "bad_request",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := record(t, tc.err)
+
+			require.Contains(t, out, "level=info")
+			require.Contains(t, out, tc.wantErr)
+			require.Contains(t, out, "failure_category="+tc.wantCategory)
+			require.Contains(t, out, "failure_reason="+tc.wantReason)
+		})
+	}
+
+	t.Run("adds no error fields when the query succeeds", func(t *testing.T) {
+		out := record(t, nil)
+
+		require.Contains(t, out, "level=info")
+		require.NotContains(t, out, " err=")
+		require.NotContains(t, out, "failure_category=")
+		require.NotContains(t, out, "failure_reason=")
+	})
+
+	t.Run("logs the stream-first and timestamp-first query counts from the frontend", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		ctx := WithComponentContext(user.InjectOrgID(t.Context(), "foo"), componentFrontend)
+		result := stats.Result{Summary: stats.Summary{StreamFirstQueries: 3, TimestampFirstQueries: 5}}
+
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "200", result, nil, nil)
+
+		require.Contains(t, buf.String(), "stream_first_queries=3")
+		require.Contains(t, buf.String(), "timestamp_first_queries=5")
+	})
+
+	t.Run("adds the slowest data-object section resolution of the query", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		ctx := user.InjectOrgID(context.Background(), "foo")
+		result := stats.Result{Querier: stats.Querier{Store: stats.Store{
+			Dataobj: stats.Dataobj{SectionsResolutionMaxTime: int64(1500 * time.Millisecond)},
+		}}}
+
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "200", result, nil, nil)
+
+		require.Contains(t, buf.String(), "dataobj_sections_resolution_max_time=1.5s")
+	})
+
+	t.Run("adds a zero section resolution time when the query read no data object", func(t *testing.T) {
+		require.Contains(t, record(t, nil), "dataobj_sections_resolution_max_time=0s")
+	})
+
+	t.Run("adds the data-object counts and downloaded bytes of the query as raw integers", func(t *testing.T) {
+		buf := bytes.NewBuffer(nil)
+		ctx := user.InjectOrgID(t.Context(), "foo")
+		result := stats.Result{Querier: stats.Querier{Store: stats.Store{
+			Dataobj: stats.Dataobj{
+				LogsCompactedObjectsCount: 7, LogsUncompactedObjectsCount: 4, IndexCompactedObjectsCount: 3, IndexUncompactedObjectsCount: 9,
+				LogsDownloadedBytes: 123456789, IndexDownloadedBytes: 2048,
+			},
+		}}}
+
+		RecordRangeAndInstantQueryMetrics(ctx, log.NewLogfmtLogger(buf), params, "200", result, nil, nil)
+
+		out := buf.String()
+		require.Contains(t, out, " dataobj_logs_compacted_objects_count=7 ")
+		require.Contains(t, out, " dataobj_logs_uncompacted_objects_count=4 ")
+		require.Contains(t, out, " dataobj_index_compacted_objects_count=3 ")
+		require.Contains(t, out, " dataobj_index_uncompacted_objects_count=9 ")
+		require.Contains(t, out, " dataobj_logs_downloaded_bytes=123456789 ")
+		require.Contains(t, out, " dataobj_index_downloaded_bytes=2048 ")
+	})
+
+	t.Run("adds zero counts and bytes when the query read no data object", func(t *testing.T) {
+		out := record(t, nil)
+
+		require.Contains(t, out, "dataobj_logs_compacted_objects_count=0")
+		require.Contains(t, out, "dataobj_logs_uncompacted_objects_count=0")
+		require.Contains(t, out, "dataobj_index_compacted_objects_count=0")
+		require.Contains(t, out, "dataobj_index_uncompacted_objects_count=0")
+		require.Contains(t, out, "dataobj_logs_downloaded_bytes=0")
+		require.Contains(t, out, "dataobj_index_downloaded_bytes=0")
+	})
+}
+
+func TestAppendLoglineStats(t *testing.T) {
+	withChunks := func(outcome string, planned, scanned int64, ratio float64) stats.Result {
+		return stats.Result{Logline: &stats.Logline{
+			Outcome:             outcome,
+			HintStatus:          "ok",
+			HintLookupTime:      (150 * time.Millisecond).Nanoseconds(),
+			HintWaitTime:        (120 * time.Millisecond).Nanoseconds(),
+			HintRanges:          3,
+			HintRangesDuration:  (90 * time.Minute).Nanoseconds(),
+			SkippedRequests:     6,
+			NarrowedRequests:    2,
+			PassthroughRequests: 1,
+			PlannedChunks:       planned,
+			ScannedChunks:       scanned,
+			ChunkFilterRatio:    ratio,
+			ObjectRequests:      12,
+			IOBytes:             2048,
+			IOWait:              (40 * time.Millisecond).Nanoseconds(),
+		}}
+	}
+	loglineFields := func(outcome string, planned, scanned int64) []interface{} {
+		return []interface{}{
+			"logline_outcome", outcome,
+			"logline_hint_status", "ok",
+			"logline_hint_lookup_time", 150 * time.Millisecond,
+			"logline_hint_wait_time", 120 * time.Millisecond,
+			"logline_hint_ranges", int64(3),
+			"logline_hint_ranges_duration", 90 * time.Minute,
+			"logline_skipped_requests", int64(6),
+			"logline_narrowed_requests", int64(2),
+			"logline_passthrough_requests", int64(1),
+			"logline_object_requests", int64(12),
+			"logline_io_bytes", "2.0kB",
+			"logline_io_wait", 40 * time.Millisecond,
+			"shard_planned_chunks", planned,
+			"logline_scanned_chunks", scanned,
+		}
+	}
+	withRatio := func(outcome string, planned, scanned int64, ratio string) []interface{} {
+		return append(loglineFields(outcome, planned, scanned), "logline_chunk_filter_ratio", ratio)
+	}
+
+	for _, tc := range []struct {
+		name     string
+		stats    stats.Result
+		expected []interface{}
+	}{
+		{
+			name:     "no logline stats",
+			stats:    stats.Result{Index: stats.Index{TotalChunks: 10, ShardPlannedChunks: 10}},
+			expected: []interface{}{},
+		},
+		{
+			name:     "skipped before the hint lookup",
+			stats:    stats.Result{Logline: &stats.Logline{Outcome: "query_too_small", PlannedChunks: 10, ScannedChunks: 10}},
+			expected: []interface{}{"logline_outcome", "query_too_small"},
+		},
+		{
+			name:     "some chunks filtered",
+			stats:    withChunks("data_skipped", 40, 10, 0.75),
+			expected: withRatio("data_skipped", 40, 10, "0.75"),
+		},
+		{
+			name:     "no chunks filtered",
+			stats:    withChunks("tiny_data_skipped", 40, 40, 0),
+			expected: withRatio("tiny_data_skipped", 40, 40, "0.00"),
+		},
+		{
+			name:     "ratio omitted without shard planning",
+			stats:    withChunks("skip_ratio_unavailable", 0, 0, 0),
+			expected: loglineFields("skip_ratio_unavailable", 0, 0),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, appendLoglineStats([]interface{}{}, tc.stats))
+		})
+	}
+}
+
+func TestRecordLoglineIndexQueryMetrics(t *testing.T) {
+	buf := bytes.NewBufferString("")
+	logger := log.NewLogfmtLogger(buf)
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	now := time.Now()
+
+	RecordLoglineIndexQueryMetrics(ctx, logger, now.Add(-time.Hour), now, `{foo="bar"} |= "buzz"`, "200", stats.Result{}, &logproto.HintQueryStats{
+		ObjectStorageRequests: 12,
+		TotalIOBytes:          2048,
+		TotalIOWait:           40 * time.Millisecond,
+	})
+	require.Contains(t, buf.String(), "query_type=logline_index")
+	require.Contains(t, buf.String(), "logline_object_requests=12 logline_io_bytes=2.0kB logline_io_wait=40ms")
+
+	buf.Reset()
+	RecordLoglineIndexQueryMetrics(ctx, logger, now.Add(-time.Hour), now, `{foo="bar"} |= "buzz"`, "500", stats.Result{}, nil)
+	require.NotContains(t, buf.String(), "logline_object_requests")
 }
 
 func TestRecordBytesProcessedTotal(t *testing.T) {
@@ -100,39 +370,93 @@ func TestRecordBytesProcessedTotal(t *testing.T) {
 		step:        time.Minute,
 		queryExpr:   syntax.MustParseExpr(`{foo="bar"} |= "buzz"`),
 	}
-	result := stats.Result{Summary: stats.Summary{TotalBytesProcessed: 100000}}
-
-	// Use a tenant unique to this test so we do not collide with the shared,
-	// package-level counter incremented by other tests.
-	const tenantID = "record-bytes-tenant"
-	ctx := user.InjectOrgID(context.Background(), tenantID)
-
 	now := time.Now()
 	params.start, params.end = now.Add(-1*time.Hour), now
+	result := stats.Result{Summary: stats.Summary{TotalBytesProcessed: 100000}}
 
-	bytesProcessedTotal.DeleteLabelValues(tenantID)
-	counter := bytesProcessedTotal.WithLabelValues(tenantID)
+	type series struct {
+		tenant      string
+		multiTenant string
+	}
 
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil)
-	require.Equal(t, float64(100000), testutil.ToFloat64(counter))
+	// Tenant IDs are unique to this test so they do not collide with the shared,
+	// package-level counter incremented by other tests.
+	for _, tc := range []struct {
+		name    string
+		tenants []string // tenants whose series are checked
+		orgIDs  []string // one query per org ID, in order
+		want    map[series]float64
+	}{
+		{
+			name:    "single tenant query usage",
+			tenants: []string{"record-bytes-single"},
+			orgIDs:  []string{"record-bytes-single"},
+			want:    map[series]float64{{"record-bytes-single", ""}: 100000},
+		},
+		{
+			name:    "single tenant accumulates across queries",
+			tenants: []string{"record-bytes-accumulate"},
+			orgIDs:  []string{"record-bytes-accumulate", "record-bytes-accumulate"},
+			want:    map[series]float64{{"record-bytes-accumulate", ""}: 200000},
+		},
+		{
+			name:    "multi-tenant query splits bytes equally and is labelled",
+			tenants: []string{"record-bytes-multi-a", "record-bytes-multi-b"},
+			orgIDs:  []string{"record-bytes-multi-b|record-bytes-multi-a"},
+			want: map[series]float64{
+				{"record-bytes-multi-a", "true"}: 50000,
+				{"record-bytes-multi-b", "true"}: 50000,
+			},
+		},
+		{
+			name:    "single-tenant and multi-tenant queries for the same tenant are separate series",
+			tenants: []string{"record-bytes-mixed-a", "record-bytes-mixed-b"},
+			orgIDs:  []string{"record-bytes-mixed-a", "record-bytes-mixed-a|record-bytes-mixed-b"},
+			want: map[series]float64{
+				{"record-bytes-mixed-a", ""}:     100000,
+				{"record-bytes-mixed-a", "true"}: 50000,
+				{"record-bytes-mixed-b", "true"}: 50000,
+			},
+		},
+		{
+			name:    "duplicate tenant IDs collapse to a single-tenant query",
+			tenants: []string{"record-bytes-dup"},
+			orgIDs:  []string{"record-bytes-dup|record-bytes-dup"},
+			want:    map[series]float64{{"record-bytes-dup", ""}: 100000},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, tenantID := range tc.tenants {
+				bytesProcessedTotal.DeletePartialMatch(prometheus.Labels{"tenant": tenantID})
+			}
 
-	// A second query for the same tenant accumulates.
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil)
-	require.Equal(t, float64(200000), testutil.ToFloat64(counter))
+			for _, orgID := range tc.orgIDs {
+				ctx := user.InjectOrgID(context.Background(), orgID)
+				RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", result, nil, nil)
+			}
 
-	// Federated multi-tenant queries divide the byte total evenly across tenants.
-	fedA, fedB := "record-bytes-fed-a", "record-bytes-fed-b"
-	bytesProcessedTotal.DeleteLabelValues(fedA)
-	bytesProcessedTotal.DeleteLabelValues(fedB)
-	fedCtx := user.InjectOrgID(context.Background(), fmt.Sprintf("%s|%s", fedA, fedB))
-	RecordRangeAndInstantQueryMetrics(fedCtx, util_log.Logger, params, "200", result, nil)
-	require.Equal(t, float64(50000), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(fedA)))
-	require.Equal(t, float64(50000), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues(fedB)))
+			// Collect every series of the tested tenants, so an unexpected series fails the test.
+			got := map[series]float64{}
+			for _, tenantID := range tc.tenants {
+				for _, multiTenant := range []string{"", "true"} {
+					c, err := bytesProcessedTotal.GetMetricWithLabelValues(tenantID, multiTenant)
+					require.NoError(t, err)
+					if v := testutil.ToFloat64(c); v != 0 {
+						got[series{tenantID, multiTenant}] = v
+					}
+				}
+			}
+			require.Equal(t, tc.want, got)
+		})
+	}
 
-	// When no tenant can be resolved from the context the metric is skipped rather
-	// than recorded under an empty tenant label (and must not panic).
-	RecordRangeAndInstantQueryMetrics(context.Background(), util_log.Logger, params, "200", result, nil)
-	require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues("")))
+	t.Run("no tenant in context is skipped", func(t *testing.T) {
+		// When no tenant can be resolved from the context the metric is skipped rather
+		// than recorded under an empty tenant label (and must not panic).
+		RecordRangeAndInstantQueryMetrics(context.Background(), util_log.Logger, params, "200", result, nil, nil)
+		require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues("", "")))
+		require.Equal(t, float64(0), testutil.ToFloat64(bytesProcessedTotal.WithLabelValues("", "true")))
+	})
 }
 
 func TestRecordChunkFetchFailuresTotal(t *testing.T) {
@@ -155,19 +479,19 @@ func TestRecordChunkFetchFailuresTotal(t *testing.T) {
 	affectedCounter := queriesWithChunkFetchFailuresTotal.WithLabelValues("200", QueryTypeFilter, string(RangeType))
 
 	// No failures: neither counter moves.
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", stats.Result{}, nil)
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", stats.Result{}, nil, nil)
 	require.Equal(t, float64(0), testutil.ToFloat64(failuresCounter))
 	require.Equal(t, float64(0), testutil.ToFloat64(affectedCounter))
 
 	// A query with 3 failed chunks: the failure counter accumulates the count,
 	// the affected-queries counter increments by exactly 1.
 	withFailures := stats.Result{Querier: stats.Querier{Store: stats.Store{ChunkFetchFailures: 3}}}
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", withFailures, nil)
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", withFailures, nil, nil)
 	require.Equal(t, float64(3), testutil.ToFloat64(failuresCounter))
 	require.Equal(t, float64(1), testutil.ToFloat64(affectedCounter))
 
 	// A second affected query: failures accumulate, affected count increments again.
-	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", withFailures, nil)
+	RecordRangeAndInstantQueryMetrics(ctx, util_log.Logger, params, "200", withFailures, nil, nil)
 	require.Equal(t, float64(6), testutil.ToFloat64(failuresCounter))
 	require.Equal(t, float64(2), testutil.ToFloat64(affectedCounter))
 }

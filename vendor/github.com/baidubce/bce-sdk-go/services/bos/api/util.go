@@ -644,9 +644,12 @@ func getObjectMetaOptions(result *ObjectMeta) []GetOption {
 }
 
 func validateObjectKey(objectKey string) error {
-	// 1. 拒绝路径穿越特征（关键）
-	if strings.Contains(objectKey, "..") {
-		return fmt.Errorf("invalid object key: %s", objectKey)
+	// 1. 拒绝路径穿越特征（关键）：只有 ".." 作为完整路径段时才构成穿越，
+	//    诸如 "agent.log...log"、"file..txt" 的连续点号属于合法 key
+	for _, segment := range strings.Split(objectKey, "/") {
+		if segment == ".." {
+			return fmt.Errorf("invalid object key: %s", objectKey)
+		}
 	}
 	// 2. 路径规范化
 	objectCleaned := path.Clean("/" + strings.Trim(objectKey, "/"))

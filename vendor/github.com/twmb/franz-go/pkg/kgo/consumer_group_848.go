@@ -200,8 +200,9 @@ outer:
 				"unreleased_instance_retries", unreleasedInstanceRetries,
 			)
 			backoff := g.cfg.retryBackoff(consecutiveErrors)
+			deadline := time.Now().Add(backoff)
 			g.cl.waitmeta(g.ctx, backoff, "waitmeta during 848 retryable error backoff")
-			after := time.NewTimer(backoff)
+			after := time.NewTimer(time.Until(deadline))
 			select {
 			case <-g.ctx.Done():
 				after.Stop()
@@ -455,8 +456,9 @@ func (g *groupConsumer) leave848(ctx context.Context) {
 	// succeeded but its response was lost (the connection died), the
 	// retry finds the member already gone. Same if the session expired
 	// before we could leave. Either way the member is out of the group,
-	// which is the goal state of leaving, not an error.
-	if errors.Is(err, kerr.UnknownMemberID) {
+	// which is the goal state of leaving, not an error. The same holds
+	// if the group itself is gone.
+	if errors.Is(err, kerr.UnknownMemberID) || errors.Is(err, kerr.GroupIDNotFound) {
 		err = nil
 	}
 	g.leaveErr = err
@@ -476,6 +478,12 @@ type g848 struct {
 	// server sees them acknowledged. When metadata resolves the
 	// ID, the topic is moved into newAssigned.
 	unresolvedAssigned map[topicID][]int32
+
+	// assignedIDs maps each topic in nowAssigned to the ID the server
+	// assigned it under. A topic we own resolves through this even if our
+	// metadata briefly lacks it, and mkreq reports a topic we own under
+	// this ID after a purge removes it from tps.
+	assignedIDs map[string][16]byte
 
 	// prerevoking is true while prerevoke is running: the
 	// assignment has changed and lost partitions are being
@@ -536,6 +544,7 @@ func (g *g848) initialJoin() (time.Duration, error) {
 	// always re-delivers the member's full assignment; the Java client
 	// likewise clears its unresolved IDs on every rejoin.
 	g.unresolvedAssigned = nil
+	g.assignedIDs = nil
 	g.prerevoking.Store(false)
 	// Drain any stale rejoin signal, mirroring joinAndSync. Nothing
 	// else on the 848 path consumes the channel across a member reset:
@@ -593,13 +602,22 @@ func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.Co
 	id2t := g.g.cl.id2tMap()
 	tps := g.g.tps.load()
 	newAssigned := make(map[string][]int32)
+	newIDs := make(map[string][16]byte)
+	owned := make(map[[16]byte]string, len(g.assignedIDs))
+	for name, id := range g.assignedIDs {
+		owned[id] = name
+	}
 
 	// resolve maps an assigned topic ID to a name we can fetch from,
-	// returning empty if we cannot yet. When the broker resolves our
-	// regex (no excludes), it can assign a topic that is not in tps: we
-	// never match internal topics, but the broker does. We adopt such a
-	// topic and wait for metadata to load it before assigning it.
+	// returning empty if we cannot yet. A topic we already own resolves
+	// to the name we own it under. When the broker resolves our regex
+	// (no excludes), it can assign a topic that is not in tps: we never
+	// match internal topics, but the broker does. We adopt such a topic
+	// and wait for metadata to load it before assigning it.
 	resolve := func(id [16]byte) string {
+		if name, ok := owned[id]; ok {
+			return name
+		}
 		name := id2t[id]
 		if name == "" || !g.g.cl.cfg.regex {
 			return name
@@ -646,6 +664,7 @@ func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.Co
 				continue
 			}
 			newAssigned[name] = ps
+			newIDs[name] = t.TopicID
 		}
 	}
 
@@ -657,6 +676,7 @@ func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.Co
 	for id, ps := range g.unresolvedAssigned {
 		if name := resolve([16]byte(id)); name != "" {
 			newAssigned[name] = ps
+			newIDs[name] = [16]byte(id)
 			delete(g.unresolvedAssigned, id)
 		}
 	}
@@ -680,22 +700,15 @@ func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.Co
 	}
 	defer storeMember()
 
-	// Only return nil (no change) when the response had no
-	// assignment at all (keepalive) or when all topics in the
-	// assignment are still unresolved. When the server explicitly
-	// sends an empty assignment (resp.Assignment != nil with no
-	// topics), fall through to the comparison so the client
-	// detects it as "revoke everything".
-	//
-	// The unresolved check handles the case where the server
-	// assigned topics whose IDs the client can't map to names
-	// yet (e.g. newly created topic, metadata not refreshed).
-	// Those went into unresolvedAssigned rather than
-	// newAssigned. Without this guard, we'd fall through with
-	// newAssigned={} and tell the client to revoke everything,
-	// when really the server did assign partitions - we just
-	// need to wait for metadata resolution.
-	if len(newAssigned) == 0 && (resp.Assignment == nil || len(g.unresolvedAssigned) > 0) {
+	// Only return nil (no change) when the response had no assignment
+	// (keepalive) and nothing unresolved became resolved. When the server
+	// sends an assignment, we reconcile the part of it we can resolve,
+	// even if that part is empty: a topic we own that the server no
+	// longer assigns is revoked now rather than once the unresolved
+	// topics resolve, which could take long enough for the server to
+	// fence us. Unresolved topics are not ours yet, and a topic we own
+	// always resolves through owned.
+	if len(newAssigned) == 0 && resp.Assignment == nil {
 		return nil
 	}
 
@@ -707,9 +720,11 @@ func (g *g848) handleResp(req *kmsg.ConsumerGroupHeartbeatRequest, resp *kmsg.Co
 		for t, ps := range current {
 			if _, ok := newAssigned[t]; !ok {
 				newAssigned[t] = ps
+				newIDs[t] = g.assignedIDs[t]
 			}
 		}
 	}
+	g.assignedIDs = newIDs
 
 	if !mapi32sDeepEq(current, newAssigned) || g.g.needsReassign(newAssigned) {
 		// Store BEFORE the deferred storeMember runs, so an observer that
@@ -783,22 +798,25 @@ func (g *g848) mkreq() *kmsg.ConsumerGroupHeartbeatRequest {
 	// offsets are committed.
 	//
 	// A topic may be in nowAssigned but absent from tps if the user
-	// just called PurgeFetchTopics: purge removes from tps, but
-	// nowAssigned reflects the server's view and is only updated when
-	// the server acknowledges the revoke in a future heartbeat
-	// response. We skip such topics here; SubscribedTopicNames (built
-	// from tps above) signals the unsubscribe and the server revokes
-	// on the next response.
+	// just purged it. We keep reporting it as owned, under the ID the
+	// server assigned it with: SubscribedTopicNames (built from tps
+	// above) signals the unsubscribe, the server revokes the topic in
+	// its response, and our prerevoke releases it only once
+	// OnPartitionsRevoked has committed its offsets. Dropping it here
+	// would release it before that commit, and a member that still
+	// subscribes to the topic could start from older offsets.
 	nowAssigned := g.g.nowAssigned.read()
 	req.Topics = []kmsg.ConsumerGroupHeartbeatRequestTopic{} // always initialize: len 0 means empty assignment, nil means same as last time
 	for t, ps := range nowAssigned {
-		tp, ok := tps[t]
-		if !ok {
+		id, owned := g.assignedIDs[t]
+		if tp, ok := tps[t]; ok {
+			id = tp.load().id
+		} else if !owned {
 			continue
 		}
 		rt := kmsg.NewConsumerGroupHeartbeatRequestTopic()
 		rt.Partitions = slices.Clone(ps)
-		rt.TopicID = tp.load().id
+		rt.TopicID = id
 		req.Topics = append(req.Topics, rt)
 	}
 	// Include unresolved topic IDs so the server sees them

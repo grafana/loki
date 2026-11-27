@@ -1,7 +1,6 @@
 package util
 
 import (
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,10 +13,6 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-const (
-	errMaxStreamsLimitExceeded = "streams limit exceeded, streams: %d exceeds limit: %d, stream: '%s'"
-)
-
 // batch holds pending log streams waiting to be sent to Loki, and it's used
 // to reduce the number of push requests to Loki aggregating multiple log streams
 // and entries in a single batch request. In case of multi-tenant Promtail, log
@@ -26,48 +21,38 @@ type batch struct {
 	streams   map[string]*push.Stream
 	bytes     int
 	createdAt time.Time
-
-	maxStreams int
 }
 
-func newBatch(maxStreams int, entries ...Entry) *batch {
+func newBatch(entries ...Entry) *batch {
 	b := &batch{
-		streams:    map[string]*push.Stream{},
-		bytes:      0,
-		createdAt:  time.Now(),
-		maxStreams: maxStreams,
+		streams:   map[string]*push.Stream{},
+		bytes:     0,
+		createdAt: time.Now(),
 	}
 
-	// Add entries to the batch
 	for _, entry := range entries {
-		//never error here
-		_ = b.add(entry)
+		b.add(entry)
 	}
 
 	return b
 }
 
 // add an entry to the batch
-func (b *batch) add(entry Entry) error {
+func (b *batch) add(entry Entry) {
 	b.bytes += entrySize(entry)
 
 	// Append the entry to an already existing stream (if any)
 	labels := labelsMapToString(entry.Labels, ReservedLabelTenantID)
 	if stream, ok := b.streams[labels]; ok {
 		stream.Entries = append(stream.Entries, entry.Entry)
-		return nil
+		return
 	}
 
-	streams := len(b.streams)
-	if b.maxStreams > 0 && streams >= b.maxStreams {
-		return fmt.Errorf(errMaxStreamsLimitExceeded, streams, b.maxStreams, labels)
-	}
 	// Add the entry as a new stream
 	b.streams[labels] = &push.Stream{
 		Labels:  labels,
 		Entries: []push.Entry{entry.Entry},
 	}
-	return nil
 }
 
 func labelsMapToString(ls model.LabelSet, without model.LabelName) string {

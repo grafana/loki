@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	loglineconfig "github.com/grafana/loki/v3/pkg/logline/config"
 	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	frontend "github.com/grafana/loki/v3/pkg/lokifrontend"
@@ -99,6 +100,11 @@ var (
 			Desc:       "The ingester block configures the ingester and how the ingester will register itself to a key value store.",
 		},
 		{
+			Name:       "logline",
+			StructType: []reflect.Type{reflect.TypeFor[loglineconfig.Config]()},
+			Desc:       "The logline block configures experimental logline indexing and query filtering.",
+		},
+		{
 			Name:       "index_gateway",
 			StructType: []reflect.Type{reflect.TypeFor[indexgateway.Config]()},
 			Desc:       "The index_gateway block configures the Loki index gateway server, responsible for serving index queries without the need to constantly interact with the object store.",
@@ -126,12 +132,12 @@ var (
 		{
 			Name:       "bloom_gateway",
 			StructType: []reflect.Type{reflect.TypeFor[bloomgateway.Config]()},
-			Desc:       "Experimental: The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
+			Desc:       "Deprecated: The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
 		},
 		{
 			Name:       "bloom_build",
 			StructType: []reflect.Type{reflect.TypeFor[bloombuild.Config]()},
-			Desc:       "Experimental: The bloom_build block configures the Loki bloom planner and builder servers, responsible for building bloom filters.",
+			Desc:       "Deprecated: The bloom_build block configures the Loki bloom planner and builder servers, responsible for building bloom filters.",
 		},
 		{
 			Name:       "limits_config",

@@ -4,9 +4,13 @@
 
 package sqlite3
 
+const __INT64_C_SUFFIX__ = "LL"
+
 const __INT64_FMTd__ = "lld"
 
 const __INT64_FMTi__ = "lli"
+
+const __UINT64_C_SUFFIX__ = "ULL"
 
 const __UINT64_FMTX__ = "llX"
 

@@ -4,6 +4,8 @@
 
 package sqlite3
 
+const CLK_TCK = 100
+
 type Tdev_t = int32
 
 type Tflock = struct {

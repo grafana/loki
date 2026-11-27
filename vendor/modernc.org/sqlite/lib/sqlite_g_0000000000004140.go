@@ -6,6 +6,8 @@ package sqlite3
 
 const __INT_FAST16_MAX__ = 2147483647
 
+const __INT_FAST16_TYPE__ = "int"
+
 const __INT_FAST16_WIDTH__ = 32
 
 const __UINT_FAST16_MAX__ = 4294967295

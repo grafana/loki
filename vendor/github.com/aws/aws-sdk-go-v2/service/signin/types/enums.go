@@ -2,29 +2,58 @@
 
 package types
 
+type ClientType string
+
+// Enum values for ClientType
+const (
+	// The AWS CLI
+	ClientTypeCli ClientType = "CLI"
+	// An MCP server
+	ClientTypeMcp ClientType = "MCP"
+)
+
+// Values returns all known values for ClientType. Note that this can be expanded
+// in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ClientType) Values() []ClientType {
+	return []ClientType{
+		"CLI",
+		"MCP",
+	}
+}
+
 type OAuth2ErrorCode string
 
 // Enum values for OAuth2ErrorCode
 const (
-	// Token has expired and needs to be refreshed
+	// Token has expired.
 	OAuth2ErrorCodeTokenExpired OAuth2ErrorCode = "TOKEN_EXPIRED"
-	// User credentials have been changed
+	// User credentials have been changed.
 	OAuth2ErrorCodeUserCredentialsChanged OAuth2ErrorCode = "USER_CREDENTIALS_CHANGED"
-	// Insufficient permissions to perform this operation
+	// Insufficient permissions to perform this operation.
 	OAuth2ErrorCodeInsufficientPermissions OAuth2ErrorCode = "INSUFFICIENT_PERMISSIONS"
-	// Authorization code has expired
+	// Authorization code has expired.
 	OAuth2ErrorCodeAuthcodeExpired OAuth2ErrorCode = "AUTHCODE_EXPIRED"
-	// Internal server error occurred
+	// Internal server error occurred.
 	OAuth2ErrorCodeServerError OAuth2ErrorCode = "server_error"
 	// The request is missing a required parameter, includes an invalid parameter
-	// value, or is otherwise malformed
+	// value, or is otherwise malformed.
 	OAuth2ErrorCodeInvalidRequest OAuth2ErrorCode = "INVALID_REQUEST"
-	// Requested resource was not found
+	// Requested resource was not found.
 	OAuth2ErrorCodeResourceNotFound OAuth2ErrorCode = "RESOURCE_NOT_FOUND"
-	// Request conflicts with current state of the resource
+	// Request conflicts with the current state of the resource.
 	OAuth2ErrorCodeConflict OAuth2ErrorCode = "CONFLICT"
-	// Request would cause a service quota to be exceeded
-	OAuth2ErrorCodeServiceQuotaExceeded OAuth2ErrorCode = "SERVICE_QUOTA_EXCEEDED"
+	// Request would cause a service quota to be exceeded.
+	OAuth2ErrorCodeServiceQuotaExceeded      OAuth2ErrorCode = "SERVICE_QUOTA_EXCEEDED"
+	OAuth2ErrorCodeOauthUnsupportedGrantType OAuth2ErrorCode = "unsupported_grant_type"
+	OAuth2ErrorCodeOauthInvalidRequest       OAuth2ErrorCode = "invalid_request"
+	OAuth2ErrorCodeOauthInvalidGrant         OAuth2ErrorCode = "invalid_grant"
+	OAuth2ErrorCodeOauthInvalidScope         OAuth2ErrorCode = "invalid_scope"
+	OAuth2ErrorCodeOauthInvalidTarget        OAuth2ErrorCode = "invalid_target"
+	OAuth2ErrorCodeOauthInvalidClient        OAuth2ErrorCode = "invalid_client"
+	OAuth2ErrorCodeOauthRateExceeded         OAuth2ErrorCode = "rate_exceeded"
+	OAuth2ErrorCodeOauthServiceUnavailable   OAuth2ErrorCode = "service_unavailable"
 )
 
 // Values returns all known values for OAuth2ErrorCode. Note that this can be
@@ -42,5 +71,34 @@ func (OAuth2ErrorCode) Values() []OAuth2ErrorCode {
 		"RESOURCE_NOT_FOUND",
 		"CONFLICT",
 		"SERVICE_QUOTA_EXCEEDED",
+		"unsupported_grant_type",
+		"invalid_request",
+		"invalid_grant",
+		"invalid_scope",
+		"invalid_target",
+		"invalid_client",
+		"rate_exceeded",
+		"service_unavailable",
+	}
+}
+
+type SessionStatus string
+
+// Enum values for SessionStatus
+const (
+	// The session is active
+	SessionStatusActive SessionStatus = "ACTIVE"
+	// The session has been revoked
+	SessionStatusRevoked SessionStatus = "REVOKED"
+)
+
+// Values returns all known values for SessionStatus. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (SessionStatus) Values() []SessionStatus {
+	return []SessionStatus{
+		"ACTIVE",
+		"REVOKED",
 	}
 }

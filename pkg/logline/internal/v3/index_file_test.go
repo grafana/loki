@@ -224,12 +224,13 @@ func TestNewTermIterator_RejectsZeroTermBlock(t *testing.T) {
 	_, err = file.Write(termDir)
 	require.NoError(t, err)
 	require.NoError(t, writeIndexHeader(file, IndexFooter{
-		Magic:            IndexMagic,
-		Version:          IndexVersion,
-		Flags:            composeIndexFlags(format.PostingsEncodingFastDeltaVarIntBlocked, 1),
-		TermBlockCount:   1,
-		TermDataSize:     uint64(len(termData)),
-		TermBlockDirSize: uint64(len(termDir)),
+		Magic:               IndexMagic,
+		Version:             IndexVersion,
+		Flags:               composeIndexFlags(format.PostingsEncodingFastDeltaVarIntBlocked, 1),
+		PostingsCompression: postingsCompressionZstd,
+		TermBlockCount:      1,
+		TermDataSize:        uint64(len(termData)),
+		TermBlockDirSize:    uint64(len(termDir)),
 	}))
 	require.NoError(t, file.Close())
 

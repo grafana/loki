@@ -40,6 +40,7 @@ var (
 		Bool()
 	logLevel   = app.Flag("log.level", "Log level").Default("error").Enum("error", "warning", "info", "debug")
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
+	warnings   = app.Flag("warnings", "Show query warnings").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").
 			Default("default").
 			Short('o').
@@ -104,6 +105,10 @@ Example with --output-timestamp-format:
 	   --to="2021-01-19T20:00:00Z"
 	   --output-timestamp-format=rfc3339nano
 	   'my-query'
+
+By default the query command sends the request to be executed by a Loki server.
+Optionally, logcli can execute the query itself, reading from object storage
+via --store-config.
 
 The output is limited to 30 entries by default; use --limit to increase.
 
@@ -566,9 +571,8 @@ func formatLogQL(r io.Reader, w io.Writer) error {
 		return fmt.Errorf("failed to parse the query: %w", err)
 	}
 
-	fmt.Fprintf(w, "%s\n", syntax.Prettify(expr))
-
-	return nil
+	_, err = fmt.Fprintf(w, "%s\n", syntax.Prettify(expr))
+	return err
 }
 
 func newQueryClient(app *kingpin.Application) client.Client {
@@ -698,6 +702,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 			}
 		}
 		q.Quiet = *quiet
+		q.ShowWarnings = *warnings
 
 		return nil
 	})
@@ -802,6 +807,7 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 		q.End = mustParse(to, defaultEnd)
 
 		q.Quiet = *quiet
+		q.ShowWarnings = *warnings
 
 		return nil
 	})

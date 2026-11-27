@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"iter"
 	"unsafe"
+
+	"github.com/grafana/loki/v3/pkg/columnar"
 )
 
 // Predicate is an expression used to filter rows in a [RowReader].
@@ -57,6 +59,28 @@ type (
 		Value  Value  // Value for which rows in Column must be less than.
 	}
 
+	// A GreaterThanOrEqualPredicate is a [Predicate] which asserts that a row may
+	// only be included if the Value of the Column is greater than or equal to the
+	// provided Value.
+	//
+	// A null in Column passes this predicate only when Value is nil or an empty
+	// binary value.
+	GreaterThanOrEqualPredicate struct {
+		Column Column // Column to check.
+		Value  Value  // Value for which rows in Column must be greater than or equal to.
+	}
+
+	// A LessThanOrEqualPredicate is a [Predicate] which asserts that a row may
+	// only be included if the Value of the Column is less than or equal to the
+	// provided Value.
+	//
+	// A null in Column is less than every Value, except nil and an empty binary
+	// Value, which it equals. So a null passes this predicate for every Value.
+	LessThanOrEqualPredicate struct {
+		Column Column // Column to check.
+		Value  Value  // Value for which rows in Column must be less than or equal to.
+	}
+
 	// FuncPredicate is a [Predicate] which asserts that a row may only be
 	// included if the Value of the Column passes the Keep function.
 	//
@@ -70,7 +94,27 @@ type (
 		// multiple columns, if necessary.
 		//
 		// If Keep returns true, the row is kept.
+		//
+		// Keep gets a nil Value for a null value. If KeepBatch is set, Keep must treat a nil and
+		// an empty value alike, because KeepBatch sees a null value as an empty value.
 		Keep func(column Column, value Value) bool
+
+		// KeepBatch is optional. It tests an array of values of a binary column at once.
+		// It appends to dstIndexes the index in values of every value that Keep keeps, in ascending
+		// order with no repeat, and returns the result. values holds a null value as an empty
+		// value.
+		//
+		// KeepBatch must give the same result as Keep on every value that the reader needs to test.
+		//
+		// The reader can call Keep instead of KeepBatch for any value, so Keep must always be set.
+		//
+		// values can also hold values that the reader does not need to test. KeepBatch can keep or
+		// drop them. The reader drops their indexes, but all indexes must still be in range and
+		// ascending with no repeat.
+		//
+		// KeepBatch must not retain values or dstIndexes after the call, and must not modify
+		// values. It must be safe for concurrent use.
+		KeepBatch func(column Column, values *columnar.UTF8, dstIndexes []int32) []int32
 	}
 )
 
@@ -95,16 +139,18 @@ func IsConstPredicate(p Predicate) (keep, ok bool) {
 	return false, false
 }
 
-func (AndPredicate) isPredicate()         {}
-func (OrPredicate) isPredicate()          {}
-func (NotPredicate) isPredicate()         {}
-func (TruePredicate) isPredicate()        {}
-func (FalsePredicate) isPredicate()       {}
-func (EqualPredicate) isPredicate()       {}
-func (InPredicate) isPredicate()          {}
-func (GreaterThanPredicate) isPredicate() {}
-func (LessThanPredicate) isPredicate()    {}
-func (FuncPredicate) isPredicate()        {}
+func (AndPredicate) isPredicate()                {}
+func (OrPredicate) isPredicate()                 {}
+func (NotPredicate) isPredicate()                {}
+func (TruePredicate) isPredicate()               {}
+func (FalsePredicate) isPredicate()              {}
+func (EqualPredicate) isPredicate()              {}
+func (InPredicate) isPredicate()                 {}
+func (GreaterThanPredicate) isPredicate()        {}
+func (LessThanPredicate) isPredicate()           {}
+func (GreaterThanOrEqualPredicate) isPredicate() {}
+func (LessThanOrEqualPredicate) isPredicate()    {}
+func (FuncPredicate) isPredicate()               {}
 
 // WalkPredicate traverses a predicate in depth-first order: it starts by
 // calling fn(p). If fn(p) returns true, WalkPredicate is invoked recursively
@@ -133,6 +179,8 @@ func WalkPredicate(p Predicate, fn func(p Predicate) bool) {
 	case InPredicate: // No children.
 	case GreaterThanPredicate: // No children.
 	case LessThanPredicate: // No children.
+	case GreaterThanOrEqualPredicate: // No children.
+	case LessThanOrEqualPredicate: // No children.
 	case FuncPredicate: // No children.
 
 	default:
@@ -142,6 +190,40 @@ func WalkPredicate(p Predicate, fn func(p Predicate) bool) {
 	fn(nil)
 }
 
+// WalkPredicateColumn calls fn with the column of every leaf predicate in p, in the depth-first
+// order of [WalkPredicate]. A column that several leaves read comes up once for each of them.
+//
+// WalkPredicateColumn panics on a predicate type it does not support.
+func WalkPredicateColumn(p Predicate, fn func(Column)) {
+	WalkPredicate(p, func(p Predicate) bool {
+		switch p := p.(type) {
+		case EqualPredicate:
+			fn(p.Column)
+		case InPredicate:
+			fn(p.Column)
+		case GreaterThanPredicate:
+			fn(p.Column)
+		case LessThanPredicate:
+			fn(p.Column)
+		case GreaterThanOrEqualPredicate:
+			fn(p.Column)
+		case LessThanOrEqualPredicate:
+			fn(p.Column)
+		case FuncPredicate:
+			fn(p.Column)
+		case AndPredicate, OrPredicate, NotPredicate, TruePredicate, FalsePredicate, nil:
+			// No columns to process.
+		default:
+			panic(fmt.Sprintf("dataset.WalkPredicateColumn: unsupported predicate type %T", p))
+		}
+		return true
+	})
+}
+
+// ValueSet is a set of [Value]s of one physical type.
+//
+// The methods of a ValueSet are safe for concurrent use, unless the
+// implementation says otherwise. [MemoizedInt64Set] is not.
 type ValueSet interface {
 	Contains(value Value) bool
 	Iter() iter.Seq[Value]
@@ -162,8 +244,26 @@ func NewInt64ValueSet(values []Value) Int64Set {
 	}
 }
 
+// NewInt64ValueSetOf returns an [Int64Set] that holds the given members. It is
+// [NewInt64ValueSet] for callers that have plain int64 values.
+func NewInt64ValueSetOf(members ...int64) Int64Set {
+	valuesMap := make(map[int64]Value, len(members))
+	for _, m := range members {
+		valuesMap[m] = Int64Value(m)
+	}
+	return Int64Set{
+		values: valuesMap,
+	}
+}
+
 func (s Int64Set) Contains(value Value) bool {
-	_, ok := s.values[value.Int64()]
+	return s.ContainsInt64(value.Int64())
+}
+
+// ContainsInt64 reports whether the set holds v. It tests an int64 without a
+// [Value].
+func (s Int64Set) ContainsInt64(v int64) bool {
+	_, ok := s.values[v]
 	return ok
 }
 
@@ -180,6 +280,68 @@ func (s Int64Set) Iter() iter.Seq[Value] {
 
 func (s Int64Set) Size() int {
 	return len(s.values)
+}
+
+// MemoizedInt64Set is an int64 [ValueSet] that caches the result of its last
+// Contains call.
+//
+// A lookup of the same value as the previous one skips the map access. This
+// pays off when lookups come in runs, as in the stream ID column of a logs
+// section, which keeps the rows of one stream together. A lookup that changes
+// the value costs one extra comparison.
+//
+// Contains writes the cache without synchronization, so a MemoizedInt64Set is
+// not safe for concurrent use. Use one set per reader.
+type MemoizedInt64Set struct {
+	set Int64Set
+
+	// lastKey and lastResult hold the last answer: lastResult reports whether
+	// set contains lastKey. The constructor seeds the pair, so it is a true
+	// answer before the first lookup too.
+	lastKey    int64
+	lastResult bool
+}
+
+// NewMemoizedInt64ValueSet returns a [MemoizedInt64Set] that holds values. Use
+// [NewInt64ValueSet] when the value set is accessed concurrently or lookups
+// rarely repeat.
+func NewMemoizedInt64ValueSet(values []Value) *MemoizedInt64Set {
+	return newMemoizedInt64Set(NewInt64ValueSet(values))
+}
+
+// NewMemoizedInt64ValueSetOf returns a [MemoizedInt64Set] that holds the given
+// members. It is [NewMemoizedInt64ValueSet] for callers that have plain int64
+// values.
+func NewMemoizedInt64ValueSetOf(members ...int64) *MemoizedInt64Set {
+	return newMemoizedInt64Set(NewInt64ValueSetOf(members...))
+}
+
+func newMemoizedInt64Set(set Int64Set) *MemoizedInt64Set {
+	_, seedResult := set.values[0]
+	return &MemoizedInt64Set{set: set, lastResult: seedResult}
+}
+
+func (s *MemoizedInt64Set) Contains(value Value) bool {
+	return s.ContainsInt64(value.Int64())
+}
+
+// ContainsInt64 reports whether the set holds key. It tests an int64 without a
+// [Value]. It remembers the last key and its result, so it is not safe for
+// concurrent use.
+func (s *MemoizedInt64Set) ContainsInt64(key int64) bool {
+	if key != s.lastKey {
+		_, s.lastResult = s.set.values[key]
+		s.lastKey = key
+	}
+	return s.lastResult
+}
+
+func (s *MemoizedInt64Set) Iter() iter.Seq[Value] {
+	return s.set.Iter()
+}
+
+func (s *MemoizedInt64Set) Size() int {
+	return s.set.Size()
 }
 
 type Uint64ValueSet struct {

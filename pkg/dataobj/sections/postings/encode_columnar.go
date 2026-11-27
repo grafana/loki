@@ -109,9 +109,9 @@ func trimTrailingZeros(b []byte) []byte {
 // writeSection encodes a single-kind section (blooms or labels) into a columnar
 // encoder, flushes to w, and returns bytes written. Encoder is reset on return.
 func (p *postingsEncoder) writeSection(w dataobj.SectionWriter, tenant string, blooms []BloomEntry, labels []LabelEntry) (int64, error) {
-	var enc columnar.Encoder
+	enc := columnar.NewEncoder()
 	defer enc.Reset()
-	if err := p.encodeColumns(blooms, labels, &enc); err != nil {
+	if err := p.encodeColumns(blooms, labels, enc); err != nil {
 		return 0, err
 	}
 	enc.SetTenant(tenant)
@@ -285,7 +285,7 @@ func (p *postingsEncoder) encodeColumns(bloomEntries []BloomEntry, labelEntries 
 //
 // Tag is empty: postings columns are all fixed (one column per Logical type),
 // so Logical alone uniquely identifies the column. Setting Tag would duplicate
-// it. Matches the convention used by streams.Reader for fixed columns.
+// the Logical type.
 func binaryColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int, storeRangeStats bool) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint:    pageSize,

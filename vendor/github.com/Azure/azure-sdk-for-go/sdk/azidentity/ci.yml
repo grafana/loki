@@ -3,7 +3,6 @@ trigger:
   branches:
     include:
       - main
-      - feature/*
       - hotfix/*
       - release/*
   paths:

@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	v2 "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
+	"github.com/grafana/loki/v3/pkg/util"
 )
-
-type indexPathResolver func(context.Context, *dataobj.Object) (string, error)
 
 // uploadAndIndexObject uploads a logs object, adds it to calc, and closes its
 // backing resources.
@@ -18,7 +18,7 @@ func (c *Context) uploadAndIndexObject(
 	uploadDestination string,
 	calc *dataobjindex.Calculator,
 ) (int64, error) {
-	size, err := c.uploadObject(ctx, c.dataObjectBucket(), uploadDestination, obj)
+	size, err := uploadObject(ctx, c.dataObjectBucket(), uploadDestination, obj)
 	if err != nil {
 		return 0, fmt.Errorf("uploading %q: %w", uploadDestination, err)
 	}
@@ -28,16 +28,18 @@ func (c *Context) uploadAndIndexObject(
 	return size, nil
 }
 
-// flushAndUploadIndex flushes calc, resolves the content-addressed index path,
-// uploads the index, and closes the provided Calculator.
+// flushAndUploadIndex flushes calc, uploads the index to the content-addressed
+// compacted index path of tenant, and releases the flushed object. It returns
+// the artifact of the index. The artifact has no posting key bounds, because
+// calc does not track them.
 func (c *Context) flushAndUploadIndex(
 	ctx context.Context,
+	tenant string,
 	calc *dataobjindex.Calculator,
-	resolvePath indexPathResolver,
-) (output string, flushErr error) {
+) (artifact v2.ResultArtifact, flushErr error) {
 	obj, closer, _, err := calc.Flush()
 	if err != nil {
-		return "", fmt.Errorf("flushing index: %w", err)
+		return v2.ResultArtifact{}, fmt.Errorf("flushing index: %w", err)
 	}
 	defer func() {
 		closeErr := closer.Close()
@@ -46,12 +48,21 @@ func (c *Context) flushAndUploadIndex(
 		}
 	}()
 
-	path, err := resolvePath(ctx, obj)
+	path, err := compactedIndexPath(ctx, tenant, obj)
 	if err != nil {
-		return "", fmt.Errorf("generating index path: %w", err)
+		return v2.ResultArtifact{}, fmt.Errorf("generating index path: %w", err)
 	}
-	if _, err := c.uploadObject(ctx, c.bucket, path, obj); err != nil {
-		return "", fmt.Errorf("uploading index %q: %w", path, err)
+	if _, err := uploadObject(ctx, c.bucket, path, obj); err != nil {
+		return v2.ResultArtifact{}, fmt.Errorf("uploading index %q: %w", path, err)
 	}
-	return path, nil
+	return v2.ResultArtifact{Path: path}, nil
+}
+
+func compactedIndexPath(ctx context.Context, tenant string, obj *dataobj.Object) (path string, returnErr error) {
+	reader, err := obj.Reader(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer util.CloseAndHandleError(reader, &returnErr)
+	return v2.CompactedIndexPath(tenant, reader)
 }

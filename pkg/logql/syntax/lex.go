@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"strings"
 	"text/scanner"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/strutil"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
 )
 
 var tokens = map[string]int{
@@ -105,7 +106,17 @@ var functionTokens = map[string]int{
 	OpRangeTypeFirst:       FIRST_OVER_TIME,
 	OpRangeTypeLast:        LAST_OVER_TIME,
 	OpRangeTypeAbsent:      ABSENT_OVER_TIME,
+	OpRangeTypeHistogram:   HISTOGRAM_OVER_TIME,
 	OpTypeVector:           VECTOR,
+
+	// histograms
+	OpBuckets:            BUCKETS,
+	OpHistogramQuantile:  HISTOGRAM_QUANTILE,
+	OpHistogramQuantiles: HISTOGRAM_QUANTILES,
+	OpHistogramFraction:  HISTOGRAM_FRACTION,
+	OpHistogramCount:     HISTOGRAM_COUNT,
+	OpHistogramSum:       HISTOGRAM_SUM,
+	OpHistogramAvg:       HISTOGRAM_AVG,
 
 	// vec ops
 	OpTypeSum:      SUM,
@@ -135,7 +146,7 @@ var functionTokens = map[string]int{
 
 type lexer struct {
 	Scanner
-	errs    []logqlmodel.ParseError
+	errs    []logqlerr.ParseError
 	builder strings.Builder
 }
 
@@ -250,12 +261,17 @@ func (l *lexer) Lex(lval *syntaxSymType) int {
 		return tok
 	}
 
+	if r != scanner.Ident {
+		l.Error(fmt.Sprintf("unexpected character %q", tokenText))
+		return 0
+	}
+
 	lval.str = tokenText
 	return IDENTIFIER
 }
 
 func (l *lexer) Error(msg string) {
-	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Line, l.Column))
+	l.errs = append(l.errs, logqlerr.NewParseError(msg, l.Line, l.Column))
 }
 
 // tryScanFlag scans for a parser flag and returns it on success

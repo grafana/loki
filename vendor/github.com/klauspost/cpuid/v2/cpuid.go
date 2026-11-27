@@ -68,6 +68,8 @@ const (
 	THead
 	Andes
 	SpacemiT
+	Microchip
+	MIPS
 
 	lastVendor
 )
@@ -477,6 +479,7 @@ func init() {
 // exported CPU variable.
 func Detect() {
 	// Set defaults
+	topoSnapshot.Store(nil)
 	CPU.ThreadsPerCore = 1
 	CPU.Cache.L1I = -1
 	CPU.Cache.L1D = -1
@@ -1223,10 +1226,14 @@ func (c *CPUInfo) cacheSize() {
 					// 2 = Instruction Cache
 					c.Cache.L1I = size
 				} else {
-					if c.Cache.L1D < 0 {
-						c.Cache.L1I = size
+					// Unified cache; apply to whichever of L1D/L1I is still
+					// unset. L1D/L1I are zeroed for Intel and pre-populated
+					// from CPUID 0x80000005 for AMD/Hygon, so check for both
+					// the -1 sentinel and an unset zero value.
+					if c.Cache.L1D <= 0 {
+						c.Cache.L1D = size
 					}
-					if c.Cache.L1I < 0 {
+					if c.Cache.L1I <= 0 {
 						c.Cache.L1I = size
 					}
 				}
@@ -1295,10 +1302,12 @@ func (c *CPUInfo) cacheSize() {
 					// Inst cache
 					c.Cache.L1I = size
 				default:
-					if c.Cache.L1D < 0 {
-						c.Cache.L1I = size
+					// Unified cache; apply to whichever of L1D/L1I is still
+					// unset (see the Intel path for the <= 0 rationale).
+					if c.Cache.L1D <= 0 {
+						c.Cache.L1D = size
 					}
-					if c.Cache.L1I < 0 {
+					if c.Cache.L1I <= 0 {
 						c.Cache.L1I = size
 					}
 				}
@@ -1430,8 +1439,8 @@ func support() flagSet {
 	if vend == AMD && (d&(1<<28)) != 0 && mfi >= 4 {
 		fs.setIf(threadsPerCore() > 1, HTT)
 	}
-	fs.setIf(c&1<<26 != 0, XSAVE)
-	fs.setIf(c&1<<27 != 0, OSXSAVE)
+	fs.setIf(c&(1<<26) != 0, XSAVE)
+	fs.setIf(c&(1<<27) != 0, OSXSAVE)
 	// Check XGETBV/XSAVE (26), OXSAVE (27) and AVX (28) bits
 	const avxCheck = 1<<26 | 1<<27 | 1<<28
 	if c&avxCheck == avxCheck {

@@ -39,6 +39,8 @@ eval instant at 60s count_over_time({app="s"} | name!~"al.*" [1m])
   {app="s", name="beta"} 2
 eval instant at 60s count_over_time({app="s"} | name=~"alph" [1m])
   expect empty
+eval instant at 60s sum by (name) (count_over_time({app="s"} | name="alpha" | logfmt [1m]))
+  {name="alpha"} 4
 # structured metadata
 eval instant at 60s count_over_time({app="m"} | name="alpha" [1m])
   {app="m", name="alpha"} 5
@@ -54,9 +56,31 @@ eval instant at 60s count_over_time({app="m"} | name!~"al.*" [1m])
   {app="m", name="beta"} 2
 eval instant at 60s count_over_time({app="m"} | name=~"alph" [1m])
   expect empty
+# A label filter before a parser reads the stored metadata.
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name="alpha" | logfmt [1m]))
+  {name="alpha"} 5
+eval range from 40s to 80s step 20s sum by (name) (count_over_time({app="m"} | name="alpha" | logfmt [1m]))   # overlapping
+  {name="alpha"} 3 5 5
+eval range from 60s to 180s step 120s sum by (name) (count_over_time({app="m"} | name="alpha" | logfmt [1m])) # non-overlapping
+  {name="alpha"} 5 _
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name!="alpha" | logfmt [1m]))
+  {name="beta"} 2
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name=~"al.*" | logfmt [1m]))
+  {name="alpha"} 5
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name!~"al.*" | logfmt [1m]))
+  {name="beta"} 2
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name=~"alph" | logfmt [1m]))
+  expect empty
+eval instant at 60s sum by (name) (count_over_time({app="m"} | name="alpha" or name="beta" | logfmt [1m]))
+  {name="alpha"} 5
+  {name="beta"} 2
 # {app=~".+"} selects the match from every source at once; the sources repeat at different cadences.
 eval instant at 60s count_over_time({app=~".+"} | logfmt | name="alpha" [1m])
   {app="p", name="alpha"} 3
+  {app="s", name="alpha"} 4
+  {app="m", name="alpha"} 5
+# A label filter before a parser skips the lines whose name only the parser creates (app="p").
+eval instant at 60s sum by (app, name) (count_over_time({app=~".+"} | name="alpha" | logfmt [1m]))
   {app="s", name="alpha"} 4
   {app="m", name="alpha"} 5
 
@@ -103,6 +127,9 @@ eval instant at 60s count_over_time({app="p"} | logfmt | name=~".+" [1m])
   {app="p", name="alpha"} 3
 eval instant at 60s count_over_time({app="p"} | logfmt --keep-empty | name=~".+" [1m])
   {app="p", name="alpha"} 3
+# Before the parser, app="p" has no stored name, so name="" keeps every line.
+eval instant at 60s sum(count_over_time({app="p"} | name="" | logfmt | name="alpha" [1m]))
+  {} 3
 # stream label
 eval instant at 60s count_over_time({app="s"} | name="" [1m])
   {app="s"} 7
@@ -135,6 +162,21 @@ eval instant at 60s count_over_time({app="m"} | name=~".*" [1m])
   {app="m"} 4
 eval instant at 60s count_over_time({app="m"} | name=~".+" [1m])
   {app="m", name="alpha"} 3
+# A label filter on structured metadata before the parser.
+eval instant at 60s sum(count_over_time({app="m"} | name="" | logfmt [1m]))
+  {} 6
+eval range from 40s to 80s step 20s sum(count_over_time({app="m"} | name="" | logfmt [1m]))   # overlapping
+  {} 3 6 6
+eval range from 60s to 180s step 120s sum(count_over_time({app="m"} | name="" | logfmt [1m])) # non-overlapping
+  {} 6 _
+eval instant at 60s sum(count_over_time({app="m"} | name!="" | logfmt [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="m"} | name=~".*" | logfmt [1m]))
+  {} 9
+eval instant at 60s sum(count_over_time({app="m"} | name=~".+" | logfmt [1m]))
+  {} 3
+eval instant at 60s sum(count_over_time({app="m"} | name="" or name="alpha" | logfmt [1m]))
+  {} 9
 
 # string label filter: regexp matching.
 clear
@@ -869,7 +911,7 @@ eval instant at 60s count_over_time({app="a"} | logfmt | addr < ip("10.0.0.0/8")
 eval instant at 60s count_over_time({app="a"} | logfmt | addr <= ip("10.0.0.0/8") [1m])
   expect fail msg: syntax error: unexpected ip
 
-# label filter over a line that already carries an error: ip() is the only kind that always keeps it.
+# label filter over a line that already carries an error: every kind compares the line as usual.
 clear
 load
   {app="a"} `{"addr":"1.2.3.4","took":"2s"}` @ 20s [repeat every 20s for 4]
@@ -878,17 +920,16 @@ load
 # The parser fails on "not json" and sets __error__ on that line.
 eval instant at 60s count_over_time({app="a"} | json [1m])
   expect fail msg: JSONParserErr
-# ip() returns true for any errored line, so the error still reaches the result.
+# An ip(), duration, bytes or number filter needs its label. The failed line carries none, so the
+# filter drops it and no __error__ filter is needed.
 eval instant at 60s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") [1m])
-  expect fail msg: JSONParserErr
-eval instant at 60s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") | __error__="" [1m])
   {app="a", addr="1.2.3.4", took="2s"} 3
-eval range from 40s to 80s step 20s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") | __error__="" [1m])   # overlapping
+eval range from 40s to 80s step 20s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") [1m])   # overlapping
   {app="a", addr="1.2.3.4", took="2s"} 2 3 3
-eval range from 60s to 180s step 120s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") | __error__="" [1m]) # non-overlapping
+eval range from 60s to 180s step 120s count_over_time({app="a"} | json | addr = ip("1.2.3.0/24") [1m]) # non-overlapping
   {app="a", addr="1.2.3.4", took="2s"} 3 _
-# A duration, bytes or number filter needs its label. The failed line carries none, so the filter
-# drops it and no __error__ filter is needed.
+eval instant at 60s count_over_time({app="a"} | json | addr != ip("9.9.9.0/24") [1m])
+  {app="a", addr="1.2.3.4", took="2s"} 3
 eval instant at 60s count_over_time({app="a"} | json | took > 1s [1m])
   {app="a", addr="1.2.3.4", took="2s"} 3
 # A string filter reads the absent addr as "" and compares it, so the comparison decides. Here ""
@@ -1063,8 +1104,71 @@ eval instant at 60s count_over_time({app="a"} | __error__="" | logfmt | took > 1
 eval instant at 60s count_over_time({app="a"} | logfmt | __error_details__="" | took > 1s [1m])
   expect fail msg: LabelFilterErr
 # A string filter reads __error__, so it keeps the failing line and the error reaches the result.
+# The __error__ filter keeps only that line, and the label filter let all 3 of its entries through.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", app="a", size="3MB", took="oops"} 3
+# Every comparison that can match a non-empty value keeps the errored line. Every comparison that
+# matches only an empty value drops it, like __error__="" above.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__="LabelFilterErr" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", app="a", size="3MB", took="oops"} 3
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__=~".+" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", app="a", size="3MB", took="oops"} 3
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!~"^$" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", app="a", size="3MB", took="oops"} 3
+# Naming a different error type keeps every line: the errored line does not carry it, and a line that
+# parses carries no error at all.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="JSONParserErr" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", app="a", size="3MB", took="oops"} 3
+  {app="a", took="2s", size="500KB"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__=~"^$" [1m])
+  {app="a", took="2s", size="500KB"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!~".+" [1m])
+  {app="a", took="2s", size="500KB"} 2
+# __error__=~".*" matches an empty value too (always true), so it keeps every line and reports both series.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__=~".*" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", app="a", size="3MB", took="oops"} 3
+  {app="a", took="2s", size="500KB"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__=~".*" | size="3MB" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", app="a", size="3MB", took="oops"} 3
+# In a binary filter, only a leg that asks to keep the errored lines keeps them.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="" or size="500KB" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", app="a", size="3MB", took="oops"} 3
+  {app="a", took="2s", size="500KB"} 2
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | size="500KB" or __error__!="" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", app="a", size="3MB", took="oops"} 3
+  {app="a", took="2s", size="500KB"} 2
+# `or` gets no special treatment. The size="3MB" leg re-admits the errored line, and that leg names
+# no __error__, so nothing asks to keep it. The query fails on the line the filter let through.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__="" or size="3MB" [1m])
   expect fail msg: LabelFilterErr
+# An `and` applies both legs, so an __error__!="" leg keeps only the errored line.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__!="" and size="3MB" [1m])
+  {__error__="LabelFilterErr", __error_details__="time: invalid duration \"oops\"", app="a", size="3MB", took="oops"} 3
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__="" and size="3MB" [1m])
+  expect empty
+# A filter before the failing stage reads an empty __error__, so __error__!="" drops every line
+# rather than keeping the failing one.
+eval instant at 60s count_over_time({app="a"} | __error__!="" | logfmt | took > 1s [1m])
+  expect empty
+# Only a label filter keeps the errored line. A formatter that reads __error__ is not a filter, and
+# a grouping clause that names it is not one either.
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | label_format e=__error__ [1m])
+  expect fail msg: LabelFilterErr
+eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | line_format `{{.__error__}}` [1m])
+  expect fail msg: LabelFilterErr
+eval instant at 60s sum by (__error__) (count_over_time({app="a"} | logfmt | took > 1s [1m]))
+  expect fail msg: LabelFilterErr
+eval instant at 60s max by (__error__) (count_over_time({app="a"} | logfmt | took > 1s [1m]))
+  expect fail msg: LabelFilterErr
+eval instant at 60s sum without (__error__) (count_over_time({app="a"} | logfmt | took > 1s [1m]))
+  expect fail msg: LabelFilterErr
+# With the filter in place, a by (__error__) grouping does break the lines down by error type.
+eval instant at 60s sum by (__error__) (count_over_time({app="a"} | logfmt | took > 1s | __error__=~".*" [1m]))
+  {__error__="LabelFilterErr"} 3
+  {} 2
+eval instant at 60s max by (__error__) (count_over_time({app="a"} | logfmt | took > 1s | __error__=~".*" [1m]))
+  {__error__="LabelFilterErr"} 3
+  {} 2
 # A converting filter cannot read __error__ or __error_details__ and is rejected at
 # parse time.
 eval instant at 60s count_over_time({app="a"} | logfmt | took > 1s | __error__ > 0 [1m])
@@ -1144,6 +1248,12 @@ load
   {app="a", sp="s", sm="s", tri="s"} "sp=p mp=p tri=p" @ 20s [repeat every 20s for 3] [metadata mp="m" sm="m" tri="m"]
   {app="noise"} "z=1" @ 20s [repeat every 20s for 3]
 
+# Without a parser, the metadata `tri` value takes `tri_extracted`.
+# With a parser, the parsed value takes it, and the metadata value is dropped.
+eval select from 0 to 30s forward {app="a"}
+  {app="a", sp="s", sm="s", tri="s"} "sp=p mp=p tri=p" @ 20s [metadata mp="m" sm_extracted="m" tri_extracted="m"]
+eval select from 0 to 30s forward {app="a"} | logfmt
+  {app="a", sp="s", sm="s", tri="s"} "sp=p mp=p tri=p" @ 20s [metadata mp="m" sm_extracted="m"] [parsed sp_extracted="p" mp_extracted="p" tri_extracted="p"]
 eval instant at 60s count_over_time({app="a"} | logfmt [1m])
   {app="a", sp="s", sp_extracted="p", mp="m", mp_extracted="p", sm="s", sm_extracted="m", tri="s", tri_extracted="p"} 3
 eval range from 40s to 60s step 20s count_over_time({app="a"} | logfmt [1m])   # overlapping
@@ -1165,16 +1275,115 @@ eval instant at 60s count_over_time({app="a"} | logfmt | tri="m" [1m])
 eval instant at 60s count_over_time({app="a"} | logfmt | tri_extracted="m" [1m])
   expect empty
 
-# label conflicts: duplicated structured metadata keys.
-#
-# When a duplicate structured metadata key is encountered, only the last key is preserved.
+# label conflicts: duplicated keys.
+# - A duplicated structured metadata key keeps the last value.
+# - A duplicated logfmt key keeps the first value.
+# - A name duplicated in both keeps the last metadata value, and the first logfmt value goes to dup_extracted.
 clear
 load
-  {app="a"} "msg" @ 20s [repeat every 20s for 3] [metadata dup="first" dup="second"]
+  {app="a"} "msg"                  @ 20s [repeat every 20s for 3] [metadata dup="first" dup="second"]
+  {app="a"} "msg"                  @ 30s [repeat every 20s for 3] [metadata dup="other"]          # noise
+  {app="b"} `dup=first dup=second` @ 20s [repeat every 20s for 3]
+  {app="b"} `dup=other`            @ 30s [repeat every 20s for 3]                                  # noise
+  {app="c"} `dup=p1 dup=p2`        @ 20s [repeat every 20s for 3] [metadata dup="m1" dup="m2"]
+  {app="c"} `dup=p3`               @ 30s [repeat every 20s for 3] [metadata dup="m3"]             # noise
 
 eval instant at 60s count_over_time({app="a"} | dup="second" [1m])
   {app="a", dup="second"} 3
 eval instant at 60s count_over_time({app="a"} | dup="first" [1m])
+  expect empty
+eval instant at 60s sum(count_over_time({app="a"} | dup="second" [1m]))
+  {} 3
+eval range from 40s to 60s step 20s sum(count_over_time({app="a"} | dup="second" [1m]))  # overlapping
+  {} 2 3
+eval instant at 60s sum(count_over_time({app="a"} | dup="first" [1m]))
+  expect empty
+
+eval instant at 60s sum by (dup) (count_over_time({app="b"} | logfmt [1m]))
+  {dup="first"} 3
+  {dup="other"} 2
+eval range from 40s to 60s step 20s sum by (dup) (count_over_time({app="b"} | logfmt [1m]))  # overlapping
+  {dup="first"} 2 3
+  {dup="other"} 1 2
+eval instant at 60s sum(count_over_time({app="b"} | logfmt | dup="second" [1m]))
+  expect empty
+
+eval instant at 60s sum by (dup, dup_extracted) (count_over_time({app="c"} | logfmt [1m]))
+  {dup="m2", dup_extracted="p1"} 3
+  {dup="m3", dup_extracted="p3"} 2
+eval range from 40s to 60s step 20s sum by (dup, dup_extracted) (count_over_time({app="c"} | logfmt [1m]))  # overlapping
+  {dup="m2", dup_extracted="p1"} 2 3
+  {dup="m3", dup_extracted="p3"} 1 2
+eval instant at 60s sum(count_over_time({app="c"} | logfmt | dup_extracted="p2" [1m]))
+  expect empty
+
+# label conflicts without a parser: each stream decides where a metadata value goes.
+clear
+load
+  {app="a", level="info"} "x" @ 20s [repeat every 20s for 3] [metadata level="error"]
+  {app="a", level="info"} "x" @ 30s                          [metadata level="warn"]  # noise: other spilled value
+  {app="a"}               "x" @ 30s [repeat every 20s for 2] [metadata level="error"]
+
+# A log query keeps each value in the metadata category.
+eval select from 0 to 35s forward {app="a"}
+  {app="a", level="info"} "x" @ 20s [metadata level_extracted="error"]
+  {app="a", level="info"} "x" @ 30s [metadata level_extracted="warn"]
+  {app="a"}               "x" @ 30s [metadata level="error"]
+eval select from 0 to 35s forward {app="a"} | level_extracted="error"
+  {app="a", level="info"} "x" @ 20s [metadata level_extracted="error"]
+eval select from 0 to 35s forward {app="a"} | level="error"
+  {app="a"}               "x" @ 30s [metadata level="error"]
+# The metadata `level` spills to `level_extracted` only on the stream with a `level` label.
+eval instant at 60s count_over_time({app="a"} | level_extracted="error" [1m])
+  {app="a", level="info", level_extracted="error"} 3
+eval range from 40s to 60s step 20s count_over_time({app="a"} | level_extracted="error" [1m])   # overlapping
+  {app="a", level="info", level_extracted="error"} 2 3
+# On the stream without a `level` label, the metadata keeps the base name.
+eval instant at 60s count_over_time({app="a"} | level="error" [1m])
+  {app="a", level="error"} 2
+eval range from 40s to 60s step 20s count_over_time({app="a"} | level="error" [1m])             # overlapping
+  {app="a", level="error"} 1 2
+# An absent `level_extracted` reads as "", so only the stream without a clash matches.
+eval instant at 60s count_over_time({app="a"} | level_extracted="" [1m])
+  {app="a", level="error"} 2
+
+# label conflicts: a label can already have a name that ends in `_extracted`.
+#
+# Two separate rules resolve conflicts:
+# - The base name goes to the highest-precedence source: stream > structured metadata > parsed.
+# - Each value that loses the base name spills to the single <name>_extracted key, where the precedence
+#   order is the opposite: parsed > structured metadata > stream.
+clear
+load
+  {app="a", k="s"}                     "x" @ 20s [repeat every 20s for 3] [metadata k="m" k_extracted="mext"]
+  {app="b", k="s", k_extracted="sext"} "x" @ 20s [repeat every 20s for 3] [metadata k="m"]
+  {app="c", k_extracted="sext"}        "x" @ 20s [repeat every 20s for 3] [metadata k_extracted="m"]
+  {app="noise"}                        "x" @ 20s [repeat every 20s for 3] [metadata k_extracted="mext"]
+
+# A log query keeps a stream label `k_extracted` in the stream labels.
+eval select from 0 to 30s forward {app=~"a|b|c"}
+  {app="a", k="s"}                     "x" @ 20s [metadata k_extracted="mext"]
+  {app="b", k="s", k_extracted="sext"} "x" @ 20s
+  {app="c", k_extracted="sext"}        "x" @ 20s [metadata k_extracted_extracted="m"]
+eval select from 0 to 30s forward {app=~"a|b|c"} | k_extracted="sext"
+  {app="b", k="s", k_extracted="sext"} "x" @ 20s
+  {app="c", k_extracted="sext"}        "x" @ 20s [metadata k_extracted_extracted="m"]
+eval select from 0 to 30s forward {app=~"a|b|c"} | k_extracted="m"
+  expect empty
+eval instant at 60s count_over_time({app=~"a|b|c"} [1m])
+  {app="a", k="s", k_extracted="mext"} 3
+  {app="b", k="s", k_extracted="sext"} 3
+  {app="c", k_extracted="sext", k_extracted_extracted="m"} 3
+eval range from 40s to 60s step 20s count_over_time({app=~"a|b|c"} [1m])   # overlapping
+  {app="a", k="s", k_extracted="mext"} 2 3
+  {app="b", k="s", k_extracted="sext"} 2 3
+  {app="c", k_extracted="sext", k_extracted_extracted="m"} 2 3
+eval instant at 60s count_over_time({app=~"a|b|c"} | k_extracted="mext" [1m])
+  {app="a", k="s", k_extracted="mext"} 3
+eval instant at 60s count_over_time({app=~"a|b|c"} | k_extracted="sext" [1m])
+  {app="b", k="s", k_extracted="sext"} 3
+  {app="c", k_extracted="sext", k_extracted_extracted="m"} 3
+eval instant at 60s count_over_time({app=~"a|b|c"} | k_extracted="m" [1m])
   expect empty
 
 # label filter after unwrap

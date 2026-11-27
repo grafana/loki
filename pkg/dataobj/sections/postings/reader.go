@@ -19,6 +19,17 @@ import (
 
 var tracer = otel.Tracer("pkg/dataobj/sections/postings")
 
+// RowReaderStatsTracker is the type of [ReaderOptions.StatsTracker].
+type RowReaderStatsTracker = dataset.RowReaderStatsTracker
+
+// NewOnPagesDownloadedFunc returns a stats tracker for
+// [ReaderOptions.StatsTracker]. It calls fn with the compressed and the
+// uncompressed size of each batch of pages that the reader downloads. It
+// returns nil if fn is nil.
+func NewOnPagesDownloadedFunc(fn func(compressedBytes, uncompressedBytes int64)) RowReaderStatsTracker {
+	return dataset.NewOnPagesDownloadedFunc(fn)
+}
+
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
 	// Columns to read. Each column must belong to the same [Section].
@@ -109,8 +120,8 @@ func (r *Reader) Columns() []*Column { return r.opts.Columns }
 // (via [Reader.Reset]) so it is valid before [Reader.Open] is called.
 func (r *Reader) Schema() *arrow.Schema { return r.schema }
 
-// Reset reuses the Reader with new options. Schema is rebuilt here, matching
-// streams.Reader so Schema() is valid before Open.
+// Reset reuses the Reader with new options. Reset rebuilds Schema so that
+// Schema() is valid before Open.
 func (r *Reader) Reset(opts ReaderOptions) {
 	if r.alloc == nil {
 		r.alloc = memoryv2.NewAllocator(nil)
@@ -203,7 +214,7 @@ func (r *Reader) init(ctx context.Context) error {
 
 	innerOptions := dataset.RowReaderOptions{
 		Dataset:           dset,
-		Columns:           dset.Columns(),
+		ProjectedColumns:  dset.Columns(),
 		Predicates:        preds,
 		PrefetchAllOnOpen: true,
 		StatsTracker:      r.opts.StatsTracker,

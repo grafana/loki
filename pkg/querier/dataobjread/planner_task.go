@@ -3,7 +3,6 @@ package dataobjread
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -28,12 +27,15 @@ type objectStream struct {
 	streamHash uint64
 }
 
-// objectStreams is the decoded identity of the streams one object holds for a query.
+// objectStreams is the decoded identity of the streams that one planObject call reads from a
+// data object.
 //
-// One instance is shared by every task planned for that object. newObjectStreams fills it and
-// nothing writes to it afterwards, so the concurrent scans need no lock and the planner does
-// not copy a label map per section. It does pin one label set per admitted stream until the
-// query releases its objects.
+// The tasks of that call share one instance. newObjectStreams fills it and nothing writes to it
+// afterwards, so the concurrent scans need no lock and the planner does not copy a label map per
+// section. It does pin one label set per admitted stream while a task of that call is alive.
+//
+// Two index objects can list sections of one data object. planObject then runs once for each of
+// them, and a stream that both list has two copies of its labels.
 //
 // A dropped stream keeps its ID and loses its labels, which is what bounds that cost for a
 // query whose access-control policy denies most of its streams. Its ID is still needed, because
@@ -96,18 +98,21 @@ type ReadTask struct {
 	// streamIDs are the streams to read, after filtering.
 	streamIDs []int64
 
-	// streams is the identity of every stream of this object, shared with its other tasks.
+	// streams is shared with the other tasks of the same planObject call.
 	streams *objectStreams
 
 	columns       []logs.ColumnType
 	metadataNames []string
 	predicates    []logs.RowPredicate
 
+	// needReturningLine is true when the returned rows should carry the line.
+	needReturningLine bool
+
 	start, end time.Time
 }
 
 // rowPredicates returns the predicates the reader applies: the half-open window [start, end)
-// first, then the pushed-down metadata predicates.
+// first, then the pushed-down metadata predicates and the message predicate.
 //
 // The window is half-open to match the chunk path, which drops a record whose timestamp is
 // below start or at or above end. The engine compensates for that by adding a nanosecond to
@@ -123,40 +128,10 @@ func (t ReadTask) rowPredicates() []logs.RowPredicate {
 	return append(predicates, t.predicates...)
 }
 
-// records turns one section read's rows into forwardable records, attaching each stream's
-// identity and copying each line.
-//
-// It fails on a row whose stream the task did not plan to read. The read matches only the
-// task's streams, so an unexpected ID means that broke, and dropping the row would under-count
-// the query without saying so.
-func (t ReadTask) records(rows []logs.Record) ([]LogRecord, error) {
-	out := make([]LogRecord, 0, len(rows))
-	for i := range rows {
-		row := &rows[i]
-		stream, ok := t.streams.admittedByID[row.StreamID]
-		if !ok {
-			return nil, fmt.Errorf("data object %q logs section %d returned unexpected stream ID %d", t.objectPath, t.sectionIdx, row.StreamID)
-		}
-		out = append(out, LogRecord{
-			streamHash:   stream.streamHash,
-			streamLabels: stream.streamLabels,
-			timestamp:    row.Timestamp.UnixNano(),
-			// Copy the line, because DecodeRow reuses one buffer for it across reads.
-			//
-			// Metadata needs no copy. The symbolizer clones every string it interns and
-			// the labels builder allocates its result, so forwarded metadata outlives
-			// the reader safely.
-			line:     append([]byte(nil), row.Line...),
-			metadata: row.Metadata,
-		})
-	}
-	return out, nil
-}
-
-// TaskIterator streams read tasks from the planner to the reader. The planner fills it
-// from a background goroutine as it resolves objects, and the reader consumes tasks as they
-// arrive. Err returns any resolution error once Next has returned false, so a planning failure
-// reaches the reader the same way a scan failure does.
+// TaskIterator streams read tasks from the planner to the reader. The planner fills it from a
+// background goroutine as the metastore yields sections, and the reader consumes tasks as they
+// arrive. Err returns any metastore or planning error once Next has returned false. The reader
+// sees it the same way as a scan failure.
 //
 // Next, At and Waited are for the single consumer goroutine only. Err, setErr and Abort are
 // safe for concurrent use: the reader may Abort while the planner still runs.
@@ -192,7 +167,7 @@ func newTaskIterator(tasks <-chan ReadTask, cancel context.CancelFunc) *TaskIter
 }
 
 func (it *TaskIterator) Next() bool {
-	// A resolution error is terminal.
+	// An error from the metastore or from planning is terminal.
 	if it.Err() != nil {
 		return false
 	}

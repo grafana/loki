@@ -693,18 +693,21 @@ func (c cmdable) XTrimMinIDApproxMode(ctx context.Context, key string, minID str
 
 func (c cmdable) XInfoConsumers(ctx context.Context, key string, group string) *XInfoConsumersCmd {
 	cmd := NewXInfoConsumersCmd(ctx, key, group)
+	cmd.SetFirstKeyPos(2) // the key is not args[1]: route by it
 	_ = c(ctx, cmd)
 	return cmd
 }
 
 func (c cmdable) XInfoGroups(ctx context.Context, key string) *XInfoGroupsCmd {
 	cmd := NewXInfoGroupsCmd(ctx, key)
+	cmd.SetFirstKeyPos(2) // the key is not args[1]: route by it
 	_ = c(ctx, cmd)
 	return cmd
 }
 
 func (c cmdable) XInfoStream(ctx context.Context, key string) *XInfoStreamCmd {
 	cmd := NewXInfoStreamCmd(ctx, key)
+	cmd.SetFirstKeyPos(2) // the key is not args[1]: route by it
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -718,6 +721,7 @@ func (c cmdable) XInfoStreamFull(ctx context.Context, key string, count int) *XI
 		args = append(args, "count", count)
 	}
 	cmd := NewXInfoStreamFullCmd(ctx, args...)
+	cmd.SetFirstKeyPos(2) // the key is not args[1]: route by it
 	_ = c(ctx, cmd)
 	return cmd
 }

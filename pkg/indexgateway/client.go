@@ -15,7 +15,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/dskit/gate"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
@@ -25,11 +24,14 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 	"github.com/grafana/loki/v3/pkg/util/jumphash"
@@ -82,13 +84,25 @@ type ClientConfig struct {
 	// shuffle shard, regardless of the max-capacity setting. Only applies to simple mode.
 	MinShuffleShardSize int `yaml:"min_shuffle_shard_size"`
 
-	// MaxInFlightRequests caps how many requests this client may have in flight at once.
-	// Zero disables the cap.
+	// MaxInFlightRequests caps concurrent RPCs across all requests from this client.
+	// Requests reserve their RPC slots up front. Zero disables the cap.
 	MaxInFlightRequests int `yaml:"max_in_flight_requests" category:"experimental"`
 
 	// MaxRetries caps how many further index gateway instances a failed request is tried
 	// against. -1 preserves the legacy retry limits; zero disables retries.
 	MaxRetries int `yaml:"max_retries" category:"experimental"`
+
+	// PerIndexOwnership is copied from the index gateway config. The client
+	// routes to table owners for schema periods with a sharded index copy.
+	PerIndexOwnership bool `yaml:"-"`
+
+	// PerIndexMaxConcurrentParts caps how many parts of one request are in flight
+	// at once when routing to table owners.
+	PerIndexMaxConcurrentParts int `yaml:"per_index_max_concurrent_parts" category:"experimental" doc:"hidden"`
+
+	// TableRange is the range of index tables of the schema period this client
+	// serves. It is set by the store and used when routing to table owners.
+	TableRange config.TableRange `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
@@ -99,15 +113,20 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode. Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A record with multiple IP's, a DNS SRV record with a followup A record lookup, or a DNS SRV record without a followup A record lookup, respectively.")
 	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, "Whether requests sent to the gateway should be logged or not.")
 
-	// Experimental: Time-based client side query sharding
+	// Routing in simple mode.
 	f.Var(
 		(*flagext.StringSlice)(&i.TimeBasedShardingBuckets),
 		prefix+".time-based-sharding-buckets",
 		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
 	)
 	f.IntVar(&i.MinShuffleShardSize, prefix+".min-shuffle-shard-size", 3, "Minimum number of index gateway instances included in the shuffle shard, regardless of the max-capacity setting. A value of 0 disables the minimum. Only applies to simple mode.")
-	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 0, "Experimental: Maximum number of requests this index gateway client may have in flight at once. Requests arriving when the limit is reached are rejected immediately with an HTTP 503 status instead of waiting, which bounds the resources this process commits to an index gateway that is slow, saturated, or unreachable. The limit applies per client: one client is built per schema period config, doubled when the shadow index gateway client is enabled, so the process-wide number of in-flight requests can reach this value multiplied by the number of clients. 0 disables the limit.")
+
+	// Request limits in both modes.
+	f.IntVar(&i.MaxInFlightRequests, prefix+".max-in-flight-requests", 0, "Experimental: Maximum number of concurrent RPCs this index gateway client can reserve across requests. Each request reserves available slots up front and reserves one slot for each part it can send in parallel. If no slots are available, the request is rejected immediately with HTTP 503. The limit applies per client, with one client per schema period. 0 disables the limit.")
 	f.IntVar(&i.MaxRetries, prefix+".max-retries", -1, "Experimental: Maximum number of other index gateway instances a failed request is retried against. Each instance is tried at most once, so a request makes at most this many retries plus one attempt in total. Bounding this stops a single request from walking every replica, which can otherwise block the calling goroutine for the sum of every replica's timeout. -1 preserves the existing behavior: up to 2 retries for GetShards and all candidate instances for other requests. 0 disables retries.")
+
+	// Routing in ring mode.
+	f.IntVar(&i.PerIndexMaxConcurrentParts, prefix+".per-index-max-concurrent-parts", 8, "Experimental: Maximum number of parts of one request sent at once when routing to table owners. Applies to schema periods with a sharded_path_prefix when -index-gateway.per-index-ownership.enabled is set in ring mode. The request reserves up to this many RPC slots under -"+prefix+".max-in-flight-requests and reuses them until it finishes.")
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
@@ -122,6 +141,23 @@ func (i *ClientConfig) Validate() error {
 	if i.MaxRetries < -1 {
 		return errors.New("index gateway client max-retries must be greater than or equal to -1")
 	}
+	if i.PerIndexMaxConcurrentParts < 1 {
+		return errors.New("index gateway client per-index-max-concurrent-parts must be greater than or equal to 1")
+	}
+	return nil
+}
+
+// validatePerIndex checks the requirements for clients that route to table owners.
+func (i *ClientConfig) validatePerIndex() error {
+	if !i.perIndex() {
+		return nil
+	}
+	if i.PerIndexMaxConcurrentParts < 1 {
+		return errors.New("index gateway client per-index-max-concurrent-parts must be greater than or equal to 1")
+	}
+	if p := i.TableRange.PeriodConfig.IndexTables.Period; p != config.ObjectStorageIndexRequiredPeriod {
+		return fmt.Errorf("index gateway client per-index routing requires an index period of %s, got %s", config.ObjectStorageIndexRequiredPeriod, p)
+	}
 	return nil
 }
 
@@ -130,7 +166,9 @@ type GatewayClient struct {
 	cfg                               ClientConfig
 	storeGatewayClientRequestDuration *prometheus.HistogramVec
 	retriesHistogram                  *prometheus.HistogramVec
-	inFlight                          gate.Gate
+	inFlight                          *inFlightGate
+	ownership                         *IndexOwnership
+	fanoutMetrics                     *fanoutMetrics
 	dnsProvider                       discovery.DNS
 	pool                              *client.Pool
 	ring                              ring.ReadRing
@@ -143,10 +181,11 @@ type GatewayClient struct {
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created using a ring.
 // Otherwise, it creates a GRPC connection pool to as many addresses as can be resolved from the given address.
-//
-// name must be unique among clients sharing a registerer and its labels so that
-// each client's gate metrics remain distinct.
-func NewGatewayClient(name string, cfg ClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
+func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, logger log.Logger, metricsNamespace string) (*GatewayClient, error) {
+	if err := cfg.validatePerIndex(); err != nil {
+		return nil, err
+	}
+
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "index_gateway_request_duration_seconds",
@@ -193,10 +232,7 @@ func NewGatewayClient(name string, cfg ClientConfig, r prometheus.Registerer, li
 	// Sort descending, since we have negative duration values
 	slices.SortFunc(buckets, func(a, b time.Duration) int { return cmp.Compare(b, a) })
 
-	gateReg := prometheus.WrapRegistererWithPrefix(
-		"loki_index_gateway_client_",
-		prometheus.WrapRegistererWith(prometheus.Labels{"client": name}, r),
-	)
+	gateReg := prometheus.WrapRegistererWithPrefix("loki_index_gateway_client_", r)
 
 	sgClient := &GatewayClient{
 		logger:                            logger,
@@ -208,6 +244,10 @@ func NewGatewayClient(name string, cfg ClientConfig, r prometheus.Registerer, li
 		limits:                            limits,
 		buckets:                           buckets,
 		done:                              make(chan struct{}),
+	}
+	if cfg.perIndex() {
+		sgClient.ownership = NewIndexOwnership(cfg.Ring)
+		sgClient.fanoutMetrics = newFanoutMetrics(r)
 	}
 
 	unaryInterceptors, streamInterceptors := instrumentation(cfg, sgClient.storeGatewayClientRequestDuration)
@@ -289,87 +329,97 @@ func (s *GatewayClient) Stop() {
 }
 
 func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
-	var (
-		resp *logproto.GetChunkRefResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetChunkRef(ctx, in)
-		return err
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
-	return resp, err
+	return callIndexGateway(ctx, s, "GetChunkRef", in, in.From, in.Through,
+		func(r *logproto.GetChunkRefRequest, from, through model.Time) { r.From, r.Through = from, through },
+		logproto.IndexGatewayClient.GetChunkRef, mergeChunkRefResponses)
 }
 
 func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
-	var (
-		resp *logproto.GetSeriesResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetSeries(ctx, in)
-		return err
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
-	return resp, err
+	return callIndexGateway(ctx, s, "GetSeries", in, in.From, in.Through,
+		func(r *logproto.GetSeriesRequest, from, through model.Time) { r.From, r.Through = from, through },
+		logproto.IndexGatewayClient.GetSeries, mergeSeriesResponses)
 }
 
 func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logproto.LabelNamesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	var (
-		resp *logproto.LabelResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.LabelNamesForMetricName(ctx, in)
-		return err
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
-	return resp, err
+	return callIndexGateway(ctx, s, "LabelNamesForMetricName", in, in.From, in.Through,
+		func(r *logproto.LabelNamesForMetricNameRequest, from, through model.Time) {
+			r.From, r.Through = from, through
+		},
+		logproto.IndexGatewayClient.LabelNamesForMetricName, mergeLabelResponses)
 }
 
 func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logproto.LabelValuesForMetricNameRequest) (*logproto.LabelResponse, error) {
-	var (
-		resp *logproto.LabelResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.LabelValuesForMetricName(ctx, in)
-		return err
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
-	return resp, err
+	return callIndexGateway(ctx, s, "LabelValuesForMetricName", in, in.From, in.Through,
+		func(r *logproto.LabelValuesForMetricNameRequest, from, through model.Time) {
+			r.From, r.Through = from, through
+		},
+		logproto.IndexGatewayClient.LabelValuesForMetricName, mergeLabelResponses)
 }
 
 func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	var (
-		resp *logproto.IndexStatsResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetStats(ctx, in)
-		return err
-	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
-	})
-	return resp, err
+	return callIndexGateway(ctx, s, "GetStats", in, in.From, in.Through,
+		func(r *logproto.IndexStatsRequest, from, through model.Time) { r.From, r.Through = from, through },
+		logproto.IndexGatewayClient.GetStats, mergeStatsResponses)
 }
 
 func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	var (
-		resp *logproto.VolumeResponse
-		err  error
-	)
-	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
-		resp, err = client.GetVolume(ctx, in)
-		return err
+	return callIndexGateway(ctx, s, "GetVolume", in, in.From, in.Through,
+		func(r *logproto.VolumeRequest, from, through model.Time) { r.From, r.Through = from, through },
+		logproto.IndexGatewayClient.GetVolume,
+		func(resps []*logproto.VolumeResponse) *logproto.VolumeResponse {
+			return mergeVolumeResponses(resps, in.Limit)
+		})
+}
+
+// callIndexGateway sends a unary gRPC request covering [from, through]. When
+// routing to table owners, each part gets a copy of in with its range set by
+// setRange, and the answers are combined with merge.
+// Otherwise, or when the range reads no table of this client's period, in is
+// sent to one gateway as it is.
+func callIndexGateway[Req, Resp any](
+	ctx context.Context,
+	s *GatewayClient,
+	op string,
+	in *Req,
+	from, through model.Time,
+	setRange func(r *Req, from, through model.Time),
+	call func(c logproto.IndexGatewayClient, ctx context.Context, in *Req, opts ...grpc.CallOption) (Resp, error),
+	merge func([]Resp) Resp,
+) (Resp, error) {
+	var zero Resp
+	if s.cfg.perIndex() {
+		resps, ok, err := fanOut(ctx, s, op, from, through, func(ctx context.Context, client logproto.IndexGatewayClient, partFrom, partThrough model.Time) (Resp, error) {
+			req := in
+			if partFrom != from || partThrough != through {
+				part := *in
+				setRange(&part, partFrom, partThrough)
+				req = &part
+			}
+			return call(client, ctx, req)
+		})
+		if ok {
+			if err != nil {
+				return zero, err
+			}
+			return merge(resps), nil
+		}
+	}
+
+	resp := zero
+	err := s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
+		r, err := call(client, ctx, in)
+		if err != nil {
+			return err
+		}
+		resp = r
+		return nil
 	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
+		return addressesForQueryEndTime(addrs, through.Time(), s.buckets, time.Now().UTC())
 	})
-	return resp, err
+	if err != nil {
+		return zero, err
+	}
+	return resp, nil
 }
 
 func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsRequest) (res *logproto.ShardsResponse, err error) {
@@ -378,35 +428,68 @@ func (s *GatewayClient) GetShards(ctx context.Context, in *logproto.ShardsReques
 		// Keep the legacy GetShards ceiling when disabled
 		maxRetries = 2
 	}
+	callback := func(client logproto.IndexGatewayClient) error {
+		perReplicaResult := &logproto.ShardsResponse{}
+		streamer, err := client.GetShards(ctx, in)
+		if err != nil {
+			return errors.Wrap(err, "get shards")
+		}
+
+		// TODO(owen-d): stream currently unused (buffered) because query planning doesn't expect a streamed response,
+		// but can be improved easily in the future by using a stream here.
+		for {
+			resp, err := streamer.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			perReplicaResult.Merge(resp)
+		}
+
+		// Since `poolDo` retries on error, we only want to set the response if we got a successful response.
+		// This avoids cases where we add duplicates to the response on retries.
+		res = perReplicaResult
+
+		return nil
+	}
+
+	if s.cfg.perIndex() {
+		if parts := splitByTable(in.From, in.Through, s.cfg.TableRange); len(parts) > 0 {
+			tenantID, err := tenant.TenantID(ctx)
+			if err != nil {
+				return nil, errors.Wrap(err, "index gateway client get tenant ID")
+			}
+			// TODO(twhitney): For now, we are just tracking how often a request spans
+			// table boundaries. Shards are not merged across tables, a request
+			// spanning tables goes to the owners of its first table. They
+			// answer it correctly, but have to load the other tables as any non-owner
+			// would, so it is slower. A request spans tables when its split crosses
+			// or ends at midnight, or its range vector reaches back into the previous
+			// day. If this proves problematic we will need to either a) clip the
+			// boundaries, b) speed it up through other means (caching?), or c)
+			// introduce a new mergable response type.
+			tables := "single"
+			if len(parts) > 1 {
+				tables = "multi"
+			}
+			s.fanoutMetrics.getShardsRequests.WithLabelValues(tables).Inc()
+			if _, err := s.inFlight.reserve(ctx, 1); err != nil {
+				return nil, mapInFlightGateError(err)
+			}
+			defer s.inFlight.release(1)
+			if err := s.doOnIndexOwners(tenantID, parts[0].Table, maxRetries, callback); err != nil {
+				return nil, err
+			}
+			return res, nil
+		}
+	}
+
 	if err := s.poolDoWithMaxRetries(
 		ctx,
 		maxRetries,
-		func(client logproto.IndexGatewayClient) error {
-			perReplicaResult := &logproto.ShardsResponse{}
-			streamer, err := client.GetShards(ctx, in)
-			if err != nil {
-				return errors.Wrap(err, "get shards")
-			}
-
-			// TODO(owen-d): stream currently unused (buffered) because query planning doesn't expect a streamed response,
-			// but can be improved easily in the future by using a stream here.
-			for {
-				resp, err := streamer.Recv()
-				if err == io.EOF {
-					break
-				}
-				if err != nil {
-					return errors.WithStack(err)
-				}
-				perReplicaResult.Merge(resp)
-			}
-
-			// Since `poolDo` retries on error, we only want to set the response if we got a successful response.
-			// This avoids cases where we add duplicates to the response on retries.
-			res = perReplicaResult
-
-			return nil
-		},
+		callback,
 		func(addrs []string) []string {
 			return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 		},
@@ -431,10 +514,10 @@ func (s *GatewayClient) poolDoWithMaxRetries(
 	callback func(client logproto.IndexGatewayClient) error,
 	filterServerList func([]string) []string,
 ) error {
-	if err := s.inFlight.Start(ctx); err != nil {
+	if _, err := s.inFlight.reserve(ctx, 1); err != nil {
 		return mapInFlightGateError(err)
 	}
-	defer s.inFlight.Done()
+	defer s.inFlight.release(1)
 
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -456,6 +539,17 @@ func (s *GatewayClient) poolDoWithMaxRetries(
 		addrs = s.jumpHashShuffleSharding(userID, addrs)
 	}
 
+	return s.tryAddrs(userID, addrs, maxRetries, callback)
+}
+
+// tryAddrs calls callback on the gateways at addrs in random order until one
+// succeeds, giving up after maxRetries failures when maxRetries >= 0.
+func (s *GatewayClient) tryAddrs(
+	userID string,
+	addrs []string,
+	maxRetries int,
+	callback func(client logproto.IndexGatewayClient) error,
+) error {
 	// shuffle addresses to make sure we don't always access the same Index Gateway instances in sequence for same tenant.
 	rand.Shuffle(len(addrs), func(i, j int) {
 		addrs[i], addrs[j] = addrs[j], addrs[i]
@@ -500,6 +594,10 @@ func (s *GatewayClient) do(addr string, callback func(client logproto.IndexGatew
 	genericClient, err := s.pool.GetClientFor(addr)
 	if err != nil {
 		return errors.Wrapf(err, "get client for index gateway %s", addr)
+	}
+	if s.fanoutMetrics != nil {
+		s.fanoutMetrics.activeRPCs.Inc()
+		defer s.fanoutMetrics.activeRPCs.Dec()
 	}
 	return callback(genericClient.(logproto.IndexGatewayClient))
 }
@@ -624,4 +722,48 @@ func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Durati
 	}
 
 	return addrs[start:end]
+}
+
+// fanoutMetrics are the metrics of per-index routing.
+type fanoutMetrics struct {
+	requestTables              *prometheus.HistogramVec
+	boundaryParts              *prometheus.CounterVec
+	getShardsRequests          *prometheus.CounterVec
+	activeRPCs                 prometheus.Gauge
+	concurrencyLimitedRequests prometheus.Gauge
+}
+
+func newFanoutMetrics(r prometheus.Registerer) *fanoutMetrics {
+	return &fanoutMetrics{
+		requestTables: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_request_tables",
+			Help:      "Number of index tables a request is split into with per-index routing. Each table is a separate index gateway request.",
+			Buckets:   []float64{1, 2, 3, 4, 7, 14, 31},
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
+		}, []string{"operation"}),
+		boundaryParts: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_boundary_parts_total",
+			Help:      "Index gateway requests sent with per-index routing only because a request ends exactly at the start of an index table.",
+		}, []string{"operation"}),
+		getShardsRequests: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_get_shards_requests_total",
+			Help:      "GetShards requests sent with per-index routing, by whether they read a single index table or several. A request that reads several tables is sent whole to the owners of its first table.",
+		}, []string{"tables"}),
+		activeRPCs: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_active_rpcs",
+			Help:      "Number of RPCs currently running on this per-index client, including requests routed without fan-out.",
+		}),
+		concurrencyLimitedRequests: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "index_gateway_client_fanout_concurrency_limited_requests",
+			Help:      "Number of in-flight fan-out requests that reserved fewer RPC slots than they asked for.",
+		}),
+	}
 }

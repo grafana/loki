@@ -82,7 +82,8 @@ message ColumnDesc {
   uint64 uncompressed_size = 7;
 
   // Total compressed size of all pages in the column. If no compression is
-  // used, compressed_size matches uncompressed_size.
+  // used, compressed_size matches uncompressed_size. The size does not include
+  // the checksums that format version 4 adds to the pages.
   uint64 compressed_size = 8;
 
   // Byte offset relative to the start of the section's metadata region where
@@ -155,14 +156,19 @@ message ColumnMetadata {
 
 // PageDesc describes an individual page within a column.
 message PageDesc {
+  // Field 2 held the compressed size of the page. It always equaled data_size.
+  // Writers no longer write it, and readers use data_size instead.
+  reserved 2;
+  reserved "compressed_size";
+
   // Uncompressed size of the page in bytes.
   uint64 uncompressed_size = 1;
 
-  // Compressed size of the page in bytes.
-  uint64 compressed_size = 2;
-
-  // CRC32 checksum of the page data.
-  uint32 crc32 = 3;
+  // CRC32C (Castagnoli) checksum of the page. Format version 2 sets it, and
+  // readers use it for pages of that version. Format version 4 leaves it unset.
+  // In format version 4 the page ends with the checksum instead: four bytes,
+  // little-endian, computed over all bytes before them.
+  uint32 deprecated_crc32 = 3;
 
   // Total number of rows (values + nulls) in the page.
   uint64 rows_count = 4;
@@ -178,7 +184,10 @@ message PageDesc {
   // page is stored.
   uint64 data_offset = 7;
 
-  // Size of the page's data in bytes.
+  // Size of the page's data in bytes. This is the number of bytes of the page
+  // in the data region, which readers use as the number of bytes to read. In
+  // format version 4 it includes the four bytes of the checksum at the end of
+  // the page.
   uint64 data_size = 8;
 
   // Optional statistics for the page.
@@ -228,6 +237,17 @@ message Statistics {
 }
 
 // SortInfo holds sort order information for rows in the section.
+//
+// A LOG section sets only column_sorts.
+//
+// A STREAMS section that records a layout sets schema_labels, stream_order,
+// and shard_count, and no column_sorts. The layout describes the stream IDs
+// that the STREAMS section defines and that the LOG sections of the same
+// tenant use. A STREAMS section without SortInfo records no layout.
+//
+// A STATS section sets column_sorts, and also schema_labels, stream_order,
+// and shard_count to record the layout of the data objects that its rows
+// describe. A STATS section that sets only column_sorts records no layout.
 message SortInfo {
   message ColumnSort {
     // Index of the column in the columns list.
@@ -246,29 +266,26 @@ message SortInfo {
   // elements when compound sorting is used.
   repeated ColumnSort column_sorts = 1;
 
-  // schema_labels, if non-empty, indicates that rows are sorted by shard_bucket
-  // (when shard_count > 1), then the values of these fully-qualified sort keys
-  // (in order), then stream hash (see stream_order), followed by column_sorts
-  // as tiebreakers. Each entry is a FQN of the form "label:<name>"
-  // (e.g. "label:service_name").
+  // schema_labels are the fully-qualified labels of the stream key, in order.
+  // Each entry has the form "label:<name>" (e.g. "label:service_name"). Set
+  // only in STREAMS and STATS sections that record a layout.
   repeated string schema_labels = 2;
 
-  // stream_order describes how object-local stream IDs were assigned before
-  // rows were sorted by stream ID. It is meaningful for LOG sections with
-  // schema_labels and allows independently written objects to prove that their
-  // stream order is globally compatible.
+  // stream_order is the stream key that orders the stream IDs. Set only in
+  // STREAMS and STATS sections that record a layout. Independently written
+  // objects with the same layout have comparable stream orders.
   StreamOrder stream_order = 3;
 
-  // shard_count is the number of physical shard buckets that participate in
-  // the stream layout. Zero means the field was not persisted by a legacy
-  // writer.
+  // shard_count is the bucket count of the shard layout of the shard bucket
+  // column. Set only in STREAMS and STATS sections that record a layout,
+  // where it must not be zero.
   uint32 shard_count = 4;
 }
 
-// StreamOrder identifies the stable ordering used to assign object-local
-// stream IDs.
+// StreamOrder identifies the stream key that orders the stream IDs of a
+// STREAMS section.
 enum StreamOrder {
-  // Legacy or unknown stream ordering.
+  // No known stream order. Readers reject it.
   STREAM_ORDER_UNSPECIFIED = 0;
 
   reserved 1;

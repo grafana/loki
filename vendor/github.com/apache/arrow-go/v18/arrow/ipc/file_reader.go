@@ -32,6 +32,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/internal/dictutils"
 	"github.com/apache/arrow-go/v18/arrow/internal/flatbuf"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/internal/utils"
 )
 
 type readerImpl interface {
@@ -73,6 +74,9 @@ func validateFileBlock(offset int64, meta int32, body, fileSize, maxMetadataSize
 	}
 	if body < 0 {
 		return fmt.Errorf("arrow/ipc: invalid file block body length %d", body)
+	}
+	if body%8 != 0 {
+		return fmt.Errorf("arrow/ipc: file block body length %d is not a multiple of 8", body)
 	}
 	if maxMetadataSize > 0 && int64(meta) > maxMetadataSize {
 		return fmt.Errorf("arrow/ipc: file block metadata length %d exceeds limit %d", meta, maxMetadataSize)
@@ -233,11 +237,13 @@ func NewMappedFileReader(data []byte, opts ...Option) (*FileReader, error) {
 				maxMetadataSize: cfg.maxMetadataSize,
 				maxBodySize:     cfg.maxBodySize,
 			},
-			mem: cfg.alloc,
+			memo: dictutils.NewMemo(),
+			mem:  cfg.alloc,
 		}
 	)
 
 	if err := f.init(cfg); err != nil {
+		_ = f.Close()
 		return nil, err
 	}
 	return &f, nil
@@ -259,6 +265,7 @@ func NewFileReader(r ReadAtSeeker, opts ...Option) (*FileReader, error) {
 	)
 
 	if err := f.init(cfg); err != nil {
+		_ = f.Close()
 		return nil, err
 	}
 	return &f, nil
@@ -329,8 +336,10 @@ func (f *FileReader) readSchema(ensureNativeEndian bool) error {
 		if err != nil {
 			return err
 		}
-
-		kind, err = readDictionary(&f.memo, msg.meta, msg.body, f.swapEndianness, f.mem)
+		kind, err = func() (dictutils.Kind, error) {
+			defer msg.Release()
+			return readDictionary(&f.memo, msg.meta, msg.body, f.swapEndianness, f.mem)
+		}()
 		if err != nil {
 			return err
 		}
@@ -407,6 +416,7 @@ func (f *FileReader) Close() error {
 		f.record.Release()
 		f.record = nil
 	}
+	f.memo.Clear()
 	return nil
 }
 
@@ -441,7 +451,7 @@ func (f *FileReader) Record(i int) (arrow.Record, error) {
 // call concurrently.
 func (f *FileReader) RecordBatchAt(i int) (arrow.RecordBatch, error) {
 	if i < 0 || i >= f.NumRecords() {
-		panic("arrow/ipc: record index out of bounds")
+		return nil, fmt.Errorf("%w: record index %d out of bounds", arrow.ErrIndex, i)
 	}
 
 	blk, err := f.r.block(f.mem, &f.footer, i)
@@ -467,7 +477,17 @@ func (f *FileReader) RecordBatchAt(i int) (arrow.RecordBatch, error) {
 		return nil, fmt.Errorf("arrow/ipc: message %d is not a RecordBatch", i)
 	}
 
-	return newRecordBatch(f.schema, &f.memo, msg.meta, msg.body, f.swapEndianness, f.mem), nil
+	return loadRecordBatch(f.schema, &f.memo, msg.meta, msg.body, f.swapEndianness, f.mem)
+}
+
+func loadRecordBatch(schema *arrow.Schema, memo *dictutils.Memo, meta, body *memory.Buffer, swapEndianness bool, mem memory.Allocator) (rec arrow.RecordBatch, err error) {
+	defer func() {
+		if pErr := recover(); pErr != nil {
+			rec = nil
+			err = utils.FormatRecoveredError("arrow/ipc: error reading record batch", pErr)
+		}
+	}()
+	return newRecordBatch(schema, memo, meta, body, swapEndianness, mem), nil
 }
 
 // RecordAt returns the i-th record from the file. Ownership is transferred to the
@@ -495,6 +515,9 @@ func (f *FileReader) Read() (rec arrow.RecordBatch, err error) {
 
 // ReadAt reads the i-th record batch from the underlying stream and an error, if any.
 func (f *FileReader) ReadAt(i int64) (arrow.RecordBatch, error) {
+	if i < 0 || i >= int64(f.NumRecords()) {
+		return nil, fmt.Errorf("%w: record index %d out of bounds", arrow.ErrIndex, i)
+	}
 	return f.RecordBatch(int(i))
 }
 
@@ -579,8 +602,8 @@ func (src *ipcSource) buffer(i int) *memory.Buffer {
 		if uncompressedSize != -1 {
 			raw = memory.NewResizableBuffer(src.mem)
 			raw.Resize(int(uncompressedSize))
-			src.codec.Reset(bytes.NewReader(body[8:]))
-			if _, err := io.ReadFull(src.codec, raw.Bytes()); err != nil {
+			if err := src.codec.Decompress(raw.Bytes(), body[8:]); err != nil {
+				raw.Release()
 				panic(err)
 			}
 		} else {
@@ -963,21 +986,18 @@ func (blk mappedFileBlock) NewMessage() (*Message, error) {
 
 	metaBytes := buf[:blk.meta]
 
-	prefix := 0
-	switch binary.LittleEndian.Uint32(metaBytes) {
-	case 0:
-	case kIPCContToken:
-		prefix = 8
-	default:
-		// ARROW-6314: backwards compatibility for reading old IPC
-		// messages produced prior to version 0.15.0
-		prefix = 4
-	}
-	if int(blk.meta)-prefix < 4 {
-		return nil, fmt.Errorf("arrow/ipc: invalid file block metadata length %d for prefix length %d", blk.meta, prefix)
+	prefix, err := validateFileBlockMetadata(metaBytes, blk.meta)
+	if err != nil {
+		return nil, err
 	}
 
 	meta = memory.NewBufferBytes(metaBytes[prefix:])
 	body = memory.NewBufferBytes(buf[blk.meta : int64(blk.meta)+blk.body])
-	return NewMessage(meta, body), nil
+	msg := NewMessage(meta, body)
+	messageBodyLen := msg.BodyLen()
+	if messageBodyLen != blk.body {
+		msg.Release()
+		return nil, fmt.Errorf("arrow/ipc: file block body length %d does not match message body length %d", blk.body, messageBodyLen)
+	}
+	return msg, nil
 }

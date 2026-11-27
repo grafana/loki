@@ -16,6 +16,7 @@ var encodingNames = map[string]format.PostingsEncoding{
 	"uint32":      format.PostingsEncodingFastUint32Blocked,
 	"roaring":     format.PostingsEncodingFastRoaringBlocked,
 	"deltavarint": format.PostingsEncodingFastDeltaVarIntBlocked,
+	"eliasfano":   format.PostingsEncodingFastEliasFanoBlocked,
 }
 
 func validEncodings() string {
@@ -31,7 +32,7 @@ func runConvert(args []string) {
 	fs := flag.NewFlagSet("convert", flag.ExitOnError)
 	threshold := fs.Float64("threshold", 0.20, "density threshold — filter terms in more than this fraction of docs (0 to disable)")
 	encoding := fs.String("encoding", "deltavarint", "output bitmap encoding: "+validEncodings())
-	outVersion := fs.String("version", logline.CurrentVersion, "output format version (currently: v3)")
+	outVersion := fs.String("version", logline.CurrentVersion, "output format version")
 	doVerify := fs.Bool("verify", false, "after conversion, verify every term matches between input and output")
 	reportOut := fs.String("report-out", "", "generate an HTML report at this path (empty = no report)")
 
@@ -140,7 +141,24 @@ func convertIndex(src, dst, version string, threshold float32, enc format.Postin
 		DensityThreshold: threshold,
 	}
 
-	writer, err := logline.NewWriter(version, dst, reader.Documents(), &cfg)
+	// v5 document IDs are cells of a day and v3/v4 IDs index a document
+	// table, so convert only keeps one numbering or the other.
+	var docs []format.DocumentMetadata
+	layout, hasLayout := logline.DocumentLayout(reader)
+	switch dstTable := logline.VersionHasDocumentTable(version); {
+	case dstTable && hasLayout:
+		return nil, fmt.Errorf("cannot convert a %s index to %s: it has no document table", srcVersion, version)
+	case !dstTable && !hasLayout:
+		return nil, fmt.Errorf("cannot convert a %s index to %s: its document IDs are not cells of a day", srcVersion, version)
+	case hasLayout:
+		cfg.DocumentInterval = layout.Interval
+		cfg.DocumentShardBits = int(layout.ShardBits)
+		cfg.DayStart = layout.DayStart
+	default:
+		docs = reader.Documents()
+	}
+
+	writer, err := logline.NewWriter(version, dst, docs, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create output writer: %w", err)
 	}

@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"time"
 
 	instr "github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,8 +23,11 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 		// Cached chunks are generally in the KBs, but cached index can
 		// get big.  Histogram goes from 1KB to 4MB.
 		// 1024 * 4^(7-1) = 4MB
-		Buckets:     prometheus.ExponentialBuckets(1024, 4, 7),
-		ConstLabels: prometheus.Labels{"name": name},
+		Buckets:                         prometheus.ExponentialBuckets(1024, 4, 7),
+		ConstLabels:                     prometheus.Labels{"name": name},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method"})
 
 	return &instrumentedCache{
@@ -35,8 +39,11 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 			Name:      "cache_request_duration_seconds",
 			Help:      "Total time spent in seconds doing cache requests.",
 			// Cache requests are very quick: smallest bucket is 16us, biggest is 1s.
-			Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
-			ConstLabels: prometheus.Labels{"name": name},
+			Buckets:                         prometheus.ExponentialBuckets(0.000016, 4, 8),
+			ConstLabels:                     prometheus.Labels{"name": name},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "status_code"})),
 
 		fetchedKeys: promauto.With(reg).NewCounter(prometheus.CounterOpts{
@@ -67,7 +74,7 @@ type instrumentedCache struct {
 	requestDuration                   *instr.HistogramCollector
 }
 
-func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte) error {
+func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte, opts ...Option) error {
 	for j := range bufs {
 		i.storedValueSize.Observe(float64(len(bufs[j])))
 	}
@@ -76,7 +83,7 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 	return instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := trace.SpanFromContext(ctx)
 		sp.SetAttributes(attribute.Int("keys", len(keys)))
-		storeErr := i.Cache.Store(ctx, keys, bufs)
+		storeErr := i.Cache.Store(ctx, keys, bufs, opts...)
 		if storeErr != nil {
 			sp.SetStatus(codes.Error, storeErr.Error())
 			sp.RecordError(storeErr)
@@ -85,7 +92,7 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 	})
 }
 
-func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+func (i *instrumentedCache) Fetch(ctx context.Context, keys []string, opts ...Option) ([]string, [][]byte, []string, error) {
 	var (
 		found    []string
 		bufs     [][]byte
@@ -97,7 +104,7 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 	err := instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := trace.SpanFromContext(ctx)
 		sp.SetAttributes(attribute.Int("keys requested", len(keys)))
-		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys)
+		found, bufs, missing, fetchErr = i.Cache.Fetch(ctx, keys, opts...)
 		if fetchErr != nil {
 			sp.SetStatus(codes.Error, fetchErr.Error())
 			sp.RecordError(fetchErr)

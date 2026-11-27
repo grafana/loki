@@ -681,7 +681,7 @@ func defaultCfg() cfg {
 		maxProduceInflight:  1,
 		compression:         []CompressionCodec{SnappyCompression(), NoCompression()},
 		maxRecordBatchBytes: func(string) int32 { return 1000012 }, // Kafka max.message.bytes default is 1000012
-		maxBufferedRecords:  10000,
+		maxBufferedRecords:  50000,
 		produceTimeout:      10 * time.Second,
 		recordRetries:       math.MaxInt64, // effectively unbounded
 		maxUnknownFailures:  4,
@@ -1235,9 +1235,8 @@ func DisableIdempotentWrite() ProducerOpt {
 // received it" from "the broker wrote it but the reply was lost".
 // Cancelling at this point leaves the client's idempotent sequence
 // window inconsistent with the broker: once cancelled records are
-// failed to the user, the next produce either silently gap-accepts (if
-// the broker wrote them) or hits OUT_OF_ORDER_SEQUENCE and forces the
-// client to reload its producer ID (new epoch, reset sequence). A
+// failed to the user, the client bumps its producer epoch before
+// producing again. A
 // subsequent application-level retry of the cancelled record races
 // against what the broker may already have stored - the broker cannot
 // dedupe it, and you can get duplicates. By default, the client refuses
@@ -1336,7 +1335,7 @@ func ProducerBatchMaxBytesFn(fn func(string) int32) ProducerOpt {
 
 // MaxBufferedRecords sets the max amount of records the client will buffer,
 // blocking produces until records are finished if this limit is reached.
-// This overrides the default of 10,000.
+// This overrides the default of 50,000.
 func MaxBufferedRecords(n int) ProducerOpt {
 	return producerOpt{func(cfg *cfg) { cfg.maxBufferedRecords = int64(n) }}
 }
@@ -2009,6 +2008,12 @@ func ConsumerGroup(group string) GroupOpt {
 // IncrementalAlterConfigs with resource type GROUP. Without this, share
 // groups default to "latest" and only records produced after the group
 // begins consuming are delivered.
+//
+// The broker ties a share session to one connection and releases every
+// record you hold when that connection closes. If you hold records without
+// polling, ack or renew (AckRenew) them within ConnIdleTimeout, otherwise
+// the idle connection can be closed and the records delivered to another
+// member.
 func ShareGroup(group string) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.shareGroup = group }}
 }
@@ -2193,15 +2198,15 @@ func BlockRebalanceOnPoll() GroupOpt {
 //
 // This function should not exceed the rebalance interval. It is possible
 // for the group, immediately after finishing a balance, to re-enter a new balancing
-// session. This function is passed a context that is canceled if the current group
-// session finishes (i.e., after revoking).
+// session. This function is passed a context that is canceled when the current
+// group session begins revoking.
 //
 // If you are resetting the position of the offset, you may want to clear any existing
 // "epoch" with WithEpoch(-1). If the epoch is non-negative, the client performs
 // data loss detection, which may result in errors and unexpected behavior.
 //
-// This function is called after OnPartitionsAssigned and may be called before
-// or after OnPartitionsRevoked.
+// This function is called after OnPartitionsAssigned and before
+// OnPartitionsRevoked.
 func AdjustFetchOffsetsFn(adjustOffsetsBeforeAssign func(context.Context, map[string]map[int32]Offset) (map[string]map[int32]Offset, error)) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.adjustOffsetsBeforeAssign = adjustOffsetsBeforeAssign }}
 }
@@ -2309,11 +2314,11 @@ func OnPartitionsCallbackBlocked(fn func(context.Context, *Client)) GroupOpt {
 //
 // This function should not exceed the rebalance interval. It is possible for
 // the group, immediately after finishing a balance, to re-enter a new
-// balancing session. This function is passed a context that is canceled if the
-// current group session finishes (i.e., after revoking).
+// balancing session. This function is passed a context that is canceled when the
+// current group session begins revoking.
 //
-// This function is called after OnPartitionsAssigned and may be called before
-// or after OnPartitionsRevoked.
+// This function is called after OnPartitionsAssigned and before
+// OnPartitionsRevoked.
 func OnOffsetsFetched(onFetched func(context.Context, *Client, *kmsg.OffsetFetchResponse) error) GroupOpt {
 	return groupOpt{func(cfg *cfg) { cfg.onFetched = onFetched }}
 }
@@ -2388,6 +2393,13 @@ func AutoCommitMarks() GroupOpt {
 // ID and rejoin the group to avoid a rebalance. It is strongly recommended to
 // increase the session timeout enough to allow time for the restart (remember
 // that the default session timeout is 45s).
+//
+// In a classic group with a cooperative balancer, if the client revoked
+// partitions in a rebalance and closes before rejoining, the client sends a
+// leave group request and logs a warning. The leave makes the group rebalance
+// and assign the revoked partitions. If the client did not leave, a restart
+// with the same instance ID would get its old assignment back, not rebalance,
+// and the revoked partitions would stay unassigned until the next rebalance.
 //
 // To actually leave the group, you must use an external admin command that
 // issues a leave group request on behalf of this instance ID (see kcl), or you

@@ -43,6 +43,23 @@ func TestRecordCopyIsDeepCopy(t *testing.T) {
 	require.Equal(t, []byte("Xriginal line"), copied.Line)
 }
 
+func TestRecord_UncompressedSize(t *testing.T) {
+	t.Run("returns the line length when there is no metadata", func(t *testing.T) {
+		rec := logs.Record{Line: []byte("hello")}
+		require.Equal(t, int64(5), rec.UncompressedSize())
+	})
+
+	t.Run("adds metadata value bytes but not metadata name bytes", func(t *testing.T) {
+		rec := logs.Record{Line: []byte("hello"), Metadata: labels.FromStrings("trace_id", "abc", "user", "z")}
+		require.Equal(t, int64(5+3+1), rec.UncompressedSize())
+	})
+
+	t.Run("returns zero for an empty record", func(t *testing.T) {
+		var rec logs.Record
+		require.Equal(t, int64(0), rec.UncompressedSize())
+	})
+}
+
 func Test(t *testing.T) {
 	records := []logs.Record{
 		{
@@ -110,6 +127,34 @@ func Test(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, expect[i], record)
 		i++
+	}
+}
+
+func TestBuilder_Type(t *testing.T) {
+	for _, sortOrder := range []struct {
+		name  string
+		order logs.SortOrder
+	}{
+		{"SortStreamASC", logs.SortStreamASC},
+		{"SortTimestampDESC", logs.SortTimestampDESC},
+		{"SortSchemaASC", logs.SortSchemaASC},
+	} {
+		t.Run(fmt.Sprintf("writes a section of version 4 when the sort order is %s", sortOrder.name), func(t *testing.T) {
+			builder := logs.NewBuilder(nil, logs.BuilderOptions{
+				PageSizeHint:     1024,
+				BufferSize:       256,
+				StripeMergeLimit: 2,
+				AppendStrategy:   logs.AppendOrdered,
+				SortOrder:        sortOrder.order,
+			})
+			builder.Append(logs.Record{StreamID: 1, Timestamp: time.Unix(10, 0), Metadata: labels.EmptyLabels(), Line: []byte("hello")})
+
+			obj, closer, err := buildObject(builder)
+			require.NoError(t, err)
+			t.Cleanup(func() { require.NoError(t, closer.Close()) })
+
+			require.Equal(t, uint32(4), obj.Sections()[0].Type.Version)
+		})
 	}
 }
 

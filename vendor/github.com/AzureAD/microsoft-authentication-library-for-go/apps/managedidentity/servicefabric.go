@@ -22,51 +22,47 @@ import (
 // serviceFabricCertificateVerifiedHTTPClient derives a client with Service Fabric's required certificate pinning.
 // Only standard clients and transports can be safely cloned and augmented without changing the
 // caller's behavior for other requests.
-func serviceFabricCertificateVerifiedHTTPClient(httpClient interface {
-	Do(*http.Request) (*http.Response, error)
-	CloseIdleConnections()
-}) (*http.Client, string, error) {
-	endpoint, err := serviceFabricEndpoint()
-	if err != nil {
-		return nil, "", err
+func serviceFabricCertificateVerifiedHTTPClient(httpClient *http.Client) (*http.Client, error) {
+	if httpClient == nil {
+		return nil, errors.New("managed identity on Service Fabric requires a non-nil *http.Client")
 	}
 	pin, err := serviceFabricThumbprint(os.Getenv(identityServerThumbprintEnvVar))
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
-	callerClient, ok := httpClient.(*http.Client)
-	if !ok {
-		return nil, "", errors.New("Service Fabric managed identity requires a standard *http.Client")
-	}
-	derivedClient := *callerClient
+	derivedClient := *httpClient
 
 	var callerTransport *http.Transport
-	if callerClient.Transport == nil {
+	if httpClient.Transport == nil {
 		var ok bool
 		callerTransport, ok = http.DefaultTransport.(*http.Transport)
 		if !ok {
-			return nil, "", errors.New("Service Fabric managed identity requires a standard *http.Transport")
+			return nil, errors.New("managed identity on Service Fabric requires a standard *http.Transport")
 		}
 	} else {
 		var ok bool
-		callerTransport, ok = callerClient.Transport.(*http.Transport)
+		callerTransport, ok = httpClient.Transport.(*http.Transport)
 		if !ok {
-			return nil, "", errors.New("Service Fabric managed identity requires a standard *http.Transport")
+			return nil, errors.New("managed identity on Service Fabric requires a standard *http.Transport")
 		}
 	}
 	//nolint:staticcheck // DialTLS must be rejected because it bypasses TLSClientConfig.
 	if callerTransport.DialTLS != nil || callerTransport.DialTLSContext != nil {
-		return nil, "", errors.New("Service Fabric managed identity does not support a transport with custom TLS dialing")
+		return nil, errors.New("managed identity on Service Fabric does not support a transport with custom TLS dialing")
 	}
 	if callerTransport.TLSClientConfig != nil &&
 		(callerTransport.TLSClientConfig.VerifyPeerCertificate != nil || callerTransport.TLSClientConfig.VerifyConnection != nil) {
-		return nil, "", errors.New("Service Fabric managed identity does not support custom TLS verification")
-	}
-	if callerTransport.TLSNextProto != nil {
-		return nil, "", errors.New("Service Fabric managed identity does not support custom TLS protocol handlers")
+		return nil, errors.New("managed identity on Service Fabric does not support custom TLS verification")
 	}
 	derivedTransport := callerTransport.Clone()
+	// Give the derived transport its own HTTP/2 state so it can never serve a Service Fabric request over a
+	// connection from the caller's pool. golang.org/x/net/http2.ConfigureTransports (used by azure-sdk-for-go's
+	// default transport) installs an "h2" callback that retains the original connection pool, and Transport.Clone
+	// copies that callback by reference. Without clearing it, a pre-existing, unpinned connection to the same
+	// authority could be reused, bypassing the certificate pin below. Resetting TLSNextProto makes the standard
+	// library lazily re-establish HTTP/2 with a fresh pool governed by this transport's pinned TLS configuration.
+	derivedTransport.TLSNextProto = nil
 	tlsConfig := derivedTransport.TLSClientConfig.Clone()
 	if tlsConfig == nil {
 		tlsConfig = &tls.Config{}
@@ -74,29 +70,30 @@ func serviceFabricCertificateVerifiedHTTPClient(httpClient interface {
 	tlsConfig.InsecureSkipVerify = true // #nosec G402 -- VerifyConnection below pins the Service Fabric self-signed certificate.
 	tlsConfig.VerifyConnection = func(connectionState tls.ConnectionState) error {
 		if len(connectionState.PeerCertificates) == 0 {
-			return errors.New("Service Fabric TLS connection did not provide a certificate")
+			return errors.New("TLS connection to Service Fabric did not provide a certificate")
 		}
 		if subtle.ConstantTimeCompare(serviceFabricCertificateThumbprint(connectionState.PeerCertificates[0]), pin) != 1 {
-			return errors.New("Service Fabric TLS certificate thumbprint did not match IDENTITY_SERVER_THUMBPRINT")
+			return errors.New("TLS certificate thumbprint from Service Fabric did not match IDENTITY_SERVER_THUMBPRINT")
 		}
 		return nil
 	}
 	derivedTransport.TLSClientConfig = tlsConfig
 	derivedClient.Transport = derivedTransport
 	derivedClient.CheckRedirect = func(*http.Request, []*http.Request) error {
-		return errors.New("Service Fabric managed identity redirects are not permitted")
+		return errors.New("redirects are not permitted for managed identity on Service Fabric")
 	}
-	return &derivedClient, endpoint, nil
+	return &derivedClient, nil
 }
 
 func serviceFabricEndpoint() (string, error) {
 	endpoint := os.Getenv(identityEndpointEnvVar)
+	// #nosec G704 -- the URL is restricted to HTTPS and the caller pins its certificate thumbprint.
 	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", err
 	}
 	if request.URL.Scheme != "https" || request.URL.Host == "" {
-		return "", errors.New("Service Fabric managed identity endpoint must use HTTPS")
+		return "", errors.New("managed identity endpoint for Service Fabric must use HTTPS")
 	}
 	return request.URL.String(), nil
 }

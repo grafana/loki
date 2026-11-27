@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
@@ -32,8 +32,8 @@ const (
 // Interface for EmbeddedCache
 // Matches the interface from cache.Cache but has generics
 type TypedCache[K comparable, V any] interface {
-	Store(ctx context.Context, keys []K, values []V) error
-	Fetch(ctx context.Context, keys []K) (found []K, values []V, missing []K, err error)
+	Store(ctx context.Context, keys []K, values []V, opts ...Option) error
+	Fetch(ctx context.Context, keys []K, opts ...Option) (found []K, values []V, missing []K, err error)
 	Stop()
 	// GetCacheType returns a string indicating the cache "type" for the purpose of grouping cache usage statistics
 	GetCacheType() stats.CacheType
@@ -213,7 +213,7 @@ func (c *EmbeddedCache[K, V]) pruneExpiredItems(ttl time.Duration) {
 }
 
 // Fetch implements Cache.
-func (c *EmbeddedCache[K, V]) Fetch(ctx context.Context, keys []K) (foundKeys []K, foundValues []V, missingKeys []K, err error) {
+func (c *EmbeddedCache[K, V]) Fetch(ctx context.Context, keys []K, _ ...Option) (foundKeys []K, foundValues []V, missingKeys []K, err error) {
 	foundKeys, missingKeys, foundValues = make([]K, 0, len(keys)), make([]K, 0, len(keys)), make([]V, 0, len(keys))
 	for _, key := range keys {
 		val, ok := c.Get(ctx, key)
@@ -229,7 +229,7 @@ func (c *EmbeddedCache[K, V]) Fetch(ctx context.Context, keys []K) (foundKeys []
 }
 
 // Store implements Cache.
-func (c *EmbeddedCache[K, V]) Store(_ context.Context, keys []K, values []V) error {
+func (c *EmbeddedCache[K, V]) Store(_ context.Context, keys []K, values []V, _ ...Option) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -342,11 +342,11 @@ func NewNoopTypedCache[K comparable, V any]() TypedCache[K, V] {
 
 type noopEmbeddedCache[K comparable, V any] struct{}
 
-func (noopEmbeddedCache[K, V]) Store(_ context.Context, _ []K, _ []V) error {
+func (noopEmbeddedCache[K, V]) Store(_ context.Context, _ []K, _ []V, _ ...Option) error {
 	return nil
 }
 
-func (noopEmbeddedCache[K, V]) Fetch(_ context.Context, keys []K) ([]K, []V, []K, error) {
+func (noopEmbeddedCache[K, V]) Fetch(_ context.Context, keys []K, _ ...Option) ([]K, []V, []K, error) {
 	return []K{}, []V{}, keys, nil
 }
 

@@ -31,10 +31,33 @@ func TestFormatHintRanges_Basic(t *testing.T) {
 	require.Equal(t, got, (&Hints{TimeRanges: ranges}).String())
 }
 
+func TestFormatHintRanges_DocumentShard(t *testing.T) {
+	base := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	got := FormatHintRanges([]HintTimeRange{{Start: base, End: base.Add(16 * time.Second), DocumentShard: 17, DocumentShardBits: 5}})
+	require.Equal(t, "[2026-02-26T10:00:00.000Z +16s 17_of_32]", got)
+}
+
 func TestFormatHintRanges_Passthrough(t *testing.T) {
 	end := time.Date(2026, 7, 9, 8, 42, 59, 500*int(time.Millisecond), time.UTC)
 	got := FormatHintRanges([]HintTimeRange{{End: end, Source: HintSourcePreMinDate}})
 	require.Equal(t, "[passthrough,2026-07-09T08:42:59.500Z]", got)
+}
+
+func TestProtoRangesKeepDocumentShards(t *testing.T) {
+	start := time.Date(2026, 2, 26, 10, 0, 0, 0, time.UTC)
+	ranges := []HintTimeRange{
+		{Start: start, End: start.Add(time.Second)},
+		{Start: start, End: start.Add(16 * time.Second), DocumentShard: 17, DocumentShardBits: 5},
+	}
+	require.Equal(t, ranges, FromProtoRanges(ToProtoRanges(ranges)))
+}
+
+func TestPassthroughForInclusiveThrough(t *testing.T) {
+	through := time.Date(2026, 3, 10, 23, 59, 59, 999*int(time.Millisecond), time.UTC)
+	got := passthroughForInclusiveThrough(through)
+	require.True(t, got.IsPassthrough())
+	require.True(t, through.Before(got.End), "half-open End must include the inclusive through bound")
+	require.Equal(t, through.Add(time.Millisecond), got.End)
 }
 
 func TestFormatHintRanges_Truncates(t *testing.T) {

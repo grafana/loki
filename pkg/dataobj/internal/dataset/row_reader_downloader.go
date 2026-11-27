@@ -102,6 +102,9 @@ type rowReaderDownloader struct {
 	// It can be used to efficiently read pages from object storage in batches
 	// without downloading an entire section at once.
 	targetCompressedBytes int
+
+	// statsTracker, if set, receives the size of each downloaded batch.
+	statsTracker RowReaderStatsTracker
 }
 
 // defaultTargetDownloadedBytes is the target size in bytes of compressed pages to hold in-memory when
@@ -155,8 +158,8 @@ func (dl *rowReaderDownloader) Prefetch(ctx context.Context) error {
 // AddColumn adds a column to the rowReaderDownloader. This should be called
 // before the downloader is used.
 //
-// AddColumn must be called matching the order of columns in
-// [RowReaderOptions.Columns].
+// AddColumn must be called in the order of the columns of the RowReader: the
+// projected columns, then the columns that only predicates read.
 func (dl *rowReaderDownloader) AddColumn(col Column, primary bool) {
 	wrappedCol := newReaderColumn(dl, col, primary)
 
@@ -269,6 +272,16 @@ func (dl *rowReaderDownloader) downloadBatch(ctx context.Context, requestor *rea
 
 		batch[i].data = data
 		i++
+	}
+
+	if dl.statsTracker != nil {
+		var compressed, uncompressed int64
+		for _, page := range batch {
+			desc := page.inner.PageDesc()
+			compressed += int64(desc.CompressedSize)
+			uncompressed += int64(desc.UncompressedSize)
+		}
+		dl.statsTracker.OnPagesDownloaded(compressed, uncompressed)
 	}
 
 	return nil

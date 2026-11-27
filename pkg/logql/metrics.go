@@ -18,26 +18,29 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	logqlmodel "github.com/grafana/loki/v3/pkg/logql/model"
+	logql_stats "github.com/grafana/loki/v3/pkg/logql/model/stats"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	logql_stats "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
-	QueryTypeMetric  = "metric"
-	QueryTypeFilter  = "filter"
-	QueryTypeLimited = "limited"
-	QueryTypeLabels  = "labels"
-	QueryTypeSeries  = "series"
-	QueryTypeStats   = "stats"
-	QueryTypeShards  = "shards"
-	QueryTypeVolume  = "volume"
+	QueryTypeMetric       = "metric"
+	QueryTypeFilter       = "filter"
+	QueryTypeLimited      = "limited"
+	QueryTypeLabels       = "labels"
+	QueryTypeSeries       = "series"
+	QueryTypeStats        = "stats"
+	QueryTypeLoglineIndex = "logline_index"
+	QueryTypeShards       = "shards"
+	QueryTypeVolume       = "volume"
 
 	latencyTypeSlow = "slow"
 	latencyTypeFast = "fast"
@@ -74,8 +77,8 @@ var (
 	bytesProcessedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_bytes_processed_total",
-		Help:      "Total number of bytes processed by LogQL queries, partitioned by tenant.",
-	}, []string{"tenant"})
+		Help:      "Total number of bytes processed by LogQL queries, partitioned by tenant. Bytes from multi-tenant queries are split equally across the queried tenants and carry multi_tenant=\"true\".",
+	}, []string{"tenant", "multi_tenant"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: constants.Loki,
 		Name:      "logql_querystats_latency_seconds",
@@ -129,6 +132,7 @@ func RecordRangeAndInstantQueryMetrics(
 	status string,
 	stats logql_stats.Result,
 	result promql_parser.Value,
+	err error,
 ) {
 	var (
 		logger        = fixLogger(ctx, log)
@@ -139,9 +143,9 @@ func RecordRangeAndInstantQueryMetrics(
 		queryTags, _  = ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty.
 	)
 
-	queryType, err := QueryType(p.GetExpression())
-	if err != nil {
-		level.Warn(logger).Log("msg", "error parsing query type", "err", err)
+	queryType, queryTypeErr := QueryType(p.GetExpression())
+	if queryTypeErr != nil {
+		level.Warn(logger).Log("msg", "error parsing query type", "err", queryTypeErr)
 	}
 
 	// datasample queries are executed with limited roundtripper
@@ -153,11 +157,6 @@ func RecordRangeAndInstantQueryMetrics(
 
 	if queryType == QueryTypeMetric && rangeType == InstantType {
 		resultCache = stats.Caches.InstantMetricResult
-	}
-
-	// In the Thor engine, we track stats for log queries in a different category
-	if queryType == QueryTypeFilter && stats.QueryUsedV2Engine() {
-		resultCache = stats.Caches.LogResult
 	}
 
 	// Tag throughput metric by latency type based on a threshold.
@@ -205,10 +204,19 @@ func RecordRangeAndInstantQueryMetrics(
 		"post_filter_lines", stats.Summary.TotalPostFilterLines,
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		"store_chunks_download_time", stats.ChunksDownloadTime(),
+		"dataobj_sections_resolution_max_time", stats.DataobjSectionsResolutionMaxTime(),
+		"dataobj_logs_compacted_objects_count", stats.Querier.Store.Dataobj.LogsCompactedObjectsCount,
+		"dataobj_logs_uncompacted_objects_count", stats.Querier.Store.Dataobj.LogsUncompactedObjectsCount,
+		"dataobj_index_compacted_objects_count", stats.Querier.Store.Dataobj.IndexCompactedObjectsCount,
+		"dataobj_index_uncompacted_objects_count", stats.Querier.Store.Dataobj.IndexUncompactedObjectsCount,
+		"dataobj_logs_downloaded_bytes", stats.Querier.Store.Dataobj.LogsDownloadedBytes,
+		"dataobj_index_downloaded_bytes", stats.Querier.Store.Dataobj.IndexDownloadedBytes,
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"querier_exec_time", logql_stats.ConvertSecondsToNanoseconds(stats.Querier.QuerierExecTime),
 		"splits", stats.Summary.Splits,
 		"shards", stats.Summary.Shards,
+		"stream_first_queries", stats.Summary.StreamFirstQueries,
+		"timestamp_first_queries", stats.Summary.TimestampFirstQueries,
 		"query_referenced_structured_metadata", stats.QueryReferencedStructuredMetadata(),
 		"pipeline_wrapper_filtered_lines", stats.PipelineWrapperFilteredLines(),
 		"chunk_refs_fetch_time", stats.ChunkRefsFetchTime(),
@@ -230,11 +238,6 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_result_hit", resultCache.EntriesFound,
 		"cache_result_download_time", resultCache.CacheDownloadTime(),
 		"cache_result_query_length_served", resultCache.CacheQueryLengthServed(),
-		"cache_task_result_req", stats.Caches.TaskResult.EntriesRequested,
-		"cache_task_result_hit", stats.Caches.TaskResult.EntriesFound,
-		"cache_task_result_bytes", stats.Caches.TaskResult.BytesReceived,
-		"cache_task_result_download_time", stats.Caches.TaskResult.CacheDownloadTime(),
-		"cache_task_result_query_length_served", stats.Caches.TaskResult.CacheQueryLengthServed(),
 		// The total of chunk reference fetched from index.
 		"ingester_chunk_refs", stats.Ingester.Store.GetTotalChunksRef(),
 		// Total number of chunks fetched.
@@ -268,6 +271,8 @@ func RecordRangeAndInstantQueryMetrics(
 	if stats.Summary.EstimatedQueryBytes > 0 {
 		logValues = append(logValues, "estimated_query_bytes", util.HumanizeBytes(uint64(stats.Summary.EstimatedQueryBytes)))
 	}
+
+	logValues = appendLoglineStats(logValues, stats)
 
 	if r, ok := result.(CountMinSketchVector); ok {
 		cardinalityEstimate := r.F.HyperLogLog.Estimate()
@@ -314,6 +319,11 @@ func RecordRangeAndInstantQueryMetrics(
 		}
 	}
 
+	if err != nil {
+		category, reason := server.ClassifyFailure(err)
+		logValues = append(logValues, "err", err, "failure_category", category, "failure_reason", reason)
+	}
+
 	level.Info(logger).Log(
 		logValues...,
 	)
@@ -325,14 +335,22 @@ func RecordRangeAndInstantQueryMetrics(
 
 	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType, sharded).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
-	// Record per-tenant query bytes. For federated multi-tenant queries the aggregated
-	// byte total is divided evenly across the tenants in the request, since the stats are
-	// not broken down per tenant. This keeps the sum across tenants equal to the actual
-	// bytes processed. TenantIDs returns a normalized (sorted, de-duplicated) list.
+	// Record per-tenant query bytes. For multi-tenant queries the aggregated byte total
+	// is divided evenly across the tenants in the request, since the stats are not broken
+	// down per tenant. This keeps the sum across tenants equal to the actual bytes
+	// processed. TenantIDs returns a normalized (sorted, de-duplicated) list.
+	//
+	// The multi-tenant share is labelled multi_tenant="true" so consumers can tell it
+	// apart from single-tenant usage. Single-tenant queries use an empty value, which
+	// Prometheus treats as an absent label, so their series are unchanged.
 	if tenantIDs, err := tenant.TenantIDs(ctx); err == nil && len(tenantIDs) > 0 {
+		multiTenant := ""
+		if len(tenantIDs) > 1 {
+			multiTenant = "true"
+		}
 		bytesPerTenant := float64(stats.Summary.TotalBytesProcessed) / float64(len(tenantIDs))
 		for _, tenantID := range tenantIDs {
-			bytesProcessedTotal.WithLabelValues(tenantID).Add(bytesPerTenant)
+			bytesProcessedTotal.WithLabelValues(tenantID, multiTenant).Add(bytesPerTenant)
 		}
 	}
 	execLatency.WithLabelValues(status, queryType, rt).
@@ -503,6 +521,91 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 		"query", query,
 		"query_hash", util.HashedQuery(query),
 		"total_entries", stats.Summary.TotalEntriesReturned)
+	level.Info(logger).Log(logValues...)
+
+	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)
+}
+
+// appendLoglineStats adds the logline index fields for queries that went
+// through the logline query-frontend middleware.
+func appendLoglineStats(logValues []interface{}, stats logql_stats.Result) []interface{} {
+	l := stats.Logline
+	if l == nil {
+		return logValues
+	}
+	logValues = append(logValues, "logline_outcome", l.Outcome)
+	// A query skipped before the hint lookup has no other logline stats.
+	if l.HintStatus == "" {
+		return logValues
+	}
+
+	logValues = append(logValues,
+		"logline_hint_status", l.HintStatus,
+		"logline_hint_lookup_time", time.Duration(l.HintLookupTime),
+		"logline_hint_wait_time", time.Duration(l.HintWaitTime),
+		"logline_hint_ranges", l.HintRanges,
+		"logline_hint_ranges_duration", time.Duration(l.HintRangesDuration),
+		"logline_skipped_requests", l.SkippedRequests,
+		"logline_narrowed_requests", l.NarrowedRequests,
+		"logline_passthrough_requests", l.PassthroughRequests,
+		"logline_object_requests", l.ObjectRequests,
+		"logline_io_bytes", util.HumanizeBytes(uint64(l.IOBytes)),
+		"logline_io_wait", time.Duration(l.IOWait),
+		"shard_planned_chunks", l.PlannedChunks,
+		"logline_scanned_chunks", l.ScannedChunks,
+	)
+	// Missing when no split went through shard planning, for example when the
+	// results cache answered the whole query.
+	if l.PlannedChunks > 0 {
+		logValues = append(logValues, "logline_chunk_filter_ratio", fmt.Sprintf("%.2f", l.ChunkFilterRatio))
+	}
+	return logValues
+}
+
+func RecordLoglineIndexQueryMetrics(
+	ctx context.Context,
+	log log.Logger,
+	start, end time.Time,
+	query string,
+	status string,
+	stats logql_stats.Result,
+	hintStats *logproto.HintQueryStats,
+) {
+	var (
+		logger      = fixLogger(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeLoglineIndex
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	logValues := make([]interface{}, 0, 15)
+	logValues = append(logValues,
+		"latency", latencyType,
+		"query_type", queryType,
+		"user_agent", httpreq.ExtractHeader(ctx, "User-Agent"),
+		"start", start.Format(time.RFC3339Nano),
+		"end", end.Format(time.RFC3339Nano),
+		"start_delta", time.Since(start),
+		"end_delta", time.Since(end),
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"query", query,
+		"query_hash", util.HashedQuery(query),
+		"total_entries", stats.Summary.TotalEntriesReturned,
+	)
+	if hintStats != nil {
+		logValues = append(logValues,
+			"logline_object_requests", hintStats.ObjectStorageRequests,
+			"logline_io_bytes", util.HumanizeBytes(uint64(hintStats.TotalIOBytes)),
+			"logline_io_wait", hintStats.TotalIOWait,
+		)
+	}
 	level.Info(logger).Log(logValues...)
 
 	execLatency.WithLabelValues(status, queryType, "").Observe(stats.Summary.ExecTime)

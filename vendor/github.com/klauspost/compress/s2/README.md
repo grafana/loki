@@ -164,6 +164,7 @@ To build binaries to the current folder use:
 
 `go build github.com/klauspost/compress/s2/cmd/s2c && go build github.com/klauspost/compress/s2/cmd/s2d`
 
+With `-safe`, output uses exclusive creation and fails if any directory entry, including a dangling symbolic link, already exists at the destination.
 
 ## s2c
 
@@ -318,11 +319,11 @@ This functionality is disabled with stdin/stdout.
 
 If you wrap a TAR file you can specify `-untar` to make it untar on the destination host.
 
-Files are extracted to the current folder with the path specified in the tar file.
+Files are extracted under the selected destination directory (the current directory by default, or the optional output path).
 
 Note that tar files are not validated before they are wrapped.
 
-For security reasons files that move below the root folder are not allowed.
+Extraction operations are confined to that directory, so archive contents cannot write outside the selected root.
 
 # Performance
 
@@ -656,8 +657,9 @@ Compressing First 64KB of all `.go` files in `go/src`, Go 1.19.5, 8912 files, 51
 
 ### Creating Dictionaries
 
-There are no tools to create dictionaries in S2. 
-However, there are multiple ways to create a useful dictionary:
+The *experimental* [dictionary builder](https://github.com/klauspost/compress/tree/master/dict) can create S2 dictionaries with `dict.BuildS2Dict` or `builddict -format s2`.
+S2 dictionaries are at most 64KB, so set `-len` or `MaxDictSize` to 65536 (`s2.MaxDictSize`) or less.
+There are also other ways to create a useful dictionary:
 
 #### Using a Sample File
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"slices"
 	"sync"
 )
 
@@ -99,6 +100,16 @@ func compress(in []byte, s *Scratch, compressor func(src []byte) ([]byte, error)
 		}
 		// Do not attempt to re-use later.
 		s.prevTable = s.prevTable[:0]
+		s.Out = s.Out[:0]
+	}
+
+	var oldSize int
+	if s.Reuse == ReusePolicyAllow && canReuse {
+		oldSize = s.prevTable.estimateSize(s.count[:s.symbolLen])
+		// Skip the new table if it can't be smaller.
+		if oldSize <= s.minNewSize(len(in)) {
+			return s.compressReused(in, compressor, wantSize)
+		}
 	}
 
 	// Calculate new table.
@@ -111,35 +122,17 @@ func compress(in []byte, s *Scratch, compressor func(src []byte) ([]byte, error)
 		panic("invalid table generated")
 	}
 
+	// Write the new table first, so its size counts against it.
+	err = s.cTable.write(s)
 	if s.Reuse == ReusePolicyAllow && canReuse {
 		hSize := len(s.Out)
-		oldSize := s.prevTable.estimateSize(s.count[:s.symbolLen])
 		newSize := s.cTable.estimateSize(s.count[:s.symbolLen])
-		if oldSize <= hSize+newSize || hSize+12 >= wantSize {
-			// Retain cTable even if we re-use.
-			keepTable := s.cTable
-			keepTL := s.actualTableLog
-
-			s.cTable = s.prevTable
-			s.actualTableLog = s.prevTableLog
-			s.Out, err = compressor(in)
-
-			// Restore ctable.
-			s.cTable = keepTable
-			s.actualTableLog = keepTL
-			if err != nil {
-				return nil, false, err
-			}
-			if len(s.Out) >= wantSize {
-				return nil, false, ErrIncompressible
-			}
-			s.OutData = s.Out
-			return s.Out, true, nil
+		if err != nil || oldSize <= hSize+newSize || hSize+12 >= wantSize {
+			return s.compressReused(in, compressor, wantSize)
 		}
 	}
 
 	// Use new table
-	err = s.cTable.write(s)
 	if err != nil {
 		s.OutTable = nil
 		return nil, false, err
@@ -160,6 +153,30 @@ func compress(in []byte, s *Scratch, compressor func(src []byte) ([]byte, error)
 	s.prevTable, s.prevTableLog, s.cTable = s.cTable, s.actualTableLog, s.prevTable[:0]
 	s.OutData = s.Out[len(s.OutTable):]
 	return s.Out, false, nil
+}
+
+// compressReused compresses in with the previous table.
+func (s *Scratch) compressReused(in []byte, compressor func(src []byte) ([]byte, error), wantSize int) (out []byte, reUsed bool, err error) {
+	s.Out = s.Out[:0]
+	// Retain cTable even if we re-use.
+	keepTable := s.cTable
+	keepTL := s.actualTableLog
+
+	s.cTable = s.prevTable
+	s.actualTableLog = s.prevTableLog
+	s.Out, err = compressor(in)
+
+	// Restore ctable.
+	s.cTable = keepTable
+	s.actualTableLog = keepTL
+	if err != nil {
+		return nil, false, err
+	}
+	if len(s.Out) >= wantSize {
+		return nil, false, ErrIncompressible
+	}
+	s.OutData = s.Out
+	return s.Out, true, nil
 }
 
 // EstimateSizes will estimate the data sizes
@@ -243,23 +260,27 @@ func (s *Scratch) compress1xDo(dst, src []byte) []byte {
 		bw.encSymbol(cTable, src[n+i-1])
 	}
 	n -= 4
-	if s.actualTableLog <= 8 {
-		for ; n >= 0; n -= 4 {
-			tmp := src[n : n+4]
-			// tmp should be len 4
-			bw.flush32()
-			bw.encFourSymbols(cTable[tmp[3]], cTable[tmp[2]], cTable[tmp[1]], cTable[tmp[0]])
+
+	// flush leaves at most 7 bits, so four symbols (at most 4*tableLogMax
+	// bits) always fit. Each chunk checks room for bytesPer4 per four
+	// symbols plus the 8-byte store.
+	const bytesPer4 = (7 + 4*tableLogMax) / 8
+	w := bitState{c: bw.bitContainer, nb: uint(bw.nBits), pos: len(bw.out)}
+	buf := bw.out[:cap(bw.out)]
+	for n >= 0 {
+		k := (len(buf) - w.pos - 8) / bytesPer4
+		if k <= 0 {
+			buf = slices.Grow(buf[:w.pos], (n/4+1)*bytesPer4+8)
+			buf = buf[:cap(buf)]
+			continue
 		}
-	} else {
-		for ; n >= 0; n -= 4 {
+		for stop := max(n-4*k, -4); n > stop; n -= 4 {
+			w = w.flush(buf)
 			tmp := src[n : n+4]
-			// tmp should be len 4
-			bw.flush32()
-			bw.encTwoSymbols(cTable, tmp[3], tmp[2])
-			bw.flush32()
-			bw.encTwoSymbols(cTable, tmp[1], tmp[0])
+			w = w.add(fourSymbols(cTable[tmp[3]], cTable[tmp[2]], cTable[tmp[1]], cTable[tmp[0]]))
 		}
 	}
+	bw.bitContainer, bw.nBits, bw.out = w.c, uint8(w.nb), buf[:w.pos]
 	bw.close()
 	return bw.out
 }

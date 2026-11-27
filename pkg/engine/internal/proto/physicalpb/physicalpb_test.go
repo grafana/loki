@@ -2,50 +2,30 @@ package physicalpb_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
 	compactionv2pb "github.com/grafana/loki/v3/pkg/dataobj/compaction/v2/proto"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/postings"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
-	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
 // Test performs a basic end-to-end test ensuring that we can convert from a
 // [physical.Plan] into a [Plan] and back.
 func Test(t *testing.T) {
-	var expectedPlan *physical.Plan
-	{
-		var graph dag.Graph[physical.Node]
+	var (
+		parent = &physical.IndexFilter{NodeID: ulid.Make(), Tenant: "tenant-a", SourceIndexPaths: []string{"index/0"}, ObjectPaths: []string{"objects/0"}}
+		child  = &physical.IndexMerge{NodeID: ulid.Make(), Tenant: "tenant-a", ToCWindowStart: 1_700_000_000_000_000_000}
+	)
 
-		scanNode := graph.Add(&physical.DataObjScan{
-			NodeID: ulid.Make(),
-
-			Location:  "test-location",
-			Section:   1,
-			StreamIDs: []int64{100, 200, 300},
-			MaxTimeRange: physical.TimeRange{
-				Start: time.Date(1970, 1, 1, 1, 0, 0, 0, time.UTC),
-				End:   time.Date(1970, 1, 1, 2, 0, 0, 0, time.UTC),
-			},
-		})
-
-		limitNode := graph.Add(&physical.Limit{
-			NodeID: ulid.Make(),
-
-			Skip:  10,
-			Fetch: 100,
-		})
-
-		err := graph.AddEdge(dag.Edge[physical.Node]{Parent: limitNode, Child: scanNode})
-		require.NoError(t, err, "Failed to add edge")
-
-		expectedPlan = physical.FromGraph(graph)
-	}
+	var graph dag.Graph[physical.Node]
+	graph.Add(parent)
+	graph.Add(child)
+	require.NoError(t, graph.AddEdge(dag.Edge[physical.Node]{Parent: parent, Child: child}), "Failed to add edge")
+	expectedPlan := physical.FromGraph(graph)
 
 	var protoPlan physicalpb.Plan
 	require.NoError(t, protoPlan.UnmarshalPhysical(expectedPlan), "Failed to unmarshal physical plan")
@@ -53,256 +33,22 @@ func Test(t *testing.T) {
 	actualPlan, err := protoPlan.MarshalPhysical()
 	require.NoError(t, err, "Failed to marshal protobuf plan")
 
-	expectedOutput := physical.PrintAsTree(expectedPlan)
-	actualOutput := physical.PrintAsTree(actualPlan)
-	require.Equal(t, expectedOutput, actualOutput, "Unmarshaled plan from protobuf does not match origianl")
-}
-
-func Test_Node(t *testing.T) {
-	tt := []struct {
-		name string
-		node physical.Node
-	}{
-		{
-			name: "DataObjScan",
-			node: &physical.DataObjScan{
-				NodeID: ulid.Make(),
-
-				Location:    "object",
-				Section:     42,
-				StreamIDs:   []int64{1, 2, 3, 4, 5},
-				Projections: []physical.ColumnExpression{&physical.ColumnExpr{Ref: types.ColumnRef{Column: "test_col", Type: types.ColumnTypeLabel}}},
-				Predicates:  []physical.Expression{physical.NewLiteral("test_value")},
-			},
-		},
-		{
-			name: "Filter",
-			node: &physical.Filter{
-				NodeID: ulid.Make(),
-
-				Predicates: []physical.Expression{
-					physical.NewLiteral(true),
-					physical.NewLiteral(123),
-				},
-			},
-		},
-		{
-			name: "Limit",
-			node: &physical.Limit{
-				NodeID: ulid.Make(),
-
-				Skip:  25,
-				Fetch: 100,
-			},
-		},
-		{
-			name: "Projection",
-			node: &physical.Projection{
-				NodeID: ulid.Make(),
-
-				Expressions: []physical.Expression{
-					&physical.ColumnExpr{Ref: types.ColumnRef{Column: "col1", Type: types.ColumnTypeLabel}},
-					physical.NewLiteral(3.14),
-				},
-				All:    true,
-				Expand: true,
-				Drop:   false,
-			},
-		},
-		{
-			name: "RangeAggregation",
-			node: &physical.RangeAggregation{
-				NodeID: ulid.Make(),
-
-				Grouping: physical.Grouping{
-					Columns: []physical.ColumnExpression{
-						&physical.ColumnExpr{Ref: types.ColumnRef{Column: "partition_col", Type: types.ColumnTypeLabel}},
-					},
-					Without: false,
-				},
-				Operation: types.RangeAggregationTypeCount,
-				Start:     time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-				End:       time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-				Step:      time.Minute * 5,
-				Range:     time.Minute * 1,
-			},
-		},
-		{
-			name: "VectorAggregation",
-			node: &physical.VectorAggregation{
-				NodeID: ulid.Make(),
-
-				Grouping: physical.Grouping{
-					Columns: []physical.ColumnExpression{
-						&physical.ColumnExpr{Ref: types.ColumnRef{Column: "group_col", Type: types.ColumnTypeLabel}},
-					},
-					Without: false,
-				},
-				Operation: types.VectorAggregationTypeSum,
-			},
-		},
-		{
-			name: "ColumnCompat",
-			node: &physical.ColumnCompat{
-				NodeID: ulid.Make(),
-
-				Source:      types.ColumnTypeMetadata,
-				Destination: types.ColumnTypeMetadata,
-				Collisions:  []types.ColumnType{types.ColumnTypeLabel},
-			},
-		},
-		{
-			name: "TopK",
-			node: &physical.TopK{
-				NodeID: ulid.Make(),
-
-				SortBy:     &physical.ColumnExpr{Ref: types.ColumnRef{Column: "sort_col", Type: types.ColumnTypeBuiltin}},
-				Ascending:  true,
-				NullsFirst: true,
-				K:          10,
-			},
-		},
-		{
-			name: "Parallelize",
-			node: &physical.Parallelize{NodeID: ulid.Make()},
-		},
-		{
-			name: "Join",
-			node: &physical.Join{NodeID: ulid.Make()},
-		},
-		{
-			name: "Merge",
-			node: &physical.Merge{NodeID: ulid.Make()},
-		},
-		{
-			name: "PointersScan",
-			node: &physical.PointersScan{
-				NodeID: ulid.Make(),
-
-				Location: "index/0",
-				Selector: &physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
-					Right: physical.NewLiteral("foo"),
-					Op:    types.BinaryOpEq,
-				},
-				Predicates: []physical.Expression{
-					&physical.BinaryExpr{
-						Left:  &physical.ColumnExpr{Ref: types.ColumnRef{Column: "env", Type: types.ColumnTypeLabel}},
-						Right: physical.NewLiteral("prod"),
-						Op:    types.BinaryOpEq,
-					},
-				},
-				Start: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-				End:   time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-			},
-		},
-		{
-			name: "ScanSet",
-			node: &physical.ScanSet{
-				NodeID: ulid.Make(),
-
-				Targets: []*physical.ScanTarget{
-					{
-						Type: physical.ScanTypeDataObject,
-						DataObject: &physical.DataObjScan{
-							NodeID:    ulid.Make(),
-							Location:  "s3://bucket/target1",
-							Section:   1,
-							StreamIDs: []int64{10, 20},
-						},
-					},
-					{
-						Type: physical.ScanTypePointers,
-						Pointers: &physical.PointersScan{
-							NodeID:     ulid.Make(),
-							Location:   "index/0",
-							Selector:   physical.NewLiteral("selector"),
-							Start:      time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-							End:        time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-							Predicates: []physical.Expression{physical.NewLiteral("predicate")},
-						},
-					},
-				},
-				Projections: []physical.ColumnExpression{
-					&physical.ColumnExpr{Ref: types.ColumnRef{Column: "scan_col", Type: types.ColumnTypeBuiltin}},
-				},
-				Predicates: []physical.Expression{
-					physical.NewLiteral(types.Duration(time.Second * 30)),
-				},
-			},
-		},
-		{
-			name: "IndexMerge",
-			node: &physical.IndexMerge{
-				NodeID: ulid.Make(),
-
-				Tenant:         "tenant-a",
-				ToCWindowStart: 1_700_000_000_000_000_000,
-				Runs: []*compactionv2pb.RunRef{
-					{
-						Sections: []*compactionv2pb.SectionRef{
-							{
-								ObjectPath:   "s3://bucket/index/0",
-								SectionIndex: 1,
-								MinKey:       []string{"a", "b"},
-								MaxKey:       []string{"c", "d"},
-								MinTimestamp: 100,
-								MaxTimestamp: 200,
-							},
-							{
-								ObjectPath:   "s3://bucket/index/1",
-								SectionIndex: 2,
-								MinKey:       []string{"e"},
-								MaxKey:       []string{"f"},
-								MinTimestamp: 300,
-								MaxTimestamp: 400,
-							},
-						},
-					},
-					{
-						Sections: []*compactionv2pb.SectionRef{
-							{
-								ObjectPath:   "s3://bucket/index/2",
-								SectionIndex: 3,
-								MinKey:       []string{"g"},
-								MaxKey:       []string{"h"},
-								MinTimestamp: 500,
-								MaxTimestamp: 600,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.name, func(t *testing.T) {
-			var expectedPlan *physical.Plan
-			{
-				var graph dag.Graph[physical.Node]
-				graph.Add(tc.node)
-				expectedPlan = physical.FromGraph(graph)
-			}
-
-			var protoPlan physicalpb.Plan
-			require.NoError(t, protoPlan.UnmarshalPhysical(expectedPlan), "Failed to unmarshal physical plan")
-
-			actualPlan, err := protoPlan.MarshalPhysical()
-			require.NoError(t, err, "Failed to marshal protobuf plan")
-
-			expectedOutput := physical.PrintAsTree(expectedPlan)
-			actualOutput := physical.PrintAsTree(actualPlan)
-			require.Equal(t, expectedOutput, actualOutput, "Unmarshaled plan from protobuf does not match origianl")
-		})
-	}
+	root, err := actualPlan.Root()
+	require.NoError(t, err)
+	require.Equal(t, parent, root)
+	children := actualPlan.Children(root)
+	require.Len(t, children, 1)
+	require.Equal(t, child.ID(), children[0].ID())
 }
 
 // Test_Node_IndexMerge_RoundTrip asserts on the concrete fields of IndexMerge
-// after a protobuf round-trip. The tree printer does not render IndexMerge
-// properties, so the tree-comparison in Test_Node cannot catch dropped or
-// mangled fields; this test exercises the marshal/unmarshal logic directly.
+// after a protobuf round-trip.
 func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
+	keySpan, err := postings.NewKeySpan(
+		&postings.Key{Kind: postings.KindLabel, ColumnName: "app", LabelValue: "api"},
+		&postings.Key{Kind: postings.KindLabel, ColumnName: "env"},
+	)
+	require.NoError(t, err)
 	want := &physical.IndexMerge{
 		NodeID: ulid.Make(),
 
@@ -342,6 +88,7 @@ func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
 				},
 			},
 		},
+		KeySpan: keySpan,
 	}
 
 	var graph dag.Graph[physical.Node]
@@ -354,124 +101,85 @@ func Test_Node_IndexMerge_RoundTrip(t *testing.T) {
 	actualPlan, err := protoPlan.MarshalPhysical()
 	require.NoError(t, err, "Failed to marshal protobuf plan")
 
-	roots := actualPlan.Roots()
-	require.Len(t, roots, 1)
+	root, err := actualPlan.Root()
+	require.NoError(t, err)
 
-	got, ok := roots[0].(*physical.IndexMerge)
-	require.True(t, ok, "expected *physical.IndexMerge, got %T", roots[0])
+	got, ok := root.(*physical.IndexMerge)
+	require.True(t, ok, "expected *physical.IndexMerge, got %T", root)
 
 	require.Equal(t, want.NodeID, got.NodeID)
 	require.Equal(t, want.Tenant, got.Tenant)
 	require.Equal(t, want.ToCWindowStart, got.ToCWindowStart)
 	require.Equal(t, want.Runs, got.Runs)
+	require.Equal(t, want.KeySpan, got.KeySpan)
 }
 
-func Test_Expression(t *testing.T) {
-	tt := []struct {
-		name string
-		expr physical.Expression
-	}{
-		{
-			name: "LiteralExpr (Null)",
-			expr: physical.NewLiteral(nil),
-		},
-		{
-			name: "LiteralExpr (Bool)",
-			expr: physical.NewLiteral(true),
-		},
-		{
-			name: "LiteralExpr (String)",
-			expr: physical.NewLiteral("test_string"),
-		},
-		{
-			name: "LiteralExpr (Integer)",
-			expr: physical.NewLiteral(42),
-		},
-		{
-			name: "LiteralExpr (Float)",
-			expr: physical.NewLiteral(3.14159),
-		},
-		{
-			name: "LiteralExpr (Timestamp)",
-			expr: physical.NewLiteral(types.Timestamp(1_000_000)),
-		},
-		{
-			name: "LiteralExpr (Duration)",
-			expr: physical.NewLiteral(types.Duration(100_000)),
-		},
-		{
-			name: "LiteralExpr (Bytes)",
-			expr: physical.NewLiteral(types.Bytes(1024)),
-		},
-		{
-			name: "LiteralExpr (StringList)",
-			expr: physical.NewLiteral([]string{"item1", "item2", "item3"}),
-		},
-		{
-			name: "LiteralExpr (LabelFmtListLiteral)",
-			expr: physical.NewLiteral([]log.LabelFmt{{Name: "test_name", Value: "test_value", Rename: true}}),
-		},
-		{
-			name: "ColumnExpr",
-			expr: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "test_column", Type: types.ColumnTypeLabel},
-			},
-		},
-		{
-			name: "UnaryExpr",
-			expr: &physical.UnaryExpr{
-				Op:   types.UnaryOpNot,
-				Left: physical.NewLiteral(false),
-			},
-		},
-		{
-			name: "BinaryExpr",
-			expr: &physical.BinaryExpr{
-				Op: types.BinaryOpEq,
-				Left: &physical.ColumnExpr{
-					Ref: types.ColumnRef{Column: "left_col", Type: types.ColumnTypeLabel},
-				},
-				Right: physical.NewLiteral("comparison_value"),
-			},
-		},
-		{
-			name: "VariadicExpr",
-			expr: &physical.VariadicExpr{
-				Op: types.VariadicOpParseJSON,
-				Expressions: []physical.Expression{
-					&physical.ColumnExpr{
-						Ref: types.ColumnRef{Column: "json_column", Type: types.ColumnTypeBuiltin},
-					},
-					physical.NewLiteral("key1"),
-					physical.NewLiteral("key2"),
-				},
-			},
-		},
-	}
+func TestIndexMerge_BoundedRuns(t *testing.T) {
+	runs := []*compactionv2pb.RunRef{{Sections: []*compactionv2pb.SectionRef{{ObjectPath: "index/0"}}}}
+	end := postings.Key{Kind: postings.KindLabel, ColumnName: "env"}
+	keySpan, err := postings.NewKeySpan(nil, &end)
+	require.NoError(t, err)
+	encodedStart, encodedEnd := keySpan.Encode()
 
-	for _, tc := range tt {
-		t.Run(tc.name, func(t *testing.T) {
-			var expectedPlan *physical.Plan
-			{
-				var graph dag.Graph[physical.Node]
-				graph.Add(&physical.Filter{
-					NodeID: ulid.Make(),
+	t.Run("holds the runs of a merge with a key span in bounded_runs so an older worker finds no runs", func(t *testing.T) {
+		var pb physicalpb.IndexMerge
+		require.NoError(t, pb.UnmarshalPhysical(&physical.IndexMerge{NodeID: ulid.Make(), Tenant: "acme", Runs: runs, KeySpan: keySpan}))
+		require.Empty(t, pb.Runs)
+		require.Equal(t, runs, pb.BoundedRuns)
+	})
 
-					Predicates: []physical.Expression{tc.expr},
-				})
+	t.Run("holds the runs of a merge over every key in runs", func(t *testing.T) {
+		var pb physicalpb.IndexMerge
+		require.NoError(t, pb.UnmarshalPhysical(&physical.IndexMerge{NodeID: ulid.Make(), Tenant: "acme", Runs: runs}))
+		require.Equal(t, runs, pb.Runs)
+		require.Empty(t, pb.BoundedRuns)
+	})
 
-				expectedPlan = physical.FromGraph(graph)
-			}
+	t.Run("returns an error when a merge with a key span holds runs in runs", func(t *testing.T) {
+		pb := physicalpb.IndexMerge{Tenant: "acme", Runs: runs, StartPostingKey: encodedStart, EndPostingKey: encodedEnd}
+		_, err := pb.MarshalPhysical(ulid.Make())
+		require.ErrorContains(t, err, "holds runs in runs instead of bounded_runs")
+	})
 
-			var protoPlan physicalpb.Plan
-			require.NoError(t, protoPlan.UnmarshalPhysical(expectedPlan), "Failed to unmarshal physical plan")
+	t.Run("returns an error when a merge without a key span holds runs in bounded_runs", func(t *testing.T) {
+		pb := physicalpb.IndexMerge{Tenant: "acme", BoundedRuns: runs}
+		_, err := pb.MarshalPhysical(ulid.Make())
+		require.ErrorContains(t, err, "holds runs in bounded_runs")
+	})
 
-			actualPlan, err := protoPlan.MarshalPhysical()
-			require.NoError(t, err, "Failed to marshal protobuf plan")
+	t.Run("keeps the key span without an end and the stats sources of the last task of a split", func(t *testing.T) {
+		start := postings.Key{Kind: postings.KindLabel, ColumnName: "env"}
+		fromEnv, err := postings.NewKeySpan(&start, nil)
+		require.NoError(t, err)
+		var pb physicalpb.IndexMerge
+		require.NoError(t, pb.UnmarshalPhysical(&physical.IndexMerge{NodeID: ulid.Make(), Tenant: "acme", Runs: runs, KeySpan: fromEnv, StatsSources: []string{"index/0"}}))
+		node, err := pb.MarshalPhysical(ulid.Make())
+		require.NoError(t, err)
+		got, ok := node.(*physical.IndexMerge)
+		require.True(t, ok, "node is %T", node)
+		require.Equal(t, fromEnv, got.KeySpan)
+		require.Equal(t, runs, got.Runs)
+		require.Equal(t, []string{"index/0"}, got.StatsSources)
+	})
 
-			expectedOutput := physical.PrintAsTree(expectedPlan)
-			actualOutput := physical.PrintAsTree(actualPlan)
-			require.Equal(t, expectedOutput, actualOutput, "Unmarshaled plan from protobuf does not match origianl")
-		})
-	}
+	t.Run("returns an error when a posting key bound does not decode", func(t *testing.T) {
+		pb := physicalpb.IndexMerge{Tenant: "acme", StartPostingKey: []byte{0xff}, BoundedRuns: runs}
+		_, err := pb.MarshalPhysical(ulid.Make())
+		require.ErrorContains(t, err, "IndexMerge key span")
+	})
+}
+
+func TestIndexFilter_RoundTrip(t *testing.T) {
+	t.Run("keeps every source path of an index run in order", func(t *testing.T) {
+		want := &physical.IndexFilter{
+			NodeID: ulid.Make(), Tenant: "acme",
+			SourceIndexPaths: []string{"index/b", "index/a"}, ObjectPaths: []string{"logs/a"},
+		}
+		var pb physicalpb.IndexFilter
+		require.NoError(t, pb.UnmarshalPhysical(want))
+
+		got, err := pb.MarshalPhysical(want.NodeID)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	})
 }

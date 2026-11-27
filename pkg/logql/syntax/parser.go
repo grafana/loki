@@ -9,8 +9,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/util"
+	logqlerr "github.com/grafana/loki/v3/pkg/logql/errors"
+	syntaxutil "github.com/grafana/loki/v3/pkg/util/syntax"
 )
 
 const (
@@ -60,7 +60,7 @@ type parser struct {
 
 // ParseExpr parses a string and returns an Expr.
 func ParseExpr(input string) (Expr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -70,25 +70,25 @@ func ParseExpr(input string) (Expr, error) {
 	return expr, nil
 }
 
-// parseExprWithoutValidation parses a string and returns an Expr, skipping the
+// ParseExprWithoutValidation parses a string and returns an Expr, skipping the
 // semantic validation done by ParseExpr.
 //
 // The parse itself is inlined here rather than living on the parser type: parts
 // of LogQL parsing panic deliberately and rely on the recover below, so there
 // must be no way to invoke them without it.
-func parseExprWithoutValidation(input string) (expr Expr, err error) {
+func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	if len(input) >= maxInputSize {
-		return nil, logqlmodel.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
+		return nil, logqlerr.NewParseError(fmt.Sprintf("input size too long (%d > %d)", len(input), maxInputSize), 0, 0)
 	}
 
 	defer func() {
 		if r := recover(); r != nil {
 			var ok bool
 			if err, ok = r.(error); ok {
-				if errors.Is(err, logqlmodel.ErrParse) {
+				if errors.Is(err, logqlerr.ErrParse) {
 					return
 				}
-				err = logqlmodel.NewParseError(err.Error(), 0, 0)
+				err = logqlerr.NewParseError(err.Error(), 0, 0)
 			}
 		}
 	}()
@@ -120,19 +120,33 @@ func MustParseExpr(input string) Expr {
 func validateExpr(expr Expr) error {
 	switch e := expr.(type) {
 	case SampleExpr:
+		// A histogram vector cannot be a query result, because the query API
+		// only returns float samples. ParseExpr is for the queries that users
+		// write, and this is where they get the error early, as a client error.
+		//
+		// The part of a sharded query that a shard runs has a histogram at its
+		// root too, and it is not a user query. It must not be exempt because of
+		// the way it arrives, as a plan, which is not parsed and so never gets
+		// here: whatever evaluates it has to know that it is a shard, and refuse
+		// a histogram result otherwise. Code that has to parse the string of
+		// such a part uses ParseExprWithoutValidation.
+		// TODO: allow it for every query once results can carry native histograms.
+		if isHistogramValued(e) {
+			return logqlerr.NewParseError("a histogram_over_time expression returns a histogram, which a query cannot return, read it with a histogram_* function", 0, 0)
+		}
 		return validateSampleExpr(e)
 	case LogSelectorExpr:
 		return validateLogSelectorExpression(e)
 	default:
-		return logqlmodel.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
+		return logqlerr.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
 	}
 }
 
 // ValidateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
 func ValidateMatchers(matchers []*labels.Matcher) error {
-	_, matchers = util.SplitFiltersAndMatchers(matchers)
+	_, matchers = syntaxutil.SplitFiltersAndMatchers(matchers)
 	if len(matchers) == 0 {
-		return logqlmodel.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
+		return logqlerr.NewParseError(errAtleastOneEqualityMatcherRequired, 0, 0)
 	}
 	return nil
 }
@@ -148,7 +162,7 @@ func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
 	if validate {
 		expr, err = ParseExpr(input)
 	} else {
-		expr, err = parseExprWithoutValidation(input)
+		expr, err = ParseExprWithoutValidation(input)
 	}
 
 	if err != nil {
@@ -156,7 +170,7 @@ func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
 	}
 	matcherExpr, ok := expr.(*MatchersExpr)
 	if !ok {
-		return nil, logqlmodel.ErrParseMatchers
+		return nil, logqlerr.ErrParseMatchers
 	}
 	return matcherExpr.Mts, nil
 }
@@ -185,6 +199,9 @@ func validateSampleExpr(expr SampleExpr) error {
 		if e.err != nil {
 			return e.err
 		}
+		if err := validateHistogramUse(e); err != nil {
+			return err
+		}
 		if err := validateSampleExpr(e.SampleExpr); err != nil {
 			return err
 		}
@@ -202,6 +219,9 @@ func validateSampleExpr(expr SampleExpr) error {
 	case *VectorAggregationExpr:
 		if e.err != nil {
 			return e.err
+		}
+		if err := validateHistogramUse(e); err != nil {
+			return err
 		}
 		if e.Operation == OpTypeSort || e.Operation == OpTypeSortDesc {
 			if err := validateSortGrouping(e.Grouping); err != nil {
@@ -229,7 +249,19 @@ func validateSampleExpr(expr SampleExpr) error {
 		if e.err != nil {
 			return e.err
 		}
+		if err := validateHistogramUse(e); err != nil {
+			return err
+		}
 		return validateSampleExpr(e.Left)
+	case *HistogramFuncExpr:
+		if e.err != nil {
+			return e.err
+		}
+		// Validate the argument first, so its own error is not hidden by the check that it is a histogram.
+		if err := validateSampleExpr(e.Left); err != nil {
+			return err
+		}
+		return validateHistogramFunc(e)
 	default:
 		return validateSampleSelector(e)
 	}
@@ -256,14 +288,14 @@ func validateLogSelectorExpression(expr LogSelectorExpr) error {
 // This will keep compatibility with promql and allowing sort by (foo) doesn't make much sense anyway when sort orders by value instead of labels.
 func validateSortGrouping(grouping *Grouping) error {
 	if grouping != nil && len(grouping.Groups) > 0 {
-		return logqlmodel.NewParseError("sort and sort_desc doesn't allow grouping by ", 0, 0)
+		return logqlerr.NewParseError("sort and sort_desc doesn't allow grouping by ", 0, 0)
 	}
 	return nil
 }
 
 // ParseLogSelector parses a log selector expression `{app="foo"} |= "filter"`
 func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
-	expr, err := parseExprWithoutValidation(input)
+	expr, err := ParseExprWithoutValidation(input)
 	if err != nil {
 		return nil, err
 	}
@@ -288,23 +320,30 @@ func MustParseLogSelector(input string, validate bool) LogSelectorExpr {
 	return expr
 }
 
-// ParseLabels parses labels from a string using logql parser.
+// ParseLabels parses stream labels from a string using the logql parser.
+//
+// It drops labels with an empty value. An empty value and an absent label mean
+// the same thing in Prometheus, but they hash differently, so Loki normalizes
+// them away to keep a stream's hash stable.
 func ParseLabels(lbs string) (labels.Labels, error) {
-	if len(lbs) > maxStreamLabelsSize {
-		return labels.EmptyLabels(), fmt.Errorf("labels size %d MiB exceeds limit of %d", len(lbs)>>20, maxStreamLabelsSize>>20)
-	}
-	ls, err := promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
+	ls, err := ParseMetric(lbs)
 	if err != nil {
 		return labels.EmptyLabels(), err
 	}
-
-	// Empty label values are equivalent to absent labels
-	// in Prometheus, but they unfortunately alter the
-	// Hash values created. This can cause problems in Loki
-	// if we can't rely on a set of labels to have a deterministic
-	// hash value.
-	// Therefore we must normalize early in the write path.
-	// See https://github.com/grafana/loki/pull/7355
-	// for more information
 	return ls.WithoutEmpty(), nil
+}
+
+// ParseMetric parses a label set from a string using the logql parser,
+// keeping empty-value labels.
+//
+// Use this for labels that come from query processing, such as range-vector
+// aggregation output or extracted fields, where an empty value is distinct
+// from an absent label. Use ParseLabels instead for stream labels read from
+// storage, which Loki normalizes to drop empty values at write time.
+func ParseMetric(lbs string) (labels.Labels, error) {
+	if len(lbs) > maxStreamLabelsSize {
+		return labels.EmptyLabels(), fmt.Errorf("labels size %d MiB exceeds limit of %d", len(lbs)>>20, maxStreamLabelsSize>>20)
+	}
+	//nolint:forbidigo // this is the wrapper other packages must call instead
+	return promql_parser.NewParser(promql_parser.Options{}).ParseMetric(lbs)
 }

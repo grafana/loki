@@ -544,9 +544,9 @@ var File_google_monitoring_v3_uptime_service_proto protoreflect.FileDescriptor
 
 const file_google_monitoring_v3_uptime_service_proto_rawDesc = "" +
 	"\n" +
-	")google/monitoring/v3/uptime_service.proto\x12\x14google.monitoring.v3\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a!google/monitoring/v3/uptime.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\"\xc0\x01\n" +
-	"\x1dListUptimeCheckConfigsRequest\x12K\n" +
-	"\x06parent\x18\x01 \x01(\tB3\xe0A\x02\xfaA-\x12+monitoring.googleapis.com/UptimeCheckConfigR\x06parent\x12\x16\n" +
+	")google/monitoring/v3/uptime_service.proto\x12\x14google.monitoring.v3\x1a\x1cgoogle/api/annotations.proto\x1a\x17google/api/client.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x19google/api/resource.proto\x1a!google/monitoring/v3/uptime.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a google/protobuf/field_mask.proto\"\xc1\x01\n" +
+	"\x1dListUptimeCheckConfigsRequest\x12L\n" +
+	"\x06parent\x18\x01 \x01(\tB4\xe2A\x01\x02\xfaA-\x12+monitoring.googleapis.com/UptimeCheckConfigR\x06parent\x12\x16\n" +
 	"\x06filter\x18\x02 \x01(\tR\x06filter\x12\x1b\n" +
 	"\tpage_size\x18\x03 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
@@ -555,19 +555,19 @@ const file_google_monitoring_v3_uptime_service_proto_rawDesc = "" +
 	"\x14uptime_check_configs\x18\x01 \x03(\v2'.google.monitoring.v3.UptimeCheckConfigR\x12uptimeCheckConfigs\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1d\n" +
 	"\n" +
-	"total_size\x18\x03 \x01(\x05R\ttotalSize\"f\n" +
-	"\x1bGetUptimeCheckConfigRequest\x12G\n" +
-	"\x04name\x18\x01 \x01(\tB3\xe0A\x02\xfaA-\n" +
-	"+monitoring.googleapis.com/UptimeCheckConfigR\x04name\"\xcb\x01\n" +
-	"\x1eCreateUptimeCheckConfigRequest\x12K\n" +
-	"\x06parent\x18\x01 \x01(\tB3\xe0A\x02\xfaA-\x12+monitoring.googleapis.com/UptimeCheckConfigR\x06parent\x12\\\n" +
-	"\x13uptime_check_config\x18\x02 \x01(\v2'.google.monitoring.v3.UptimeCheckConfigB\x03\xe0A\x02R\x11uptimeCheckConfig\"\xbb\x01\n" +
+	"total_size\x18\x03 \x01(\x05R\ttotalSize\"g\n" +
+	"\x1bGetUptimeCheckConfigRequest\x12H\n" +
+	"\x04name\x18\x01 \x01(\tB4\xe2A\x01\x02\xfaA-\n" +
+	"+monitoring.googleapis.com/UptimeCheckConfigR\x04name\"\xcd\x01\n" +
+	"\x1eCreateUptimeCheckConfigRequest\x12L\n" +
+	"\x06parent\x18\x01 \x01(\tB4\xe2A\x01\x02\xfaA-\x12+monitoring.googleapis.com/UptimeCheckConfigR\x06parent\x12]\n" +
+	"\x13uptime_check_config\x18\x02 \x01(\v2'.google.monitoring.v3.UptimeCheckConfigB\x04\xe2A\x01\x02R\x11uptimeCheckConfig\"\xbc\x01\n" +
 	"\x1eUpdateUptimeCheckConfigRequest\x12;\n" +
 	"\vupdate_mask\x18\x02 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\x12\\\n" +
-	"\x13uptime_check_config\x18\x03 \x01(\v2'.google.monitoring.v3.UptimeCheckConfigB\x03\xe0A\x02R\x11uptimeCheckConfig\"i\n" +
-	"\x1eDeleteUptimeCheckConfigRequest\x12G\n" +
-	"\x04name\x18\x01 \x01(\tB3\xe0A\x02\xfaA-\n" +
+	"updateMask\x12]\n" +
+	"\x13uptime_check_config\x18\x03 \x01(\v2'.google.monitoring.v3.UptimeCheckConfigB\x04\xe2A\x01\x02R\x11uptimeCheckConfig\"j\n" +
+	"\x1eDeleteUptimeCheckConfigRequest\x12H\n" +
+	"\x04name\x18\x01 \x01(\tB4\xe2A\x01\x02\xfaA-\n" +
 	"+monitoring.googleapis.com/UptimeCheckConfigR\x04name\"W\n" +
 	"\x19ListUptimeCheckIpsRequest\x12\x1b\n" +
 	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +

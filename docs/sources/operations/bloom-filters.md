@@ -1,5 +1,5 @@
 ---
-title: Manage bloom filter building and querying (Experimental)
+title: Manage bloom filter building and querying (Deprecated)
 menuTitle: Bloom filters
 description: Describes how to enable and configure query acceleration with bloom filters.
 weight:
@@ -9,12 +9,10 @@ keywords:
 aliases:
   - ./query-acceleration-blooms
 ---
-# Manage bloom filter building and querying (Experimental)
+# Manage bloom filter building and querying (Deprecated)
 
 {{< admonition type="warning" >}}
-In Loki and Grafana Enterprise Logs (GEL), Query acceleration using blooms is an [experimental feature](https://grafana.com/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. Note that this feature is intended for users who are ingesting more than 75TB of logs a month, as it is designed to accelerate queries against large volumes of logs.
-
-In Grafana Cloud, Query acceleration using bloom filters is enabled as a [public preview](https://grafana.com/docs/release-life-cycle/) for select large-scale customers that are ingesting more that 75TB of logs a month. Limited support and no SLA are provided.
+In Loki and Grafana Enterprise Logs (GEL), Query acceleration using blooms is deprecated and will be removed in a future release. Engineering and on-call support is not available. No SLA is provided. Note that this feature is intended for users who are ingesting more than 75TB of logs a month, as it is designed to accelerate queries against large volumes of logs.
 {{< /admonition >}}
 
 Loki leverages [bloom filters](https://en.wikipedia.org/wiki/Bloom_filter) to speed up queries by reducing the amount of data Loki needs to load from the store and iterate through.
@@ -42,8 +40,8 @@ The reason is that bloom filters also come with a relatively high cost for both 
 
 To start building and using blooms you need to:
 
-- Deploy the [Bloom Planner and Builder](#bloom-planner-and-builder) components (as [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) or via the [SSD](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) `backend` target) and enable the components in the [Bloom Build config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build).
-- Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) or via the [SSD](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable) `backend` target) and enable the component in the [Bloom Gateway config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway).
+- Deploy the [Bloom Planner and Builder](#bloom-planner-and-builder) components (as [microservices](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode)) and enable the components in the [Bloom Build config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build).
+- Deploy the [Bloom Gateway](#bloom-gateway) component (as a [microservice](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode)) and enable the component in the [Bloom Gateway config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway).
 - Enable blooms building and filtering for each tenant individually, or for all of them by default.
 
 ```yaml
@@ -70,7 +68,7 @@ limits_config:
 ```
 
 For more configuration options refer to the [Bloom Gateway](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway), [Bloom Build](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build) and [per tenant-limits](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) configuration docs.
-We strongly recommend reading the whole documentation for this experimental feature before using it.
+We strongly recommend reading the whole documentation for this deprecated feature before using it.
 
 ## Bloom Planner and Builder
 
@@ -201,7 +199,7 @@ For example, given structured metadata `foo=bar` in the chunk `c6dj8g`, we appen
 
 ## Query sharding
 
-Query acceleration does not just happen while processing chunks, but also happens from the query planning phase where the query frontend applies [query sharding](https://lokidex.com/posts/tsdb/#sharding).
+Query acceleration does not just happen while processing chunks, but also happens from the query planning phase where the query frontend applies [query sharding](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/tsdb/#dynamic-query-sharding).
 Loki 3.0 introduces a new [per-tenant configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config) flag `tsdb_sharding_strategy` which defaults to computing shards as in previous versions of Loki by using the index stats to come up with the closest power of two that would optimistically divide the data to process in shards of roughly the same size.
 Unfortunately, the amount of data each stream has is often unbalanced with the rest, therefore, some shards end up processing more data than others.
 

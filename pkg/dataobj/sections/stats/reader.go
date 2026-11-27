@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/arrowconv"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	memoryv2 "github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -31,8 +32,8 @@ type Section struct {
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
-	} else if section.Type.Version != columnar.FormatVersion {
-		return nil, fmt.Errorf("unsupported section version: got=%d want=%d", section.Type.Version, columnar.FormatVersion)
+	} else if !columnar.IsSupportedVersion(section.Type.Version) {
+		return nil, fmt.Errorf("unsupported section version: got=%d", section.Type.Version)
 	}
 
 	dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
@@ -73,12 +74,52 @@ func (s *Section) init() error {
 	return nil
 }
 
+// Layout returns the stream layout that the section records. ok is false if
+// the section records none, as sections written before stats sections
+// recorded a layout do.
+//
+// Layout returns an error if the recorded layout is not one that
+// [streams.NewLayout] can produce.
+func (s *Section) Layout() (layout streams.Layout, ok bool, err error) {
+	return streams.LayoutFromSortInfo(s.inner.SortInfo())
+}
+
 // Columns returns the set of Columns in the section. The slice of returned
 // columns must not be mutated.
 //
 // Unrecognized columns (e.g., when running older code against newer stats
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
+
+// Empty reports whether the section has no physical columns, as a section
+// from a [LayoutSectionBuilder] has. An empty section has no rows. A section
+// whose columns are all of types that this code does not know is not empty.
+func (s *Section) Empty() bool { return len(s.inner.Columns()) == 0 }
+
+// ObjectPathColumn returns the object_path column of the section. ok is false
+// for an empty section, which has no rows.
+//
+// It returns an error if a section that is not empty has no object_path column
+// or more than one. A reader that needs every object path must not skip such a
+// section, because it could miss object paths.
+func (s *Section) ObjectPathColumn() (column *Column, ok bool, err error) {
+	if s.Empty() {
+		return nil, false, nil
+	}
+	for _, c := range s.columns {
+		if c.Type != ColumnTypeObjectPath {
+			continue
+		}
+		if column != nil {
+			return nil, false, errors.New("stats section has more than one object_path column")
+		}
+		column = c
+	}
+	if column == nil {
+		return nil, false, errors.New("stats section has no object_path column")
+	}
+	return column, true, nil
+}
 
 // A Column represents one of the columns in the stats section. Valid columns
 // can only be retrieved by calling [Section.Columns].
@@ -94,6 +135,10 @@ type Column struct {
 
 var tracer = otel.Tracer("pkg/dataobj/sections/stats")
 
+// RowReaderStatsTracker is the type of [ReaderOptions.StatsTracker] and of the
+// tracker argument of [NewRowReader].
+type RowReaderStatsTracker = dataset.RowReaderStatsTracker
+
 // ReaderOptions customizes the behavior of a [Reader].
 type ReaderOptions struct {
 	// Columns to read. Each column must belong to the same [Section].
@@ -102,6 +147,9 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
+
+	// StatsTracker keeps track of the various reader internal stats.
+	StatsTracker dataset.RowReaderStatsTracker
 }
 
 // validate returns an error if opts is invalid. ReaderOptions are valid when
@@ -231,8 +279,9 @@ func (r *Reader) init(ctx context.Context) error {
 
 	innerOptions := dataset.RowReaderOptions{
 		Dataset:           dset,
-		Columns:           dset.Columns(),
+		ProjectedColumns:  dset.Columns(),
 		PrefetchAllOnOpen: true,
+		StatsTracker:      r.opts.StatsTracker,
 	}
 	if r.inner == nil {
 		r.inner = columnar.NewReaderAdapter(innerOptions)

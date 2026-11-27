@@ -137,6 +137,33 @@ func (r *Region) Observations() []AggregatedObservation {
 	return observations
 }
 
+// ObservationForStatistic returns a copy of the aggregated observation the
+// region recorded for stat, or nil if it recorded none. Unlike [Region.Observations]
+// it does not copy the observations of other statistics.
+func (r *Region) ObservationForStatistic(stat Statistic) *AggregatedObservation {
+	if r == nil {
+		return nil
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	agg, ok := r.observations[stat.Key()]
+	if !ok {
+		return nil
+	}
+	observation := *agg
+	return &observation
+}
+
+// Int64Value returns the value that the region recorded for the integer statistic stat. It returns
+// zero when the region recorded nothing for stat, when stat is not an integer statistic, and when
+// the region is nil.
+func (r *Region) Int64Value(stat Statistic) int64 {
+	value, _ := r.ObservationForStatistic(stat).Int64()
+	return value
+}
+
 // MergeObservations folds all observations from src into r using
 // [AggregatedObservation.Merge] semantics.
 func (r *Region) MergeObservations(src *Region) {

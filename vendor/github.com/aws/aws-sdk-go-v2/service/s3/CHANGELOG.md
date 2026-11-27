@@ -1,3 +1,70 @@
+# v1.116.0 (2026-11-18)
+
+* **Feature**: Adds exclusions and Multi-Region key resolution to S3 Replication. Rule filters support a Not element to exclude prefixes and object tags. Destination EncryptionConfiguration supports UseSourceMultiRegionKey to encrypt replicas with the related replica KMS multi-Region key in the destination Region.
+
+# v1.115.0 (2026-11-17)
+
+* **Feature**: For the S3 operations AbortMultipartUpload, CreateMultipartUpload, ListParts, UploadPart, UploadPartCopy, the Object Version ID is returned as a response header, if the bucket has versioning enabled. For ListMultipartUploads, it will be returned in the response body.
+
+# v1.114.10 (2026-11-10)
+
+* **Bug Fix**: Sign the S3 Express CreateSession call with the same credentials used to build the session cache key, and give each derived client its own bound S3 Express credentials provider.
+* **Dependency Update**: Update to smithy-go v1.28.9.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.9 (2026-11-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.8 (2026-11-05)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.7 (2026-11-04)
+
+* **Dependency Update**: Update to smithy-go v1.28.8.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.6 (2026-10-27)
+
+* **Dependency Update**: Update to smithy-go v1.28.7.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.5 (2026-10-22)
+
+* **Bug Fix**: Update smithy-go to v1.28.6
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.4 (2026-10-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.3 (2026-10-09.2)
+
+* **Dependency Update**: Update to smithy-go v1.28.5.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.2 (2026-10-08)
+
+* **Dependency Update**: Update to smithy-go v1.28.4.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.114.1 (2026-10-06)
+
+* No change notes available for this release.
+
+# v1.114.0 (2026-09-30)
+
+* **Feature**: Amazon S3 adds a new optional S3 Inventory field, IntelligentTieringReferenceDate, reporting the reference date S3 Intelligent-Tiering uses to evaluate an object's tier-transition eligibility. The value is populated for objects in the Intelligent-Tiering storage class and left blank for others.
+
+# v1.113.4 (2026-09-24)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.113.3 (2026-09-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.113.2 (2026-09-21)
 
 * **Bug Fix**: Expand S3 operations that check for an error inside an HTTP 200 response (wave 4/4)

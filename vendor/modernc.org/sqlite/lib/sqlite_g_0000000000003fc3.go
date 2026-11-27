@@ -4,11 +4,17 @@
 
 package sqlite3
 
+const CLOCKS_PER_SEC = 1000000
+
+const CLOCK_MONOTONIC_RAW = 4
+
 const FP_ILOGBNAN = -2147483648
 
 const HAVE_PREAD = 1
 
 const HAVE_PWRITE = 1
+
+const HUGE = 3.4028234663852886e+38
 
 type Tiovec = struct {
 	Fiov_base uintptr

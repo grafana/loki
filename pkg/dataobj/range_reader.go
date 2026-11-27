@@ -8,10 +8,11 @@ import (
 
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/v3/pkg/xcap"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
-// rangeReader is an interface that can read a range of bytes from an object.
+// rangeReader reads ranges of bytes from an object.
 type rangeReader interface {
 	// Size returns the full size of the object.
 	Size(ctx context.Context) (int64, error)
@@ -23,8 +24,95 @@ type rangeReader interface {
 	// ReadRange returns a reader over a range of bytes. Callers may create
 	// multiple concurrent instances of ReadRange.
 	ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error)
+
+	// ReadRanges returns the bytes of each range. The result has one slice for
+	// each range, in the order of ranges. It returns an error if a range has a
+	// negative offset or length, or an end that overflows an int64.
+	//
+	// A returned slice can alias memory that the reader shares. The caller must
+	// not modify it.
+	//
+	// ReadRanges returns the same bytes as ReadRange. A reader that embeds
+	// another reader and overrides ReadRange must override ReadRanges too. The
+	// promoted ReadRanges would not call the new ReadRange.
+	ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error)
 }
 
+// absoluteByteRange is a range of bytes in an object. Its Offset counts from the
+// start of the object.
+type absoluteByteRange RelativeByteRange
+
+// validateAbsoluteByteRange returns an error if r has a negative offset or length,
+// or if its end does not fit in an int64.
+func validateAbsoluteByteRange(r absoluteByteRange) error {
+	if r.Offset < 0 || r.Length < 0 {
+		return fmt.Errorf("parameters must not be negative: offset=%d length=%d", r.Offset, r.Length)
+	}
+	if r.Offset+r.Length < r.Offset {
+		return fmt.Errorf("range overflows int64: offset=%d length=%d", r.Offset, r.Length)
+	}
+	return nil
+}
+
+// readRanges reads each range from rr into a new buffer.
+func readRanges(ctx context.Context, rr rangeReader, ranges []absoluteByteRange) ([][]byte, error) {
+	var (
+		results = make([][]byte, len(ranges))
+		toRead  = make([]rangeio.Range, 0, len(ranges))
+	)
+
+	for i, r := range ranges {
+		if err := validateAbsoluteByteRange(r); err != nil {
+			return nil, err
+		}
+		results[i] = make([]byte, r.Length)
+
+		// Leave a range of zero length out of the read. rangeio merges close ranges, so it would
+		// stretch the read of a range near it.
+		if r.Length > 0 {
+			toRead = append(toRead, rangeio.Range{Data: results[i], Offset: r.Offset})
+		}
+	}
+
+	if err := readIORanges(ctx, rr, toRead); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+// readIORanges reads each range from rr into the Data of the range, with one rangeio call. It is
+// readRanges for rangeio ranges: the caller owns the buffers. rangeio can merge close ranges, so a
+// read can cover bytes that no range holds.
+func readIORanges(ctx context.Context, rr rangeReader, ranges []rangeio.Range) error {
+	// Skip rangeio for an empty slice. It would start an empty trace span.
+	if len(ranges) == 0 {
+		return nil
+	}
+
+	return rangeio.ReadRanges(ctx, rangeIOReader{rr: rr}, ranges)
+}
+
+// rangeIOReader adapts a rangeReader to a [rangeio.Reader].
+type rangeIOReader struct {
+	rr rangeReader
+}
+
+var _ rangeio.Reader = rangeIOReader{}
+
+func (r rangeIOReader) ReadRange(ctx context.Context, rg rangeio.Range) (n int, err error) {
+	rc, err := r.rr.ReadRange(ctx, rg.Offset, rg.Len())
+	if err != nil {
+		return 0, err
+	}
+	// After a full read, rangeio ignores the error that this function returns, so a Close error has
+	// no effect. After a short read, CloseAndHandleError keeps the read error.
+	defer util.CloseAndHandleError(rc, &err)
+
+	return io.ReadFull(rc, rg.Data)
+}
+
+// bucketRangeReader reads an object from a bucket. It records no statistics.
+// [FromBucket] gives it an instrumented bucket, which does.
 type bucketRangeReader struct {
 	bucket objstore.BucketReader
 	path   string
@@ -39,52 +127,15 @@ func (rr *bucketRangeReader) Size(ctx context.Context) (int64, error) {
 }
 
 func (rr *bucketRangeReader) Read(ctx context.Context) (io.ReadCloser, error) {
-	rc, err := rr.bucket.Get(ctx, rr.path)
-	if err != nil {
-		return nil, err
-	}
-	return newDownloadCountingReadCloser(ctx, rc), nil
+	return rr.bucket.Get(ctx, rr.path)
 }
 
 func (rr *bucketRangeReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
-	rc, err := rr.bucket.GetRange(ctx, rr.path, offset, length)
-	if err != nil {
-		return nil, err
-	}
-	return newDownloadCountingReadCloser(ctx, rc), nil
+	return rr.bucket.GetRange(ctx, rr.path, offset, length)
 }
 
-// downloadCountingReadCloser wraps an [io.ReadCloser] returned by an
-// object-store request and accumulates the number of bytes read from it.
-// The accumulated total is recorded against [StatObjectBytesDownloaded] on
-// [xcap.Region] in the context (if any) when the reader is closed, so the
-// total reflects bytes actually transferred from storage rather than the
-// requested range size.
-type downloadCountingReadCloser struct {
-	inner  io.ReadCloser
-	region *xcap.Region
-	n      int64
-}
-
-func newDownloadCountingReadCloser(ctx context.Context, rc io.ReadCloser) *downloadCountingReadCloser {
-	return &downloadCountingReadCloser{
-		inner:  rc,
-		region: xcap.RegionFromContext(ctx),
-	}
-}
-
-func (rc *downloadCountingReadCloser) Read(p []byte) (int, error) {
-	n, err := rc.inner.Read(p)
-	rc.n += int64(n)
-	return n, err
-}
-
-func (rc *downloadCountingReadCloser) Close() error {
-	if rc.n > 0 {
-		rc.region.Record(StatObjectBytesDownloaded.Observe(rc.n))
-		rc.n = 0
-	}
-	return rc.inner.Close()
+func (rr *bucketRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error) {
+	return readRanges(ctx, rr, ranges)
 }
 
 type readerAtRangeReader struct {
@@ -103,7 +154,7 @@ func (rr *readerAtRangeReader) Read(ctx context.Context) (io.ReadCloser, error) 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	return io.NopCloser(io.NewSectionReader(rr.r, 0, rr.size)), nil
+	return nopCloserWithObjectSize{io.NewSectionReader(rr.r, 0, rr.size)}, nil
 }
 
 func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
@@ -112,5 +163,43 @@ func (rr *readerAtRangeReader) ReadRange(ctx context.Context, offset int64, leng
 	} else if length > math.MaxInt {
 		return nil, fmt.Errorf("length too large: %d", length)
 	}
-	return io.NopCloser(io.NewSectionReader(rr.r, offset, length)), nil
+	return nopCloserWithObjectSize{io.NewSectionReader(rr.r, offset, length)}, nil
 }
+
+func (rr *readerAtRangeReader) ReadRanges(ctx context.Context, ranges []absoluteByteRange) ([][]byte, error) {
+	return readRanges(ctx, rr, ranges)
+}
+
+// nopCloserWithObjectSize reads a section of an object and reports the size
+// of the section. Its Close does nothing.
+//
+// It implements [objstore.ObjectSizer], so an upload of the reader knows its
+// size. Without the size, the S3 client starts a multipart upload, even for a
+// small object, and allocates a part buffer of about 528MiB for each upload.
+//
+// It implements [io.Seeker], so the S3 client can rewind the reader and retry
+// a failed request. The S3 client seeks to the start of the section before
+// each attempt. So ObjectSize returns the size of the whole section, not the
+// number of unread bytes.
+//
+// It does not implement [io.ReaderAt]. If the reader has it, the S3 client
+// reads the upload through ReadAt, and the objstore upload metrics miss those
+// bytes, because they count only what Read returns.
+//
+// It is not safe for concurrent use.
+type nopCloserWithObjectSize struct {
+	r *io.SectionReader
+}
+
+var _ objstore.ObjectSizer = nopCloserWithObjectSize{}
+
+func (r nopCloserWithObjectSize) Read(p []byte) (int, error) { return r.r.Read(p) }
+
+func (r nopCloserWithObjectSize) Seek(offset int64, whence int) (int64, error) {
+	return r.r.Seek(offset, whence)
+}
+
+func (r nopCloserWithObjectSize) Close() error { return nil }
+
+// ObjectSize returns the size of the whole section, whatever the read offset.
+func (r nopCloserWithObjectSize) ObjectSize() (int64, error) { return r.r.Size(), nil }

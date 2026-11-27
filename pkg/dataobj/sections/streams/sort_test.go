@@ -7,18 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewSortKey(t *testing.T) {
-	streamLabels := labels.FromStrings("app", "api", "cluster", "prod")
-	hash := labels.StableHash(streamLabels)
-
-	key := NewSortKey(streamLabels, "fake-schema-key")
-
-	require.Equal(t, ShardBucketFromHash(hash), key.ShardBucket)
-	require.Equal(t, "fake-schema-key", key.SchemaKey)
-	require.Equal(t, hash, key.Hash)
-	require.Equal(t, streamLabels, key.Labels)
-}
-
 func TestSortKeyCompare(t *testing.T) {
 	tests := []struct {
 		name string
@@ -71,4 +59,29 @@ func TestCompareSortKeyUsesLabelsAsTieBreaker(t *testing.T) {
 	require.Negative(t, CompareSortKey(a, b))
 	require.Positive(t, CompareSortKey(b, a))
 	require.Zero(t, CompareSortKey(a, a))
+}
+
+func TestSortPrefixBounds(t *testing.T) {
+	largest, err := ShardLayoutFromBuckets(1 << maxShardBits)
+	require.NoError(t, err)
+	streamLabels := []labels.Labels{
+		labels.EmptyLabels(),
+		labels.FromStrings("app", "a"),
+		labels.FromStrings("app", "\xff\xff\xff"),
+	}
+
+	t.Run("min sort prefix is at or below every stream prefix", func(t *testing.T) {
+		for _, ls := range streamLabels {
+			prefix := largest.NewSortKey(ls, ls.Get("app")).Prefix()
+			require.LessOrEqual(t, MinSortPrefix().Compare(prefix), 0)
+		}
+	})
+
+	t.Run("sort prefix limit is above the highest bucket of the largest layout", func(t *testing.T) {
+		highest := SortPrefix{ShardBucket: largest.Buckets() - 1, SchemaKey: "\xff\xff\xff\xff"}
+		require.Positive(t, SortPrefixLimit().Compare(highest))
+		for _, ls := range streamLabels {
+			require.Positive(t, SortPrefixLimit().Compare(largest.NewSortKey(ls, ls.Get("app")).Prefix()))
+		}
+	})
 }

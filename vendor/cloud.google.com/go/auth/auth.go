@@ -386,7 +386,7 @@ func (c *cachedTokenProvider) tokenBlocking(ctx context.Context) (*Token, error)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.isRefreshErr = false
-	if c.cachedToken.IsValid() || (!c.autoRefresh && !c.cachedToken.isEmpty()) {
+	if c.cachedToken.isValidWithEarlyExpiry(c.expireEarly) || (!c.autoRefresh && !c.cachedToken.isEmpty()) {
 		return c.cachedToken, nil
 	}
 	t, err := c.tp.Token(ctx)
@@ -606,7 +606,9 @@ func (tp tokenProvider2LO) Token(ctx context.Context) (*Token, error) {
 		if err != nil {
 			return nil, fmt.Errorf("auth: error decoding JWT token: %w", err)
 		}
-		token.Expiry = time.Unix(claimSet.Exp, 0)
+		if exp := claimSet.Expiry(); !exp.IsZero() {
+			token.Expiry = exp
+		}
 	}
 	if tp.opts.UseIDToken {
 		if tokenRes.IDToken == "" {

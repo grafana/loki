@@ -1,9 +1,12 @@
+# Copyright IBM Corp. 2016, 2025
+# SPDX-License-Identifier: MPL-2.0
+
 sudo: false
 
 language: go
 
 go:
-  - 1.6
+  - "1.26"
 
 branches:
   only:

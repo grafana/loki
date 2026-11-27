@@ -41,6 +41,20 @@ type Record struct {
 	StreamHash uint64
 }
 
+// UncompressedSize returns the line bytes plus the structured metadata value
+// bytes of r. It matches streams.Stream.UncompressedSize and the index
+// statistics, so every producer reports the same quantity.
+//
+// Metadata names are not counted because the section stores each name once
+// per column, not once per record.
+func (r *Record) UncompressedSize() int64 {
+	size := int64(len(r.Line))
+	r.Metadata.Range(func(l labels.Label) {
+		size += int64(len(l.Value))
+	})
+	return size
+}
+
 // Reset clears r so it can be reused for another row.
 //
 // The line is truncated rather than dropped, so it keeps its capacity and a reused Record
@@ -127,26 +141,16 @@ type BuilderOptions struct {
 	// [EstimatedSize] to approximate compressed output size from uncompressed
 	// buffered records when using [AppendOrdered]. Only takes effect with
 	// AppendOrdered; ignored for AppendUnordered where stripes are already
-	// compressed. A value of 0 or 1 disables the adjustment.
+	// compressed. A value of either 0 or 1 disables the adjustment.
 	EstimatedCompressionRatio int
 
 	// SortOrder defines the order in which the rows of the logs sections are sorted.
 	// They can either be sorted by [streamID ASC, timestamp DESC] ([SortStreamASC]) or [timestamp DESC, streamID ASC] ([SortTimestampDESC]).
 	SortOrder SortOrder
 
-	// SchemaLabels holds the ordered list of label names that define the schema
-	// sort key when SortOrder is SortSchemaASC. It is persisted in the section
-	// metadata so readers can reconstruct the sort key without re-reading the
-	// tenant overrides.
-	SchemaLabels []string
-
-	// StreamOrder identifies how object-local stream IDs were assigned for a
-	// schema-sorted section.
-	StreamOrder StreamOrder
-
-	// ShardCount is the number of physical shard buckets in the sort layout.
-	// Zero means unspecified.
-	ShardCount uint32
+	// DropDuplicates indicates whether duplicate records should be dropped or retained during Flush.
+	// Records are considered duplicates if they have the same stream ID, timestamp, metadata, and line bytes.
+	DropDuplicates bool
 }
 
 // Builder accumulate a set of [Record]s within a data object.
@@ -205,12 +209,7 @@ func (b *Builder) Tenant() string { return b.tenant }
 func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
 
 // Type returns the [dataobj.SectionType] of the logs builder.
-func (b *Builder) Type() dataobj.SectionType {
-	if b.opts.SortOrder == SortSchemaASC {
-		return schemaSortSectionType
-	}
-	return sectionType
-}
+func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
@@ -232,17 +231,13 @@ func (b *Builder) Append(entry Record) {
 	}
 }
 
+// RecordOverhead is the number of bytes that [Builder.UncompressedSize] counts
+// for each record on top of [Record.UncompressedSize]: one byte for the
+// stream ID (as a uvarint) and eight bytes for the timestamp.
+const RecordOverhead = 9
+
 func recordSize(record Record) int {
-	var size int
-
-	size++    // One byte per stream ID (for uvarint).
-	size += 8 // Eight bytes for timestamp.
-	record.Metadata.Range(func(metadata labels.Label) {
-		size += len(metadata.Value)
-	})
-	size += len(record.Line)
-
-	return size
+	return RecordOverhead + int(record.UncompressedSize())
 }
 
 func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
@@ -264,7 +259,7 @@ func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 		// If we are in AppendOrdered mode, we skip the stripe part of the algorithm, so we use the section buffer instead.
 		buf = &b.sectionBuffer
 	}
-	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder)
+	stripe := buildTable(buf, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records, b.opts.SortOrder, b.opts.DropDuplicates)
 	b.stripes = append(b.stripes, stripe)
 	b.stripesUncompressedSize += stripe.UncompressedSize()
 	b.stripesCompressedSize += stripe.CompressedSize()
@@ -366,14 +361,14 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	// column. This will reduce the number of columns in the section and thus the
 	// metadata size.
 
-	var logsEnc columnar.Encoder
-	if err := b.encodeSection(&logsEnc, section); err != nil {
+	logsEnc := columnar.NewEncoder()
+	if err := b.encodeSection(logsEnc, section); err != nil {
 		return 0, fmt.Errorf("encoding section: %w", err)
 	}
 
 	// The first two columns of each row are *always* stream ID and timestamp.
 	// TODO(ashwanth): Find a safer way to do this. Same as [CompareRows]
-	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder, b.opts.SchemaLabels, b.opts.StreamOrder, b.opts.ShardCount))
+	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder))
 	logsEnc.SetTenant(b.tenant)
 
 	n, err = logsEnc.Flush(w)
@@ -400,9 +395,12 @@ func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 	return nil
 }
 
-func sortInfo(sort SortOrder, schemaLabels []string, streamOrder StreamOrder, shardCount uint32) *datasetmd_v2.SortInfo {
+func sortInfo(sort SortOrder) *datasetmd_v2.SortInfo {
 	switch sort {
-	case SortStreamASC:
+	case SortStreamASC, SortSchemaASC:
+		// SortSchemaASC sorts rows by the stream key of each record. If stream
+		// IDs follow stream key order, as in an object that records a stream
+		// layout, the rows also follow [streamID ASC, timestamp DESC].
 		return &datasetmd_v2.SortInfo{
 			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
 				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
@@ -416,30 +414,8 @@ func sortInfo(sort SortOrder, schemaLabels []string, streamOrder StreamOrder, sh
 				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
 			},
 		}
-	case SortSchemaASC:
-		// Schema sorting clusters rows by [shard_bucket, schema key, stream hash].
-		// Stream IDs are assigned in that order so column_sorts [streamID ASC,
-		// timestamp DESC] matches the physical row order after remapping.
-		return &datasetmd_v2.SortInfo{
-			SchemaLabels: schemaLabels,
-			StreamOrder:  streamOrderProto(streamOrder),
-			ShardCount:   shardCount,
-			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
-				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
-				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
-			},
-		}
 	default:
 		panic("invalid sort order")
-	}
-}
-
-func streamOrderProto(order StreamOrder) datasetmd_v2.StreamOrder {
-	switch order {
-	case StreamOrderStableHashV1:
-		return datasetmd_v2.STREAM_ORDER_STABLE_HASH_V1
-	default:
-		return datasetmd_v2.STREAM_ORDER_UNSPECIFIED
 	}
 }
 

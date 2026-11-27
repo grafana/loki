@@ -134,7 +134,7 @@ func (c Chunks) Iterator(pattern, lvl string, from, through, step, sampleInterva
 		}
 		iters = append(iters, iter.NewSlice(pattern, lvl, samples))
 	}
-	return iter.NewNonOverlappingIterator(pattern, lvl, iters)
+	return iter.NewChainedIterator(pattern, lvl, iters)
 }
 
 func (c Chunks) samples() []*logproto.PatternSample {

@@ -45,6 +45,7 @@ func (c *LazyChunk) Iterator(
 	}
 
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
+	hintRanges = hintRanges.ForFingerprint(c.Chunk.Fingerprint)
 	blocks := filterBlocksByHintRanges(lokiChunk.Blocks(from, through), hintRanges)
 	if len(blocks) == 0 {
 		return iter.NoopEntryIterator, nil
@@ -86,7 +87,7 @@ func (c *LazyChunk) Iterator(
 
 	if direction == logproto.FORWARD {
 		return iter.NewHintEntryIterator(iter.NewTimeRangedIterator(
-			iter.NewNonOverlappingIterator(its),
+			iter.NewChainedIterator(its),
 			from,
 			through,
 		), hintRanges), nil
@@ -107,7 +108,7 @@ func (c *LazyChunk) Iterator(
 		its[i], its[j] = its[j], its[i]
 	}
 
-	return iter.NewHintEntryIterator(iter.NewNonOverlappingIterator(its), hintRanges), nil
+	return iter.NewHintEntryIterator(iter.NewChainedIterator(its), hintRanges), nil
 }
 
 // SampleIterator returns an sample iterator.
@@ -126,6 +127,7 @@ func (c *LazyChunk) SampleIterator(
 	}
 
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
+	hintRanges = hintRanges.ForFingerprint(c.Chunk.Fingerprint)
 	blocks := filterBlocksByHintRanges(lokiChunk.Blocks(from, through), hintRanges)
 	if len(blocks) == 0 {
 		return iter.NoopSampleIterator, nil
@@ -167,7 +169,7 @@ func (c *LazyChunk) SampleIterator(
 
 	// build the final iterator bound to the requested time range.
 	return iter.NewHintSampleIterator(iter.NewTimeRangedSampleIterator(
-		iter.NewNonOverlappingSampleIterator(its),
+		iter.NewChainedSampleIterator(its),
 		from.UnixNano(),
 		through.UnixNano(),
 	), hintRanges), nil

@@ -7,6 +7,7 @@ package middleware
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
@@ -121,12 +122,20 @@ func (g *grpcStatsHandler) HandleConn(_ context.Context, _ stats.ConnStats) {
 	// Not interested.
 }
 
+// streamTrackerPruneInterval is the minimum time between removals of idle connection entries.
+const (
+	streamTrackerPruneInterval = time.Minute
+	streamTrackerPruneGrowth   = 100
+)
+
 // StreamTracker tracks the number of streams per connection and the max.
 type StreamTracker struct {
 	grpcConcurrentStreamsByConnMax *prometheus.Desc
 
-	mu      sync.RWMutex
-	connMap map[string]*atomic.Int32
+	mu        sync.RWMutex
+	connMap   map[string]*atomic.Int32
+	lastPrune time.Time
+	lastSize  int
 }
 
 func NewStreamTracker(grpcConcurrentStreamsByConnMax *prometheus.Desc) *StreamTracker {
@@ -136,46 +145,48 @@ func NewStreamTracker(grpcConcurrentStreamsByConnMax *prometheus.Desc) *StreamTr
 	}
 }
 
-func (st *StreamTracker) createOrGetConnEntry(connID string) *atomic.Int32 {
+// openStreamSlow registers a stream on a connection with no entry, or whose entry was added since we last checked.
+// The increment happens under the write lock so that pruning can't remove the entry beforehand.
+func (st *StreamTracker) openStreamSlow(connID string) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	got, ok := st.connMap[connID] // Do not overwrite new entries.
-	if !ok {
-		st.connMap[connID] = atomic.NewInt32(0)
-		return st.connMap[connID]
+	if conn, ok := st.connMap[connID]; ok { // Do not overwrite new entries.
+		conn.Inc()
+		return
 	}
-	return got
+	// Prune the map occasionally, to avoid endless growth.
+	if len(st.connMap)-st.lastSize > streamTrackerPruneGrowth && time.Since(st.lastPrune) >= streamTrackerPruneInterval {
+		for id, conn := range st.connMap {
+			if conn.Load() <= 0 {
+				delete(st.connMap, id)
+			}
+		}
+		st.lastPrune = time.Now()
+		st.lastSize = len(st.connMap) + 1
+	}
+	st.connMap[connID] = atomic.NewInt32(1)
 }
 
 func (st *StreamTracker) OpenStream(connID string) {
+	// Increment while holding the read lock, so pruning (which needs the write lock)
+	// can't remove the entry between the lookup and the increment.
 	st.mu.RLock()
 	conn, ok := st.connMap[connID]
+	if ok {
+		conn.Inc()
+	}
 	st.mu.RUnlock()
 	if !ok {
-		conn = st.createOrGetConnEntry(connID)
+		st.openStreamSlow(connID)
 	}
-	conn.Inc()
 }
 
 func (st *StreamTracker) CloseStream(connID string) {
 	st.mu.RLock()
-	conn := st.connMap[connID]
+	if conn := st.connMap[connID]; conn != nil {
+		conn.Dec()
+	}
 	st.mu.RUnlock()
-	if conn == nil {
-		return
-	}
-	if res := conn.Dec(); res == 0 {
-		// Delete the entry if it's empty.
-		st.mu.Lock()
-
-		// Get the entry again to avoid race condition.
-		conn = st.connMap[connID]
-		if conn == nil || conn.Load() == 0 {
-			delete(st.connMap, connID)
-		}
-
-		st.mu.Unlock()
-	}
 }
 
 // MaxStreams returns the number of streams in the connection with the most streams.

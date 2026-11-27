@@ -3,7 +3,7 @@ package cache
 import (
 	"context"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/logql/model/stats"
 )
 
 type contextKey int
@@ -23,17 +23,17 @@ func NewCacheGenNumMiddleware(downstreamCache Cache) Cache {
 }
 
 // Store adds cache gen number to keys before calling Store method of downstream cache.
-func (c GenNumMiddleware) Store(ctx context.Context, keys []string, buf [][]byte) error {
+func (c GenNumMiddleware) Store(ctx context.Context, keys []string, buf [][]byte, opts ...Option) error {
 	keys = addCacheGenNumToCacheKeys(ctx, keys)
-	return c.downstreamCache.Store(ctx, keys, buf)
+	return c.downstreamCache.Store(ctx, keys, buf, opts...)
 }
 
 // Fetch adds cache gen number to keys before calling Fetch method of downstream cache.
 // It also removes gen number before responding back with found and missing keys to make sure consumer of response gets to see same keys.
-func (c GenNumMiddleware) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+func (c GenNumMiddleware) Fetch(ctx context.Context, keys []string, opts ...Option) (found []string, bufs [][]byte, missing []string, err error) {
 	keys = addCacheGenNumToCacheKeys(ctx, keys)
 
-	found, bufs, missing, err = c.downstreamCache.Fetch(ctx, keys)
+	found, bufs, missing, err = c.downstreamCache.Fetch(ctx, keys, opts...)
 
 	found = removeCacheGenNumFromKeys(ctx, found)
 	missing = removeCacheGenNumFromKeys(ctx, missing)

@@ -3,10 +3,12 @@ package stats
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 // ColumnarSectionEncoder returns a [SectionEncoder] that encodes [Stat] rows
@@ -15,21 +17,27 @@ import (
 // pageSizeHint and pageMaxRowCount control the page splitting behaviour of the
 // underlying column builders.
 func ColumnarSectionEncoder(pageSizeHint int, pageMaxRowCount int) SectionEncoder {
-	return func(rows []Stat, enc *columnar.Encoder) error {
-		return columnarEncode(rows, enc, pageSizeHint, pageMaxRowCount)
+	return func(rows []Stat, layout streams.Layout, enc *columnar.Encoder) error {
+		return columnarEncode(rows, layout, enc, pageSizeHint, pageMaxRowCount)
 	}
 }
 
 // columnarEncode implements the core encoding logic.
-func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRowCount int) error {
+func columnarEncode(rows []Stat, layout streams.Layout, enc *columnar.Encoder, pageSizeHint, pageMaxRowCount int) error {
 	if len(rows) == 0 {
 		return nil
 	}
 
-	// Parse label keys from SortSchema. All rows within a section share the
-	// same SortSchema (guaranteed by the builder being per-tenant and the
-	// calculation pipeline producing rows with a config-driven schema).
-	labelKeys := schemaLabelNames(rows[0].SortSchema)
+	// The layout defines the label columns. Every row must carry its schema
+	// labels as SortSchema, because readers of legacy sections take the
+	// schema from the rows.
+	sortSchema := strings.Join(layout.SchemaLabels(), ",")
+	for i, r := range rows {
+		if r.SortSchema != sortSchema {
+			return fmt.Errorf("row %d has sort schema %q, but the section layout has %q", i, r.SortSchema, sortSchema)
+		}
+	}
+	labelKeys := schemaLabelNames(sortSchema)
 
 	// Build fixed column builders.
 	objectPathBuilder, err := binaryColumnBuilder(ColumnTypeObjectPath, pageSizeHint, pageMaxRowCount)
@@ -130,7 +138,7 @@ func columnarEncode(rows []Stat, enc *columnar.Encoder, pageSizeHint, pageMaxRow
 		ColumnIndex: maxTimestampIndex,
 		Direction:   datasetmd.SORT_DIRECTION_ASCENDING,
 	})
-	enc.SetSortInfo(&datasetmd.SortInfo{ColumnSorts: columnSorts})
+	enc.SetSortInfo(streams.NewSortInfo(layout, columnSorts))
 
 	// Encode fixed columns.
 	errs := make([]error, 0, labelColumnOffset+len(labelKeys))

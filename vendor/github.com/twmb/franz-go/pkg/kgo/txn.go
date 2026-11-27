@@ -691,8 +691,10 @@ func (cl *Client) AbortBufferedRecords(ctx context.Context) error {
 // responses before failing a record, otherwise the client cannot know if a
 // sequence number was seen by the broker and tracked or not seen by the broker
 // and not tracked. By unsafely aborting, the client forcefully abandons all
-// records, and producing to the topics again may re-use a sequence number and
-// cause internal errors.
+// records. With transactions, producing to the topics again may re-use a
+// sequence number and cause internal errors. Without transactions, the client
+// bumps its producer epoch if it abandoned a record it had sent, so sequence
+// numbers are not re-used.
 func (cl *Client) UnsafeAbortBufferedRecords() {
 	cl.failBufferedRecords(ErrAborting)
 }
