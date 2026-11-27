@@ -641,11 +641,11 @@ func TestInternalPushRequestMemorySize(t *testing.T) {
 			}},
 		}},
 	}
-	want := int(unsafe.Sizeof(InternalPushRequest{})) + 4 +
-		int(unsafe.Sizeof(InternalStreamAdapter{})) + 7 +
-		int(unsafe.Sizeof(ResourceLogs{})) + int(unsafe.Sizeof(push.LabelAdapter{})) + 2 +
-		int(unsafe.Sizeof(ScopeLogs{})) + int(unsafe.Sizeof(push.LabelAdapter{})) + 3 +
-		int(unsafe.Sizeof(push.Entry{})) + 5
+	want := int(unsafe.Sizeof(InternalPushRequest{})) + 4 + // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
+		int(unsafe.Sizeof(InternalStreamAdapter{})) + 7 + // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
+		int(unsafe.Sizeof(ResourceLogs{})) + int(unsafe.Sizeof(push.LabelAdapter{})) + 2 + // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
+		int(unsafe.Sizeof(ScopeLogs{})) + int(unsafe.Sizeof(push.LabelAdapter{})) + 3 + // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
+		int(unsafe.Sizeof(push.Entry{})) + 5 // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 	require.Equal(t, want, req.MemorySize())
 	require.Equal(t, 0, (*InternalPushRequest)(nil).MemorySize())
 }
@@ -661,6 +661,6 @@ func TestInternalPushRequestMemorySizeSharedAttrs(t *testing.T) {
 	}
 	one := &InternalPushRequest{Streams: []InternalStreamAdapter{stream()}}
 	two := &InternalPushRequest{Streams: []InternalStreamAdapter{stream(), stream()}}
-	perStream := int(unsafe.Sizeof(InternalStreamAdapter{})) + int(unsafe.Sizeof(ResourceLogs{})) + int(unsafe.Sizeof(ScopeLogs{}))
+	perStream := int(unsafe.Sizeof(InternalStreamAdapter{})) + int(unsafe.Sizeof(ResourceLogs{})) + int(unsafe.Sizeof(ScopeLogs{})) // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 	require.Equal(t, one.MemorySize()+perStream, two.MemorySize())
 }

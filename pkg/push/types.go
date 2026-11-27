@@ -694,8 +694,8 @@ func (m *PushRequest) MemorySize() int {
 	if m == nil {
 		return 0
 	}
-	n := int(unsafe.Sizeof(*m)) + len(m.Format)
-	n += cap(m.Streams) * int(unsafe.Sizeof(Stream{}))
+	n := int(unsafe.Sizeof(*m)) + len(m.Format)        // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
+	n += cap(m.Streams) * int(unsafe.Sizeof(Stream{})) // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 	for i := range m.Streams {
 		n += m.Streams[i].memorySizeOwned()
 	}
@@ -707,12 +707,12 @@ func (m *Stream) MemorySize() int {
 	if m == nil {
 		return 0
 	}
-	return int(unsafe.Sizeof(*m)) + m.memorySizeOwned()
+	return int(unsafe.Sizeof(*m)) + m.memorySizeOwned() // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 }
 
 // memorySizeOwned returns the heap bytes referenced by the stream, excluding the struct itself.
 func (m *Stream) memorySizeOwned() int {
-	n := len(m.Labels) + cap(m.Entries)*int(unsafe.Sizeof(Entry{}))
+	n := len(m.Labels) + cap(m.Entries)*int(unsafe.Sizeof(Entry{})) // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 	for i := range m.Entries {
 		n += m.Entries[i].memorySizeOwned()
 	}
@@ -724,7 +724,7 @@ func (m *Entry) MemorySize() int {
 	if m == nil {
 		return 0
 	}
-	return int(unsafe.Sizeof(*m)) + m.memorySizeOwned()
+	return int(unsafe.Sizeof(*m)) + m.memorySizeOwned() // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 }
 
 // memorySizeOwned returns the heap bytes referenced by the entry, excluding the struct itself.
@@ -734,7 +734,7 @@ func (m *Entry) memorySizeOwned() int {
 
 // memorySize returns the heap bytes of the backing array and strings.
 func (ls LabelsAdapter) memorySize() int {
-	n := cap(ls) * int(unsafe.Sizeof(LabelAdapter{}))
+	n := cap(ls) * int(unsafe.Sizeof(LabelAdapter{})) // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 	for i := range ls {
 		n += len(ls[i].Name) + len(ls[i].Value)
 	}
@@ -744,7 +744,7 @@ func (ls LabelsAdapter) memorySize() int {
 // EntriesMemorySize returns the approximate Go heap bytes of the backing array of entries
 // and everything the entries reference.
 func EntriesMemorySize(entries []Entry) int {
-	n := cap(entries) * int(unsafe.Sizeof(Entry{}))
+	n := cap(entries) * int(unsafe.Sizeof(Entry{})) // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 	for i := range entries {
 		n += entries[i].memorySizeOwned()
 	}

@@ -156,18 +156,18 @@ func (m *InternalPushRequest) MemorySize() int {
 	if m == nil {
 		return 0
 	}
-	n := int(unsafe.Sizeof(*m)) + len(m.Format) + cap(m.Streams)*int(unsafe.Sizeof(InternalStreamAdapter{}))
+	n := int(unsafe.Sizeof(*m)) + len(m.Format) + cap(m.Streams)*int(unsafe.Sizeof(InternalStreamAdapter{})) // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 	var prevResourceAttrs, prevScopeAttrs []push.LabelAdapter
 	for i := range m.Streams {
 		s := &m.Streams[i]
-		n += len(s.Labels) + cap(s.ResourceLogs)*int(unsafe.Sizeof(ResourceLogs{}))
+		n += len(s.Labels) + cap(s.ResourceLogs)*int(unsafe.Sizeof(ResourceLogs{})) // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 		for j := range s.ResourceLogs {
 			r := &s.ResourceLogs[j]
 			if !sameBacking(r.Attrs, prevResourceAttrs) {
 				n += push.LabelsMemorySize(r.Attrs)
 				prevResourceAttrs = r.Attrs
 			}
-			n += cap(r.ScopeLogs) * int(unsafe.Sizeof(ScopeLogs{}))
+			n += cap(r.ScopeLogs) * int(unsafe.Sizeof(ScopeLogs{})) // #nosec G103 -- unsafe.Sizeof is a compile-time operation -- nosemgrep: use-of-unsafe-block
 			for k := range r.ScopeLogs {
 				sc := &r.ScopeLogs[k]
 				if !sameBacking(sc.Attrs, prevScopeAttrs) {
@@ -183,5 +183,5 @@ func (m *InternalPushRequest) MemorySize() int {
 
 // sameBacking reports whether a and b share the same backing array.
 func sameBacking(a, b []push.LabelAdapter) bool {
-	return unsafe.SliceData(a) == unsafe.SliceData(b)
+	return unsafe.SliceData(a) == unsafe.SliceData(b) // #nosec G103 -- unsafe.SliceData only compares pointers; no memory is reinterpreted -- nosemgrep: use-of-unsafe-block
 }
