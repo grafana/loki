@@ -263,6 +263,52 @@ func TestPlanPairWindow(t *testing.T) {
 		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.logMergeSkippedMergesTotal.WithLabelValues("acme")))
 	})
 
+	t.Run("skips a merge of exactly the maximum run size of the tenant without counting a skipped merge", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairIndex(ctx, t, bucket, "indexes/a", schema, testLogObject{"logs/a", "a", "z"})
+		seedPairIndex(ctx, t, bucket, "indexes/b", schema, testLogObject{"logs/b", "a", "z"})
+		limits := newFakeLimits("acme")
+		limits.setMaxLogsRunUncompressedBytes("acme", 400)
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(now), limits)
+
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
+		require.NoError(t, err)
+		require.Empty(t, plan.jobs)
+		require.Zero(t, testutil.ToFloat64(c.metrics.logMergeSkippedMergesTotal.WithLabelValues("acme")))
+	})
+
+	t.Run("plans a merge below the maximum run size of the tenant", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairIndex(ctx, t, bucket, "indexes/a", schema, testLogObject{"logs/a", "a", "z"})
+		seedPairIndex(ctx, t, bucket, "indexes/b", schema, testLogObject{"logs/b", "a", "z"})
+		limits := newFakeLimits("acme")
+		limits.setMaxLogsRunUncompressedBytes("acme", 401)
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(now), limits)
+
+		plan, err := c.newPairPlanner().planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
+		require.NoError(t, err)
+		require.Len(t, plan.jobs, 1)
+	})
+
+	t.Run("plans a merge after the maximum run size of the tenant is removed at runtime", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairIndex(ctx, t, bucket, "indexes/a", schema, testLogObject{"logs/a", "a", "z"})
+		seedPairIndex(ctx, t, bucket, "indexes/b", schema, testLogObject{"logs/b", "a", "z"})
+		limits := newFakeLimits("acme")
+		limits.setMaxLogsRunUncompressedBytes("acme", 400)
+		c := newTestCoordinator(t, bucket, &fakeRunner{}, &fakeReplacer{}, fixedClock(now), limits)
+		planner := c.newPairPlanner()
+
+		plan, err := planner.planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
+		require.NoError(t, err)
+		require.Empty(t, plan.jobs)
+
+		limits.setMaxLogsRunUncompressedBytes("acme", 0)
+		plan, err = planner.planWindow(ctx, "acme", imWindow(), leaseSnapshot{}, splitLegacy)
+		require.NoError(t, err)
+		require.Len(t, plan.jobs, 1)
+	})
+
 	t.Run("splits a merge above the maximum task size into log tasks by sort prefix", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedPairIndex(ctx, t, bucket, "indexes/a", schema, testLogObject{"logs/a", "a", "z"})

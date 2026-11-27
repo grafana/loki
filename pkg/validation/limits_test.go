@@ -1256,6 +1256,30 @@ func TestDataObjCompaction_DefaultsFalse(t *testing.T) {
 	require.False(t, runLog)
 }
 
+func TestDataObjCompaction_MaxLogsRunSizeUncompressedBytes(t *testing.T) {
+	t.Run("returns 8TB by default", func(t *testing.T) {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+		ov, err := NewOverrides(defaults, nil)
+		require.NoError(t, err)
+		require.Equal(t, uint64(8<<40), ov.MaxLogsRunSizeUncompressedBytes("tenant-a"))
+	})
+
+	t.Run("returns the tenant override parsed from YAML in powers of 2 and the default for other tenants", func(t *testing.T) {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+
+		var tenant Limits
+		require.NoError(t, yaml.Unmarshal([]byte("dataobj_compaction_max_logs_run_size_uncompressed_bytes: 1TB"), &tenant))
+		ov, err := NewOverrides(defaults, newMockTenantLimits(map[string]*Limits{"tenant-a": &tenant}))
+		require.NoError(t, err)
+
+		require.Equal(t, uint64(1<<40), ov.MaxLogsRunSizeUncompressedBytes("tenant-a"))
+		require.Equal(t, uint64(8<<40), ov.MaxLogsRunSizeUncompressedBytes("tenant-b"))
+	})
+}
+
 func TestDataObjCompaction_IndexOnlyOverride(t *testing.T) {
 	var defaults Limits
 	defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))

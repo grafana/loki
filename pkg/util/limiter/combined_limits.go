@@ -42,5 +42,6 @@ type CombinedLimits interface {
 	DataObjBloomDenyList(userID string) []string
 	CompactionPhases(userID string) (runIndex, runLog bool)
 	DeletionSweepEnabled(userID string) bool
+	MaxLogsRunSizeUncompressedBytes(userID string) uint64
 	PolicyLimitsServiceStreamsExpiry(userID, policy string) (time.Duration, bool)
 }

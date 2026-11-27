@@ -34,6 +34,12 @@ type PairPlanConfig struct {
 	// check.
 	LogMaxKeySize uint64
 
+	// LogsMaxRunUncompressedBytes is the exclusive upper bound of the summed
+	// uncompressed log size of the pairs in one merge. Same as the per-tenant
+	// limit -dataobj-compaction.max-logs-run-size-uncompressed-bytes. 0 means
+	// no maximum.
+	LogsMaxRunUncompressedBytes uint64
+
 	// SizeLevelBase is the upper bound of size level 1, in uncompressed
 	// bytes. 0 uses v2.DefaultSizeLevelBase.
 	SizeLevelBase uint64
@@ -180,13 +186,14 @@ func PlanPairs(ctx context.Context, logger log.Logger, bucket objstore.Bucket, t
 		return PairPlan{}, fmt.Errorf("size levels: %w", err)
 	}
 	planner := &pairPlanner{
-		logger:            logger,
-		bucket:            bucket,
-		metrics:           newCoordinatorMetrics(prometheus.NewRegistry()),
-		strategy:          strategy,
-		minCompactionSize: cfg.LogMinCompactionSize,
-		maxLogTaskSize:    cfg.LogMaxTaskSize,
-		maxKeySize:        cfg.LogMaxKeySize,
+		logger:                      logger,
+		bucket:                      bucket,
+		metrics:                     newCoordinatorMetrics(prometheus.NewRegistry()),
+		strategy:                    strategy,
+		maxLogsRunUncompressedBytes: func(string) uint64 { return cfg.LogsMaxRunUncompressedBytes },
+		minCompactionSize:           cfg.LogMinCompactionSize,
+		maxLogTaskSize:              cfg.LogMaxTaskSize,
+		maxKeySize:                  cfg.LogMaxKeySize,
 	}
 	now := cfg.Now
 	if now.IsZero() {

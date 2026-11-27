@@ -1015,8 +1015,12 @@ func recordActors(dispatcher *planDispatcher) func() []string {
 }
 
 // integrationLimits enables every compaction phase and the deletion sweep
-// for every tenant.
+// for every tenant, with no maximum run size.
 type integrationLimits struct{}
+
+func (integrationLimits) MaxLogsRunSizeUncompressedBytes(string) uint64 {
+	return 0
+}
 
 func (integrationLimits) CompactionPhases(string) (bool, bool) {
 	return true, true
