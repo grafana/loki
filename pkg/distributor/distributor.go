@@ -392,6 +392,7 @@ func New(
 
 	rs := NewRateStore(
 		d.cfg.RateStore,
+		d.cfg.KafkaEnabled,
 		ingestersRing,
 		clientpool.NewPool(
 			"rate-store",

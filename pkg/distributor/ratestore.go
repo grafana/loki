@@ -66,6 +66,8 @@ type expiringRate struct {
 type rateStore struct {
 	services.Service
 
+	kafkaSelector *kafkaRateSelector
+
 	ring            ring.ReadRing
 	clientPool      poolClientFactory
 	rates           map[string]map[uint64]expiringRate // tenant id -> fingerprint -> rate
@@ -80,7 +82,7 @@ type rateStore struct {
 	debug bool
 }
 
-func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, l Limits, registerer prometheus.Registerer) *rateStore { //nolint
+func NewRateStore(cfg RateStoreConfig, kafkaEnabled bool, r ring.ReadRing, cf poolClientFactory, l Limits, registerer prometheus.Registerer) *rateStore { //nolint
 	s := &rateStore{
 		ring:            r,
 		clientPool:      cf,
@@ -91,6 +93,10 @@ func NewRateStore(cfg RateStoreConfig, r ring.ReadRing, cf poolClientFactory, l 
 		metrics:         newRateStoreMetrics(registerer),
 		rates:           make(map[string]map[uint64]expiringRate),
 		debug:           cfg.Debug,
+	}
+
+	if kafkaEnabled {
+		s.kafkaSelector = newKafkaRateSelector(registerer)
 	}
 
 	rateCollectionInterval := util.DurationWithJitter(cfg.StreamRateUpdateInterval, 0.2)
@@ -117,8 +123,25 @@ func (s *rateStore) updateAllRates(ctx context.Context) error {
 		return nil // Don't fail the service because we have an error getting the clients once
 	}
 
-	streamRates := s.getRates(ctx, clients)
+	streamRates, shardCounts := s.getRates(ctx, clients)
 	updated := s.aggregateByShard(ctx, streamRates)
+	if shardCounts != nil {
+		// Replicas can report different streams in a sample. Preserve physical shard counts
+		// from all responses so replica selection does not under-report shard metrics.
+		// Keep the rate unchanged.
+		now := time.Now()
+		for tenant, counts := range shardCounts {
+			if updated[tenant] == nil {
+				updated[tenant] = map[uint64]expiringRate{}
+			}
+			for hash, count := range counts {
+				r := updated[tenant][hash]
+				r.shards = count
+				r.createdAt = now
+				updated[tenant][hash] = r
+			}
+		}
+	}
 	stats := s.updateRates(ctx, updated)
 
 	s.metrics.maxStreamRate.Set(float64(stats.maxRate))
@@ -251,6 +274,8 @@ type (
 	perTenantStreamRate map[string]map[uint64]*logproto.StreamRate
 	// perTenantExpiringRate maps tenant id -> stream hash without shard -> aggregated rate.
 	perTenantExpiringRate map[string]map[uint64]expiringRate
+	// perTenantShardCounts maps tenant id -> stream hash without shard -> observed physical shard count.
+	perTenantShardCounts map[string]map[uint64]int64
 )
 
 func (s *rateStore) aggregateByShard(ctx context.Context, streamRates perTenantStreamRate) perTenantExpiringRate {
@@ -282,7 +307,7 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates perTenantS
 	return rates
 }
 
-func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) perTenantStreamRate {
+func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) (perTenantStreamRate, perTenantShardCounts) {
 	if s.debug {
 		sp := trace.SpanFromContext(ctx)
 		sp.AddEvent("started to get rates from ingesters")
@@ -328,7 +353,11 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 	}
 }
 
-func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) perTenantStreamRate {
+func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) (perTenantStreamRate, perTenantShardCounts) {
+	if s.kafkaSelector != nil {
+		return s.kafkaRatesPerStream(responses, totalResponses)
+	}
+
 	var maxRate int64
 	streamRates := perTenantStreamRate{}
 	for i := 0; i < totalResponses; i++ {
@@ -356,7 +385,55 @@ func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse,
 	}
 
 	s.metrics.maxUniqueStreamRate.Set(float64(maxRate))
-	return streamRates
+	return streamRates, nil
+}
+
+// kafkaRatesPerStream selects replica rates while preserving shard counts from all responses.
+func (s *rateStore) kafkaRatesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) (perTenantStreamRate, perTenantShardCounts) {
+	var maxRate int64
+	all := make([]*logproto.StreamRatesResponse, 0, totalResponses)
+	for range totalResponses {
+		r := <-responses
+		all = append(all, r)
+		if r != nil {
+			for _, rate := range r.StreamRates {
+				maxRate = max(maxRate, rate.Rate)
+			}
+		}
+	}
+	s.metrics.maxUniqueStreamRate.Set(float64(maxRate))
+	selected := s.kafkaSelector.selectRates(all, time.Now())
+	// Count unselected physical streams too, without duplicating the selected stream map.
+	shardCounts := perTenantShardCounts{}
+	for tenant, rates := range selected {
+		shardCounts[tenant] = map[uint64]int64{}
+		for _, r := range rates {
+			shardCounts[tenant][r.StreamHashNoShard]++
+		}
+	}
+	countedUnselected := map[string]map[uint64]struct{}{}
+	for _, response := range all {
+		if response == nil {
+			continue
+		}
+		for _, r := range response.StreamRates {
+			if selected[r.Tenant][r.StreamHash] != nil {
+				continue
+			}
+			if _, ok := countedUnselected[r.Tenant][r.StreamHash]; ok {
+				continue
+			}
+			if countedUnselected[r.Tenant] == nil {
+				countedUnselected[r.Tenant] = map[uint64]struct{}{}
+			}
+			countedUnselected[r.Tenant][r.StreamHash] = struct{}{}
+			if shardCounts[r.Tenant] == nil {
+				shardCounts[r.Tenant] = map[uint64]int64{}
+			}
+			shardCounts[r.Tenant][r.StreamHashNoShard]++
+		}
+	}
+	return selected, shardCounts
 }
 
 func (s *rateStore) getClients(ctx context.Context) ([]ingesterClient, error) {

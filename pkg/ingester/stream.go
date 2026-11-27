@@ -501,7 +501,7 @@ func (s *stream) validateEntries(ctx context.Context, entries []logproto.Entry, 
 		s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 	}
 
-	s.streamRateCalculator.Record(s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
+	s.streamRateCalculator.Record(ctx, s.tenant, s.labelHash, s.labelHashNoShard, totalBytes)
 	s.reportMetrics(ctx, outOfOrderSamples, outOfOrderBytes, rateLimitedSamples, rateLimitedBytes, usageTracker, format)
 	return toStore, failedEntriesWithError
 }

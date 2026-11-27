@@ -59,7 +59,8 @@ type timestampedPusher interface {
 	PushWithTimestamp(ctx context.Context, push TimestampedPush) (*logproto.PushResponse, error)
 }
 
-func NewKafkaConsumerFactory(pusher timestampedPusher, reg prometheus.Registerer, maxConsumerWorkers int) partition.ConsumerFactory {
+// NewKafkaConsumerFactory creates consumers using the ingester's Kafka-enabled rate calculator.
+func NewKafkaConsumerFactory(pusher timestampedPusher, reg prometheus.Registerer, maxConsumerWorkers int, calculator *StreamRateCalculator) partition.ConsumerFactory {
 	metrics := newConsumerMetrics(reg)
 	metrics.consumeWorkersCount.Set(float64(maxConsumerWorkers))
 
@@ -70,6 +71,7 @@ func NewKafkaConsumerFactory(pusher timestampedPusher, reg prometheus.Registerer
 		}
 		return &kafkaConsumer{
 			pusher:             pusher,
+			calculator:         calculator,
 			logger:             logger,
 			decoder:            decoder,
 			metrics:            metrics,
@@ -80,6 +82,7 @@ func NewKafkaConsumerFactory(pusher timestampedPusher, reg prometheus.Registerer
 }
 
 type kafkaConsumer struct {
+	calculator         *StreamRateCalculator
 	pusher             timestampedPusher
 	logger             log.Logger
 	decoder            *kafka.Decoder
@@ -124,6 +127,8 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 		limitWorkers = kc.maxConsumerWorkers
 	)
 
+	rateBatch := kc.calculator.trackKafkaBatch(records)
+
 	// Find min/max offsets
 	for _, record := range records {
 		minOffset = min(minOffset, record.Offset)
@@ -146,15 +151,18 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 	// context.WithoutCancel() is used to mimic prior behavior. every record is tried at least once
 	// on shutdown
 	_ = concurrency.ForEachJob(context.WithoutCancel(ctx), len(groups), limitWorkers, func(_ context.Context, idx int) error {
+		observation := &rateObservation{}
 		for _, index := range groups[idx].indexes {
 			record := records[index]
 			stream, err := kc.decoder.DecodeWithoutLabels(record.Content)
 			if err != nil {
 				level.Error(kc.logger).Log("msg", "failed to decode record", "error", err)
+				kc.calculator.recordKafkaDecodeFailure(rateBatch, index)
 				continue
 			}
 
 			recordCtx := user.InjectOrgID(record.Ctx, record.TenantID)
+			recordCtx = context.WithValue(recordCtx, rateObservationKey{}, observation)
 			push := TimestampedPush{
 				PushRequest: &logproto.PushRequest{Streams: []logproto.Stream{stream}},
 			}
@@ -164,9 +172,12 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 
 			level.Debug(kc.logger).Log("msg", "pushing record", "offset", record.Offset, "length", len(record.Content))
 
+			completed := false
 			if err := retryWithBackoff(ctx, func(attempts int) error {
 				pushTime := time.Now()
 				_, err := kc.pusher.PushWithTimestamp(recordCtx, push)
+				completed = err == nil || !canRetry(err)
+				kc.calculator.recordKafkaAttempt(rateBatch, index, observation, completed)
 
 				kc.metrics.pushLatency.Observe(time.Since(pushTime).Seconds())
 
@@ -178,6 +189,10 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 				return nil
 			}); err != nil {
 				level.Error(kc.logger).Log("msg", "exhausted all retry attempts, failed to push records", "err", err, "offset", record.Offset)
+				if !completed {
+					// Cancelled retries have no terminal attempt to complete the record.
+					kc.calculator.completeKafkaRecordTracking(rateBatch, index)
+				}
 				continue
 			}
 

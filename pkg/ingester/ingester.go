@@ -327,6 +327,19 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	}
 	metrics := newIngesterMetrics(registerer, metricsNamespace)
 
+	var ingestPartitionID int32
+	var calculator *StreamRateCalculator
+	if cfg.KafkaIngestion.Enabled {
+		var err error
+		ingestPartitionID, err = partitionring.ExtractPartitionID(cfg.LifecyclerConfig.ID)
+		if err != nil {
+			return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
+		}
+		calculator = newKafkaStreamRateCalculator(ingestPartitionID, cfg.LifecyclerConfig.ID)
+	} else {
+		calculator = NewStreamRateCalculator()
+	}
+
 	i := &Ingester{
 		cfg:                   cfg,
 		logger:                logger,
@@ -342,7 +355,8 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
-		streamRateCalculator:  NewStreamRateCalculator(),
+		streamRateCalculator:  calculator,
+		ingestPartitionID:     ingestPartitionID,
 		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 		customStreamsTracker:  customStreamsTracker,
 		readRing:              readRing,
@@ -379,10 +393,6 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
 	if i.cfg.KafkaIngestion.Enabled {
-		i.ingestPartitionID, err = partitionring.ExtractPartitionID(cfg.LifecyclerConfig.ID)
-		if err != nil {
-			return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
-		}
 		partitionRingKV := cfg.KafkaIngestion.PartitionRingConfig.KVStore.Mock
 		if partitionRingKV == nil {
 			partitionRingKV, err = kv.NewClient(cfg.KafkaIngestion.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(registerer, PartitionRingName+"-lifecycler"), logger)
@@ -405,11 +415,12 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			cfg.KafkaIngestion.KafkaConfig,
 			i.ingestPartitionID,
 			cfg.LifecyclerConfig.ID,
-			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
+			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers, i.streamRateCalculator),
 			logger,
 			registerer,
 			i.partitionRingLifecycler,
 			partition.WithHeaderToContextExtractor(validation.IngestionPoliciesKafkaHeadersToContext),
+			partition.WithHighWatermarkObserver(i.streamRateCalculator.setKafkaHighWatermark),
 		)
 		if err != nil {
 			return nil, err
@@ -668,6 +679,7 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		if err := services.StartAndAwaitRunning(ctx, i.partitionReader); err != nil {
 			return fmt.Errorf("failed to start partition reader: %w", err)
 		}
+		i.streamRateCalculator.markKafkaConsumerRunning()
 	}
 
 	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
@@ -1074,12 +1086,7 @@ func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRe
 	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
 	pprof.SetGoroutineLabels(ctx)
 
-	allRates := i.streamRateCalculator.Rates()
-	rates := make([]*logproto.StreamRate, len(allRates))
-	for idx := range allRates {
-		rates[idx] = &allRates[idx]
-	}
-	return &logproto.StreamRatesResponse{StreamRates: rates}, nil
+	return i.streamRateCalculator.buildRatesResponse(), nil
 }
 
 func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { //nolint:revive
