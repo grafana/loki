@@ -3,6 +3,10 @@ package logql
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
+	"strconv"
+	"strings"
 
 	"go.uber.org/atomic"
 )
@@ -19,12 +23,48 @@ type intermediateSeriesCounter struct {
 	limit   int64
 	current atomic.Int64
 	peak    atomic.Int64
+
+	// thresholds are the ascending counts that onCrossing is called for, once each. Both are set
+	// before the counter is shared.
+	thresholds []int64
+	onCrossing func(threshold, current int64)
+	// crossed is the number of thresholds onCrossing has been called for.
+	crossed atomic.Int32
 }
 
 // newIntermediateSeriesCounter returns a counter that fails a reservation taking it over limit.
 // A limit of zero means no limit.
 func newIntermediateSeriesCounter(limit int) *intermediateSeriesCounter {
 	return &intermediateSeriesCounter{limit: int64(limit)}
+}
+
+// notifyOnCrossing makes the counter call fn the first time the count reaches each of thresholds,
+// and returns the counter. A threshold given more than once counts as one. It must be called
+// before the counter is shared. The count falling and rising again does not call fn a second time.
+func (c *intermediateSeriesCounter) notifyOnCrossing(thresholds []int, fn func(threshold, current int64)) *intermediateSeriesCounter {
+	c.thresholds = make([]int64, 0, len(thresholds))
+	for _, t := range thresholds {
+		if t > 0 {
+			c.thresholds = append(c.thresholds, int64(t))
+		}
+	}
+	slices.Sort(c.thresholds)
+	c.thresholds = slices.Compact(c.thresholds)
+	c.onCrossing = fn
+	return c
+}
+
+// notify calls onCrossing for every threshold that cur has reached and that has not been called yet.
+func (c *intermediateSeriesCounter) notify(cur int64) {
+	for {
+		i := c.crossed.Load()
+		if int(i) >= len(c.thresholds) || cur < c.thresholds[i] {
+			return
+		}
+		if c.crossed.CompareAndSwap(i, i+1) {
+			c.onCrossing(c.thresholds[i], cur)
+		}
+	}
 }
 
 // Reserve adds n label sets to the count and returns errIntermediateSeriesLimit, leaving the
@@ -45,6 +85,9 @@ func (c *intermediateSeriesCounter) Reserve(n int) error {
 		if c.current.CompareAndSwap(prev, cur) {
 			break
 		}
+	}
+	if c.onCrossing != nil {
+		c.notify(cur)
 	}
 	for {
 		peak := c.peak.Load()
@@ -91,4 +134,74 @@ func withIntermediateSeriesCounter(ctx context.Context, c *intermediateSeriesCou
 func intermediateSeriesCounterFromContext(ctx context.Context) *intermediateSeriesCounter {
 	c, _ := ctx.Value(intermediateSeriesCounterKey{}).(*intermediateSeriesCounter)
 	return c
+}
+
+// IntermediateSeriesBreadcrumbThresholds is a list of intermediate series counts, set as a
+// comma-separated string. A job logs a line the first time its count reaches each of them.
+type IntermediateSeriesBreadcrumbThresholds []int
+
+// String implements flag.Value.
+func (t IntermediateSeriesBreadcrumbThresholds) String() string {
+	s := make([]string, 0, len(t))
+	for _, v := range t {
+		s = append(s, strconv.Itoa(v))
+	}
+	return strings.Join(s, ",")
+}
+
+// Set implements flag.Value.
+func (t *IntermediateSeriesBreadcrumbThresholds) Set(s string) error {
+	if s == "" {
+		return t.setInts(nil)
+	}
+	parts := strings.Split(s, ",")
+	values := make([]int, 0, len(parts))
+	for _, part := range parts {
+		v, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			return fmt.Errorf("invalid intermediate series breadcrumb threshold %q: %w", part, err)
+		}
+		values = append(values, v)
+	}
+	return t.setInts(values)
+}
+
+// setInts sets the thresholds to values, which must all be positive. It leaves t unchanged on error.
+func (t *IntermediateSeriesBreadcrumbThresholds) setInts(values []int) error {
+	for _, v := range values {
+		if v <= 0 {
+			return fmt.Errorf("intermediate series breadcrumb threshold must be positive, got %d", v)
+		}
+	}
+	if len(values) == 0 {
+		*t = nil
+		return nil
+	}
+	*t = values
+	return nil
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler. It accepts a list of integers or a comma-separated string.
+func (t *IntermediateSeriesBreadcrumbThresholds) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var entries []*int
+	if err := unmarshal(&entries); err == nil {
+		values := make([]int, 0, len(entries))
+		for _, e := range entries {
+			if e == nil {
+				return errors.New("intermediate series breadcrumb threshold must not be null")
+			}
+			values = append(values, *e)
+		}
+		return t.setInts(values)
+	}
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	return t.Set(s)
+}
+
+// MarshalYAML implements yaml.Marshaler.
+func (t IntermediateSeriesBreadcrumbThresholds) MarshalYAML() (interface{}, error) {
+	return t.String(), nil
 }
