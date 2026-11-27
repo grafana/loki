@@ -221,7 +221,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -281,7 +281,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -350,7 +350,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 request latency",
                   "type": "timeseries"
                }
             ],
@@ -358,7 +358,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Query Frontend",
+            "title": "Query-frontend",
             "titleSize": "h6"
          },
          {
@@ -560,7 +560,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -620,7 +620,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -689,7 +689,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 request latency",
                   "type": "timeseries"
                },
                {
@@ -758,7 +758,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Object storage operations",
+                  "title": "Object storage operation rate",
                   "type": "timeseries"
                },
                {
@@ -872,7 +872,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Chunk download latency (per query)",
+                  "title": "Per query chunk download latency",
                   "type": "timeseries"
                },
                {
@@ -986,7 +986,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Object storage HTTP errors",
+                  "title": "Object storage HTTP error rate",
                   "type": "timeseries"
                },
                {
@@ -1047,7 +1047,7 @@
                         "legendLink": null
                      }
                   ],
-                  "title": "Object storage congestion control retries",
+                  "title": "Object storage congestion control retry rate",
                   "type": "timeseries"
                },
                {
@@ -1306,7 +1306,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -1366,7 +1366,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -1435,7 +1435,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 request latency",
                   "type": "timeseries"
                }
             ],
@@ -1645,7 +1645,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -1705,7 +1705,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -1774,7 +1774,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 request latency",
                   "type": "timeseries"
                }
             ],
@@ -1782,7 +1782,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Ingester - Zone Aware",
+            "title": "Ingester (zone aware)",
             "titleSize": "h6"
          },
          {
@@ -1984,7 +1984,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -2044,7 +2044,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -2113,7 +2113,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 request latency",
                   "type": "timeseries"
                }
             ],
@@ -2121,7 +2121,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Index Gateway",
+            "title": "Index gateway",
             "titleSize": "h6"
          },
          {
@@ -2323,7 +2323,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -2383,7 +2383,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -2452,7 +2452,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 request latency",
                   "type": "timeseries"
                }
             ],
@@ -2460,7 +2460,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "Bloom Gateway",
+            "title": "Bloom gateway",
             "titleSize": "h6"
          },
          {
@@ -2662,7 +2662,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Index read rate",
                   "type": "timeseries"
                },
                {
@@ -2722,7 +2722,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Index read latency",
                   "type": "timeseries",
                   "yaxes": [
                      {
@@ -2791,7 +2791,7 @@
                         "step": 10
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 index read latency",
                   "type": "timeseries"
                }
             ],
@@ -2799,7 +2799,7 @@
             "repeatIteration": null,
             "repeatRowId": null,
             "showTitle": true,
-            "title": "TSDB Index",
+            "title": "TSDB index",
             "titleSize": "h6"
          }
       ],

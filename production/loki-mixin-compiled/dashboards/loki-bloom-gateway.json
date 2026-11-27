@@ -162,7 +162,7 @@
                   "refId": "B"
                }
             ],
-            "title": "Filter ratio - Bloom Gateway (server)",
+            "title": "Bloom gateway filter ratio (server)",
             "type": "timeseries"
          },
          {
@@ -257,7 +257,7 @@
                   "refId": "B"
                }
             ],
-            "title": "Filter ratio",
+            "title": "Selected range: Bloom gateway filter ratio (server)",
             "type": "gauge"
          },
          {
@@ -530,7 +530,7 @@
                   "refId": "B"
                }
             ],
-            "title": "Filter ratio - Index Gateway (client)",
+            "title": "Index gateway filter ratio (client)",
             "type": "timeseries"
          },
          {
@@ -625,7 +625,7 @@
                   "refId": "B"
                }
             ],
-            "title": "Filter ratio",
+            "title": "Selected range: Index gateway filter ratio (client)",
             "type": "gauge"
          },
          {
@@ -731,7 +731,7 @@
                   "refId": "C"
                }
             ],
-            "title": "Container restarts",
+            "title": "Per pod container restarts",
             "type": "timeseries"
          },
          {
@@ -845,7 +845,7 @@
                   "refId": "A"
                }
             ],
-            "title": "Filter ratio - Index Gateway by route",
+            "title": "By route index gateway filter ratio (client)",
             "type": "timeseries"
          },
          {
@@ -975,7 +975,7 @@
                   "refId": "B"
                }
             ],
-            "title": "Data skipped because they don't match any bocks",
+            "title": "Skipped data ratio",
             "type": "timeseries"
          },
          {
@@ -1098,7 +1098,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "Found/Skipped/Missing chunks",
+                  "title": "Found/skipped/missing chunks",
                   "type": "timeseries"
                },
                {
@@ -1201,7 +1201,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "Filtered chunks",
+                  "title": "Filtered chunk ratio",
                   "type": "timeseries"
                },
                {
@@ -1301,7 +1301,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "Found/Skipped/Missing series",
+                  "title": "Found/skipped/missing series",
                   "type": "timeseries"
                },
                {
@@ -1404,12 +1404,12 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "Filtered series",
+                  "title": "Filtered series ratio",
                   "type": "timeseries"
                }
             ],
             "targets": [ ],
-            "title": "Bloom Recorder",
+            "title": "Bloom recorder",
             "type": "row"
          },
          {
@@ -1627,7 +1627,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "Errors Rate",
+                  "title": "Log event counts",
                   "type": "timeseries"
                }
             ],
@@ -1891,7 +1891,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Memory (workingset)",
+                  "title": "Memory (working set)",
                   "type": "timeseries"
                },
                {
@@ -2031,7 +2031,7 @@
                         "refId": "D"
                      }
                   ],
-                  "title": "Memory (heap inuse)",
+                  "title": "Memory (heap in use)",
                   "type": "timeseries"
                },
                {
@@ -2352,7 +2352,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "GC pauses",
+                  "title": "GC pause duration",
                   "type": "timeseries"
                },
                {
@@ -2454,7 +2454,7 @@
                         "refId": "D"
                      }
                   ],
-                  "title": "Disk reads",
+                  "title": "Disk read throughput",
                   "type": "timeseries"
                },
                {
@@ -2556,7 +2556,7 @@
                         "refId": "D"
                      }
                   ],
-                  "title": "Disk writes",
+                  "title": "Disk write throughput",
                   "type": "timeseries"
                },
                {
@@ -2672,7 +2672,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "Disk reads/writes",
+                  "title": "Disk read and write throughput",
                   "type": "timeseries"
                }
             ],
@@ -2827,7 +2827,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -2967,7 +2967,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "QPS per Pod",
+                  "title": "Per pod requests / sec",
                   "type": "timeseries"
                },
                {
@@ -3104,7 +3104,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries"
                },
                {
@@ -3200,12 +3200,12 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "Per Pod Latency (p99)",
+                  "title": "Per pod p99 request latency",
                   "type": "timeseries"
                }
             ],
             "targets": [ ],
-            "title": "QPS and Latency",
+            "title": "Requests",
             "type": "row"
          },
          {
@@ -3313,7 +3313,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "Queue Size",
+                  "title": "Per tenant queue length",
                   "type": "timeseries"
                },
                {
@@ -3437,7 +3437,7 @@
                         "refId": "D"
                      }
                   ],
-                  "title": "Queue Latency",
+                  "title": "Queue latency",
                   "type": "timeseries"
                },
                {
@@ -3540,7 +3540,7 @@
                }
             ],
             "targets": [ ],
-            "title": "Task Queue",
+            "title": "Task queue",
             "type": "row"
          },
          {
@@ -3676,7 +3676,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Processing time for tasks (per worker iteration)",
+                  "title": "Per worker iteration processing latency",
                   "type": "timeseries"
                },
                {
@@ -3802,7 +3802,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Block query latency (single block)",
+                  "title": "Per block query latency",
                   "type": "timeseries"
                },
                {
@@ -3914,7 +3914,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "Tasks dequeued/processed",
+                  "title": "Task dequeue and processing rates",
                   "type": "timeseries"
                },
                {
@@ -4014,7 +4014,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "Worker Iterations per second",
+                  "title": "Worker iterations / sec",
                   "type": "timeseries"
                }
             ],
@@ -4172,7 +4172,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "Cache size (per pod)",
+                  "title": "Per pod cache size",
                   "type": "timeseries"
                },
                {
@@ -4358,7 +4358,7 @@
                         "refId": "E"
                      }
                   ],
-                  "title": "Cache rate",
+                  "title": "Cache activity",
                   "type": "timeseries"
                },
                {
@@ -4491,7 +4491,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "Hit/Miss ratio",
+                  "title": "Hit/miss ratio",
                   "type": "timeseries"
                },
                {
@@ -4809,7 +4809,7 @@
                         "refId": "G"
                      }
                   ],
-                  "title": "Bloom Store",
+                  "title": "Bloom store",
                   "type": "timeseries"
                },
                {
@@ -4929,7 +4929,7 @@
                }
             ],
             "targets": [ ],
-            "title": "Blocks Cache",
+            "title": "Blocks cache",
             "type": "row"
          },
          {
@@ -5094,7 +5094,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -5217,7 +5217,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries"
                },
                {
@@ -5343,7 +5343,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -5466,7 +5466,7 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries"
                },
                {
@@ -5592,7 +5592,7 @@
                         "refId": "A"
                      }
                   ],
-                  "title": "QPS",
+                  "title": "Requests / sec",
                   "type": "timeseries"
                },
                {
@@ -5715,12 +5715,12 @@
                         "refId": "C"
                      }
                   ],
-                  "title": "Latency",
+                  "title": "Request latency",
                   "type": "timeseries"
                }
             ],
             "targets": [ ],
-            "title": "Object Store",
+            "title": "Object store",
             "type": "row"
          },
          {
@@ -5894,7 +5894,7 @@
                         "refId": "B"
                      }
                   ],
-                  "title": "Dequeue count",
+                  "title": "Tasks dequeued per batch",
                   "type": "heatmap"
                }
             ],
