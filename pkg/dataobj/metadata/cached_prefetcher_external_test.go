@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -81,6 +82,26 @@ func TestCachedPrefetcher(t *testing.T) {
 				require.Equal(t, 1.0, counts.cacheHits)
 			})
 		}
+	})
+
+	t.Run("every cache call of an object uses a hash of its path as the shard key", func(t *testing.T) {
+		other := newTestObjectWithStreams(t, 60)
+		require.NotEqual(t, obj.path, other.path)
+
+		synctest.Test(t, func(t *testing.T) {
+			backend := newFakeCache()
+			p := newPrefetcher(t, backend, nil)
+
+			// The first object is prefetched cold and then warm.
+			for _, o := range []*testObject{obj, obj, other} {
+				_, err := p.Prefetch(t.Context(), o.request(prefetchSets["message"]))
+				require.NoError(t, err)
+			}
+			// The read of the region item from the cache can end after the prefetch returns.
+			synctest.Wait()
+
+			require.Equal(t, []string{cache.HashKey(obj.path), cache.HashKey(other.path)}, backend.shardKeyOfCalls())
+		})
 	})
 
 	t.Run("two objects that share one cache keep their own metadata, cold and warm", func(t *testing.T) {
@@ -1014,13 +1035,18 @@ type fakeCache struct {
 	failReads, failWrites, timeoutReads bool
 
 	lookupCalls, setItems int
+
+	// shardKeys holds the shard key of each call of Fetch and Store, in call order.
+	shardKeys []string
 }
 
 func newFakeCache() *fakeCache { return &fakeCache{values: map[string][]byte{}} }
 
-func (s *fakeCache) Fetch(_ context.Context, keys []string, _ ...cache.Option) (found []string, bufs [][]byte, missing []string, err error) {
+func (s *fakeCache) Fetch(_ context.Context, keys []string, opts ...cache.Option) (found []string, bufs [][]byte, missing []string, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	s.shardKeys = append(s.shardKeys, cache.NewOptions(opts...).ShardKey)
 
 	// A lookup asks for several keys. The read of the whole region asks for one.
 	if len(keys) > 1 {
@@ -1042,9 +1068,11 @@ func (s *fakeCache) Fetch(_ context.Context, keys []string, _ ...cache.Option) (
 	return found, bufs, missing, nil
 }
 
-func (s *fakeCache) Store(_ context.Context, keys []string, bufs [][]byte, _ ...cache.Option) error {
+func (s *fakeCache) Store(_ context.Context, keys []string, bufs [][]byte, opts ...cache.Option) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	s.shardKeys = append(s.shardKeys, cache.NewOptions(opts...).ShardKey)
 
 	s.setItems += len(keys)
 	if s.failWrites {
@@ -1062,6 +1090,20 @@ func (s *fakeCache) GetCacheType() stats.CacheType { return "fake" }
 
 func (s *fakeCache) lookups() int { s.mu.Lock(); defer s.mu.Unlock(); return s.lookupCalls }
 func (s *fakeCache) sets() int    { s.mu.Lock(); defer s.mu.Unlock(); return s.setItems }
+
+// shardKeyOfCalls returns the distinct shard keys of the calls, in the order of their first call.
+func (s *fakeCache) shardKeyOfCalls() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var distinct []string
+	for _, k := range s.shardKeys {
+		if !slices.Contains(distinct, k) {
+			distinct = append(distinct, k)
+		}
+	}
+	return distinct
+}
 
 func (s *fakeCache) resetCounts() {
 	s.mu.Lock()
