@@ -266,12 +266,18 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	}
 
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil && hintRanges.Overlaps(storeQueryInterval.start, storeQueryInterval.end) {
-		params.Start = storeQueryInterval.start
-		params.End = storeQueryInterval.end
+		// Narrow a copy so the caller's request keeps its original range.
+		// MultiTenantQuerier passes the same request to every tenant.
+		queryRequestCopy := *params.QueryRequest
+		storeParams := logql.SelectLogParams{
+			QueryRequest: &queryRequestCopy,
+		}
+		storeParams.Start = storeQueryInterval.start
+		storeParams.End = storeQueryInterval.end
 		sp.AddEvent("querying store", trace.WithAttributes(
-			attribute.Stringer("params", params),
+			attribute.Stringer("params", storeParams),
 		))
-		storeIter, err := q.chunkStore.SelectLogs(ctx, params)
+		storeIter, err := q.chunkStore.SelectLogs(ctx, storeParams)
 		if err != nil {
 			return nil, err
 		}
@@ -348,14 +354,20 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 	}
 
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil && hintRanges.Overlaps(storeQueryInterval.start, storeQueryInterval.end) {
-		params.Start = storeQueryInterval.start
-		params.End = storeQueryInterval.end
+		// Narrow a copy so the caller's request keeps its original range.
+		// MultiTenantQuerier passes the same request to every tenant.
+		queryRequestCopy := *params.SampleQueryRequest
+		storeParams := logql.SelectSampleParams{
+			SampleQueryRequest: &queryRequestCopy,
+		}
+		storeParams.Start = storeQueryInterval.start
+		storeParams.End = storeQueryInterval.end
 
-		store, err := q.storeForSelectSamples(ctx, params)
+		store, err := q.storeForSelectSamples(ctx, storeParams)
 		if err != nil {
 			return nil, err
 		}
-		storeIter, err := store.SelectSamples(ctx, params)
+		storeIter, err := store.SelectSamples(ctx, storeParams)
 		if err != nil {
 			return nil, err
 		}
