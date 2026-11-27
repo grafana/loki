@@ -387,7 +387,7 @@ func Test_DetectLogLevels(t *testing.T) {
 }
 
 func Test_detectLogLevelFromLogEntry(t *testing.T) {
-	ld := newFieldDetector(
+	ld := newFieldDetector(t.Context(),
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -759,7 +759,7 @@ func Test_extractLogLevel_normalizesSingleLetterOTLPSeverityText(t *testing.T) {
 }
 
 func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
-	ld := newFieldDetector(
+	ld := newFieldDetector(t.Context(),
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -925,7 +925,7 @@ func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
 
 // Test_detectLogLevelFromOTLPSeverityNumber tests level detection against the OTLP severity_number
 func Test_detectLogLevelFromOTLPSeverityNumber(t *testing.T) {
-	ld := newFieldDetector(
+	ld := newFieldDetector(t.Context(),
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -1029,7 +1029,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 		"nested level field":        `{"metadata": {"level": "error"}, "field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
 		"deeply nested level field": `{"a": {"b": {"c": {"level": "error"}}}, "field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
 	}
-	ld := newFieldDetector(
+	ld := newFieldDetector(b.Context(),
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -1048,7 +1048,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 
 func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 	logLine := `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`
-	ld := newFieldDetector(
+	ld := newFieldDetector(b.Context(),
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -1063,7 +1063,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 
 func Test_DetectGenericFields_Enabled(t *testing.T) {
 	t.Run("disabled if map is empty", func(t *testing.T) {
-		detector := newFieldDetector(
+		detector := newFieldDetector(t.Context(),
 			validationContext{
 				discoverGenericFields:   make(map[string][]string, 0),
 				allowStructuredMetadata: true,
@@ -1071,7 +1071,7 @@ func Test_DetectGenericFields_Enabled(t *testing.T) {
 		require.False(t, detector.shouldDiscoverGenericFields())
 	})
 	t.Run("disabled if structured metadata is not allowed", func(t *testing.T) {
-		detector := newFieldDetector(
+		detector := newFieldDetector(t.Context(),
 			validationContext{
 				discoverGenericFields:   map[string][]string{"trace_id": {"trace_id", "TRACE_ID"}},
 				allowStructuredMetadata: false,
@@ -1079,7 +1079,7 @@ func Test_DetectGenericFields_Enabled(t *testing.T) {
 		require.False(t, detector.shouldDiscoverGenericFields())
 	})
 	t.Run("enabled if structured metadata is allowed and map is not empty", func(t *testing.T) {
-		detector := newFieldDetector(
+		detector := newFieldDetector(t.Context(),
 			validationContext{
 				discoverGenericFields:   map[string][]string{"trace_id": {"trace_id", "TRACE_ID"}},
 				allowStructuredMetadata: true,
@@ -1090,7 +1090,7 @@ func Test_DetectGenericFields_Enabled(t *testing.T) {
 
 func Test_DetectGenericFields(t *testing.T) {
 
-	detector := newFieldDetector(
+	detector := newFieldDetector(t.Context(),
 		validationContext{
 			discoverGenericFields: map[string][]string{
 				"trace_id":   {"trace_id"},

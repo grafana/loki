@@ -92,21 +92,36 @@ type FieldDetector struct {
 	allowedLevelLabelsMap    map[string]struct{}
 	allowedLevelLabels       []string
 	logLevelFromJSONMaxDepth int
+
+	// The profiler-labelled contexts for discoverFields, derived once from the context the
+	// FieldDetector is created with, and only for the discovery that is enabled. This saves
+	// pprof.Do's allocations on every entry.
+	discoverLogLevelCtx      context.Context
+	discoverGenericFieldsCtx context.Context
 }
 
-func newFieldDetector(validationContext validationContext) *FieldDetector {
+// newFieldDetector returns a FieldDetector for one push. ctx is the push's context: discoverFields
+// profiles its work under ctx's profiler labels plus an "action" label.
+func newFieldDetector(ctx context.Context, validationContext validationContext) *FieldDetector {
 	allowedLevelLabels := allowedLabelsForLevel(validationContext.logLevelFields)
 	allowedLevelLabelsMap := make(map[string]struct{}, len(allowedLevelLabels))
 	for _, field := range allowedLevelLabels {
 		allowedLevelLabelsMap[field] = struct{}{}
 	}
 
-	return &FieldDetector{
+	detector := &FieldDetector{
 		validationContext:        validationContext,
 		allowedLevelLabelsMap:    allowedLevelLabelsMap,
 		allowedLevelLabels:       allowedLevelLabels,
 		logLevelFromJSONMaxDepth: validationContext.logLevelFromJSONMaxDepth,
 	}
+	if detector.shouldDiscoverLogLevels() {
+		detector.discoverLogLevelCtx = pprof.WithLabels(ctx, pprof.Labels("action", "discover_log_level"))
+	}
+	if detector.shouldDiscoverGenericFields() {
+		detector.discoverGenericFieldsCtx = pprof.WithLabels(ctx, pprof.Labels("action", "discover_generic_fields"))
+	}
+	return detector
 }
 
 func (l *FieldDetector) shouldDiscoverLogLevels() bool {
@@ -117,9 +132,12 @@ func (l *FieldDetector) shouldDiscoverGenericFields() bool {
 	return l.validationContext.allowStructuredMetadata && len(l.validationContext.discoverGenericFields) > 0
 }
 
+// discoverFields adds the discovered log level and generic fields to entry's structured metadata.
+// It runs under the profiler labels of the context the FieldDetector was created with, and restores
+// the labels of ctx when it returns.
 func (l *FieldDetector) discoverFields(ctx context.Context, lbs labels.Labels, entry *logproto.Entry, structuredMetadata labels.Labels, sharedMetadata ...labels.Labels) {
 	if l.shouldDiscoverLogLevels() {
-		pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
+		withProfilerLabels(ctx, l.discoverLogLevelCtx, func() {
 			logLevel, ok := l.extractLogLevel(lbs, structuredMetadata, *entry, sharedMetadata...)
 			if ok {
 				entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
@@ -127,7 +145,7 @@ func (l *FieldDetector) discoverFields(ctx context.Context, lbs labels.Labels, e
 		})
 	}
 	if l.shouldDiscoverGenericFields() {
-		pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
+		withProfilerLabels(ctx, l.discoverGenericFieldsCtx, func() {
 			for field, hints := range l.validationContext.discoverGenericFields {
 				extracted, ok := l.extractGenericField(field, hints, lbs, structuredMetadata, *entry, sharedMetadata...)
 				if ok {
@@ -136,6 +154,14 @@ func (l *FieldDetector) discoverFields(ctx context.Context, lbs labels.Labels, e
 			}
 		})
 	}
+}
+
+// withProfilerLabels runs f with the goroutine's profiler labels set to those of labelled, then
+// restores the labels of ctx. It is pprof.Do for a labelled context that already exists.
+func withProfilerLabels(ctx, labelled context.Context, f func()) {
+	defer pprof.SetGoroutineLabels(ctx)
+	pprof.SetGoroutineLabels(labelled)
+	f()
 }
 
 func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry, sharedMetadata ...labels.Labels) (logproto.LabelAdapter, bool) {
