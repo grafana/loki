@@ -138,7 +138,12 @@ func New(indexStore *store.Store, cfg Config, logger log.Logger, reg prometheus.
 		startedAt = time.Now().UTC()
 	}
 
-	hintProvider, err := hintprovider.NewLoglineHintProvider(indexStore, cfg.NgramLength, 0, 0, nil, logger, reg)
+	// The service polls the catalog for IndexesForRange, but the cache does not
+	// need the snapshot: an index it no longer looks up ages out of the LRU.
+	hintProvider, err := hintprovider.NewLoglineHintProvider(indexStore, cfg.NgramLength, 0, 0, nil, logger, &hintprovider.MetadataCacheConfig{
+		MaxBytes:   hintprovider.DefaultMetadataCacheMaxBytes,
+		Registerer: reg,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create hint provider: %w", err)
 	}

@@ -201,3 +201,16 @@ Query-shape support and hint lookup for logline index lookups.
       frontend's default planned.
     - The frontend owns the configuration default of 1; multiple conjunctions
       require explicit opt-in. Examples are pinned in `TestSupportedQuery_Or`.
+19. **The metadata cache is an LRU, and the querier does not poll**
+    - `metadataCache` keys parsed index metadata by index ID. An index and its
+      `meta.json` never change once written, so an entry cannot go stale. It
+      only stops being asked for, when the index is compacted or deleted, and
+      then it ages out of the LRU. Nothing evicts from a catalog snapshot.
+    - It is bounded by `maxMetadataCacheEntries` and by a byte budget of the
+      `estimateBytes` sizes (`logline.query.metadata_cache_max_size_mb` on the
+      querier, `DefaultMetadataCacheMaxBytes` on correctness). An entry larger
+      than the whole budget is not cached.
+    - The querier answers `QueryHints` from the `Indexes` the frontend planned
+      and never reads the store's snapshot, so it does not poll the catalog. Do
+      not add a querier code path that calls `PlanHints`, `ProvideHints` or
+      `IndexesForRange`: on the querier they would see an empty catalog.

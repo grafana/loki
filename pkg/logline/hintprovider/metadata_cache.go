@@ -1,127 +1,129 @@
 package hintprovider
 
 import (
+	"fmt"
 	"sync"
 
+	"github.com/hashicorp/golang-lru/v2/simplelru"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/logline/format"
-	"github.com/grafana/loki/v3/pkg/logline/store"
 )
 
-// estimate of the maximum number of index files we expect in a cell
-const defaultMetadataCacheEntries = 1000
+const (
+	// maxMetadataCacheEntries caps the number of cached indexes, whatever
+	// their size. Entries with no size estimate are bounded by it alone.
+	maxMetadataCacheEntries = 1000
+
+	// DefaultMetadataCacheMaxBytes is the byte budget of the metadata cache of
+	// a component that has no setting for it.
+	DefaultMetadataCacheMaxBytes uint64 = 512 << 20
+)
+
+// MetadataCacheConfig sizes the cache of parsed index metadata. A nil config,
+// or one with a MaxBytes of zero, disables the cache.
+type MetadataCacheConfig struct {
+	// MaxBytes bounds the estimated size of the cached metadata. Past it, the
+	// least recently used entries are evicted.
+	MaxBytes uint64
+	// Registerer receives the cache metrics. It may be nil.
+	Registerer prometheus.Registerer
+}
 
 type cachedMetadata struct {
 	headerInfo format.HeaderInfo // for size estimation and tracking reader
 	state      any               // opaque reader state for fast reopen
 }
 
-// metadataCache is a concurrency-safe cache for parsed index metadata.
-// It allows the hint provider to skip GCS range reads for previously-opened
-// index files.
+// metadataCache is a concurrency-safe LRU cache for parsed index metadata. It
+// lets the hint provider skip the range reads of an index it opened before.
+//
+// Entries are keyed by index ID. An index and its meta.json never change once
+// written, so an entry cannot go stale. It can only stop being asked for, when
+// the index is compacted or deleted, and then it ages out of the LRU.
 type metadataCache struct {
-	mu            sync.RWMutex
-	entries       map[string]cachedMetadata
-	maxEntries    int
-	metrics       *cacheMetrics
-	estimatedSize uint64
+	mu       sync.Mutex
+	lru      *simplelru.LRU[string, cachedMetadata]
+	maxBytes uint64
+	bytes    uint64
+	metrics  *cacheMetrics
 }
 
-func newMetadataCache(maxEntries int, reg prometheus.Registerer) *metadataCache {
-	cache := &metadataCache{
-		entries:    make(map[string]cachedMetadata),
-		maxEntries: maxEntries,
-		metrics:    newCacheMetrics(reg),
+func newMetadataCache(maxEntries int, maxBytes uint64, reg prometheus.Registerer) (*metadataCache, error) {
+	c := &metadataCache{
+		maxBytes: maxBytes,
+		metrics:  newCacheMetrics(reg),
 	}
-	cache.syncMetricsLocked()
-	return cache
+	lru, err := simplelru.NewLRU(maxEntries, c.onRemove)
+	if err != nil {
+		return nil, fmt.Errorf("create metadata cache: %w", err)
+	}
+	c.lru = lru
+	c.syncMetricsLocked()
+	return c, nil
+}
+
+// onRemove runs under c.mu whenever the LRU drops an entry: an eviction, a
+// delete, or a put that replaces an oversized entry.
+func (c *metadataCache) onRemove(_ string, value cachedMetadata) {
+	c.bytes -= estimateBytes(value)
 }
 
 func (c *metadataCache) get(id string) (cachedMetadata, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	elem, ok := c.entries[id]
-	if !ok {
-		return cachedMetadata{}, false
-	}
-	return elem, true
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lru.Get(id)
 }
 
 func (c *metadataCache) put(id string, value cachedMetadata) {
-	if value.state == nil || c.maxEntries <= 0 {
+	if value.state == nil {
 		return
 	}
+	size := estimateBytes(value)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	defer c.syncMetricsLocked()
 
-	if _, ok := c.entries[id]; ok {
-		c.estimatedSize -= estimateBytes(c.entries[id])
-		c.entries[id] = value
-		c.estimatedSize += estimateBytes(value)
-		c.syncMetricsLocked()
-		return
-	}
-	// Safety cap: once full, do not cache additional entries until stale ones
-	// are evicted by snapshot updates.
-	if len(c.entries) >= c.maxEntries {
+	// An entry larger than the whole budget would evict every other entry and
+	// then itself, so it is not cached.
+	if size > c.maxBytes {
+		c.lru.Remove(id)
 		c.metrics.drops.Inc()
 		return
 	}
-	c.entries[id] = value
-	c.estimatedSize += estimateBytes(value)
-	c.syncMetricsLocked()
+
+	// Add does not call onRemove when it replaces the value of a key.
+	if old, ok := c.lru.Peek(id); ok {
+		c.bytes -= estimateBytes(old)
+	}
+	c.bytes += size
+	if c.lru.Add(id, value) {
+		c.metrics.evictions.Inc()
+	}
+	// The new entry is the most recent and fits the budget alone, so this
+	// stops before removing it.
+	for c.bytes > c.maxBytes {
+		if _, _, ok := c.lru.RemoveOldest(); !ok {
+			break
+		}
+		c.metrics.evictions.Inc()
+	}
 }
 
 func (c *metadataCache) delete(id string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	value, ok := c.entries[id]
-	if !ok {
-		return
-	}
-	delete(c.entries, id)
-	c.estimatedSize -= estimateBytes(value)
-	c.syncMetricsLocked()
-}
-
-// evictStale removes entries that no longer appear in the active snapshot,
-// preventing the cache from holding references to deleted or compacted indexes.
-func (c *metadataCache) evictStale(snap *store.Snapshot) {
-	if snap == nil {
-		return
-	}
-
-	active := snap.Active()
-	activeIDs := make(map[string]struct{}, len(active))
-	for _, meta := range active {
-		activeIDs[meta.ID()] = struct{}{}
-	}
-
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	updated := false
-	for id := range c.entries {
-		if _, ok := activeIDs[id]; ok {
-			continue
-		}
-		c.estimatedSize -= estimateBytes(c.entries[id])
-		delete(c.entries, id)
-		updated = true
-	}
-	if updated {
+	if c.lru.Remove(id) {
 		c.syncMetricsLocked()
 	}
 }
 
 func (c *metadataCache) len() int {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return len(c.entries)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lru.Len()
 }
 
 func estimateBytes(value cachedMetadata) uint64 {
@@ -130,9 +132,6 @@ func estimateBytes(value cachedMetadata) uint64 {
 }
 
 func (c *metadataCache) syncMetricsLocked() {
-	if c.metrics == nil {
-		return
-	}
-	c.metrics.entries.Set(float64(len(c.entries)))
-	c.metrics.sizeBytes.Set(float64(c.estimatedSize))
+	c.metrics.entries.Set(float64(c.lru.Len()))
+	c.metrics.sizeBytes.Set(float64(c.bytes))
 }

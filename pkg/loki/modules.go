@@ -589,6 +589,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		loglineStore,
 		t.Cfg.Logline.Index.NgramLength,
 		t.Cfg.Logline.Query.MaxHintParallel,
+		t.Cfg.Logline.Query.MetadataCacheMaxBytes(),
 	)
 	if err != nil {
 		return nil, err
@@ -769,52 +770,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if svc != nil {
 		svc.AddListener(newStopListener(deleteStore.Stop))
 	}
-	return withLoglineStorePolling(loglineStore, svc)
-}
-
-// withLoglineStorePolling starts catalog polling on the querier store so the
-// metadata cache's PollNotify loop can evict IDs that leave the snapshot. The
-// poller is loglinestore.NewPollingService, same helper the query-frontend uses. The
-// wrap below is querier-only: this module already returns the worker.
-func withLoglineStorePolling(loglineStore *loglinestore.Store, svc services.Service) (services.Service, error) {
-	if loglineStore == nil {
-		return svc, nil
-	}
-
-	storeSvc := loglinestore.NewPollingService(loglineStore, "querier-logline-store", nil)
-
-	if svc == nil {
-		return storeSvc, nil
-	}
-
-	w := services.NewFailureWatcher()
-	w.WatchService(storeSvc)
-	w.WatchService(svc)
-
-	return services.NewBasicService(
-		func(ctx context.Context) error {
-			if err := services.StartAndAwaitRunning(ctx, storeSvc); err != nil {
-				return err
-			}
-			return services.StartAndAwaitRunning(ctx, svc)
-		},
-		func(ctx context.Context) error {
-			select {
-			case <-ctx.Done():
-				return nil
-			case err := <-w.Chan():
-				return err
-			}
-		},
-		func(_ error) error {
-			defer w.Close()
-			err := services.StopAndAwaitTerminated(context.Background(), svc)
-			if stopErr := services.StopAndAwaitTerminated(context.Background(), storeSvc); err == nil {
-				err = stopErr
-			}
-			return err
-		},
-	), nil
+	return svc, nil
 }
 
 // initDataObjCache builds the metadata caches of the data objects and, when enabled, the metadata prefetcher. They share
@@ -2415,7 +2371,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.QueryEngine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, nil, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, 0, 0)
+	q, err := querier.New(t.Cfg.Querier, t.Store, nil, t.ingesterQuerier, t.Overrides, deleteStore, logger, nil, 0, 0, 0)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}
