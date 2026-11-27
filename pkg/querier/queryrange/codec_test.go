@@ -16,6 +16,7 @@ import (
 
 	"github.com/axiomhq/hyperloglog"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -383,6 +384,52 @@ func Test_codec_DecodeRequest_cacheHeader(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func Test_codec_DecodeRequest_timeOutOfRange(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	decode := func(t *testing.T, path string, params url.Values) (queryrangebase.Request, error) {
+		t.Helper()
+		params.Set("query", `sum(count_over_time({app="foo"}[5m]))`)
+		r, err := http.NewRequest(http.MethodGet, path+"?"+params.Encode(), nil)
+		require.NoError(t, err)
+		return DefaultCodec.DecodeRequest(ctx, r, nil)
+	}
+
+	requireBadRequest := func(t *testing.T, err error, msg string) {
+		t.Helper()
+		resp, ok := httpgrpc.HTTPResponseFromError(err)
+		require.True(t, ok, "expected an HTTP error, got %v", err)
+		require.Equal(t, int32(http.StatusBadRequest), resp.Code)
+		require.Equal(t, msg, string(resp.Body))
+	}
+
+	t.Run("instant query with a time in range decodes", func(t *testing.T) {
+		req, err := decode(t, "/loki/api/v1/query", url.Values{"time": []string{"1700000000000000000"}})
+		require.NoError(t, err)
+		require.Equal(t, time.Unix(0, 1700000000000000000), req.(*LokiInstantRequest).TimeTs)
+	})
+
+	t.Run("instant query with a time after the upper bound returns 400", func(t *testing.T) {
+		_, err := decode(t, "/loki/api/v1/query", url.Values{"time": []string{"1700000000000.5"}})
+		requireBadRequest(t, err, `could not parse 'time' parameter: timestamp "1700000000000.5" is out of range [1970-01-01T00:00:00Z, 2262-01-01T00:00:00Z]`)
+	})
+
+	t.Run("range query with a start before the Unix epoch returns 400", func(t *testing.T) {
+		_, err := decode(t, "/loki/api/v1/query_range", url.Values{"start": []string{"1969-12-31T23:59:59Z"}, "end": []string{"1700000000000000000"}})
+		requireBadRequest(t, err, `could not parse 'start' parameter: timestamp "1969-12-31T23:59:59Z" is out of range [1970-01-01T00:00:00Z, 2262-01-01T00:00:00Z]`)
+	})
+
+	t.Run("range query with an end after the upper bound returns 400", func(t *testing.T) {
+		_, err := decode(t, "/loki/api/v1/query_range", url.Values{"start": []string{"1700000000000000000"}, "end": []string{"3000-01-01T00:00:00Z"}})
+		requireBadRequest(t, err, `could not parse 'end' parameter: timestamp "3000-01-01T00:00:00Z" is out of range [1970-01-01T00:00:00Z, 2262-01-01T00:00:00Z]`)
+	})
+
+	t.Run("labels query with an end after the upper bound returns 400", func(t *testing.T) {
+		_, err := decode(t, "/loki/api/v1/labels", url.Values{"start": []string{"1700000000000000000"}, "end": []string{"1.7e+18"}})
+		requireBadRequest(t, err, `could not parse 'end' parameter: timestamp "1.7e+18" is out of range [1970-01-01T00:00:00Z, 2262-01-01T00:00:00Z]`)
+	})
 }
 
 func Test_codec_DecodeResponse(t *testing.T) {
