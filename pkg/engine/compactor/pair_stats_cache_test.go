@@ -16,6 +16,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
 // countingBucket counts the reads of index objects, and fails them while
@@ -87,6 +88,17 @@ func TestLogSectionsCache(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, float64(2), requests(metrics, statsCacheMiss))
+	})
+
+	t.Run("a hit returns a corrupt index error when the ToC lists the paths with another run length", func(t *testing.T) {
+		cache, _, _, bucket := newCache(t)
+		_, err := cache.read(ctx, bucket, imWindow(), runOfPath("indexes/a"))
+		require.NoError(t, err)
+		run := runOfEntry(indexpointers.IndexPointer{Path: "indexes/a", RunID: 1, RunLength: 2})
+
+		_, err = cache.read(ctx, bucket, imWindow(), run)
+
+		require.ErrorIs(t, err, errCorruptIndex)
 	})
 
 	t.Run("a ToC drops the cached reads of its window that it does not list and keeps the others", func(t *testing.T) {

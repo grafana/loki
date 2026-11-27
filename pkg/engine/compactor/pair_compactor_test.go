@@ -678,6 +678,23 @@ func TestPairCompactorRunJob(t *testing.T) {
 		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeStale))
 	})
 
+	t.Run("a job whose source index object is gone from the bucket runs no task and counts as a corrupt index", func(t *testing.T) {
+		bucket := objstore.NewInMemBucket()
+		seedPairs(t, bucket, "indexes/a", "indexes/b")
+		require.NoError(t, bucket.Delete(t.Context(), "indexes/b"))
+		runner := &fakeRunner{}
+		replacer := &fakeReplacer{swapped: true}
+		c := newPairTestCoordinator(t, bucket, runner, replacer)
+		p := c.newPairCompactor("acme")
+
+		p.runJob(t.Context(), &pairMerge{scope: jobScope{window: imWindow(), sources: []indexRun{runOfPath("indexes/a"), runOfPath("indexes/b")}}}, 0)
+
+		require.Empty(t, runner.snapshot())
+		require.Empty(t, replacer.snapshot())
+		require.Equal(t, float64(1), pairJobsCount(c, pairJobKindMerge, pairJobOutcomeFailed))
+		require.Equal(t, float64(1), testutil.ToFloat64(c.metrics.corruptIndexesTotal.WithLabelValues("acme", phaseLabelPairMerge)))
+	})
+
 	t.Run("a job that ctx stops before its first slot records no outcome", func(t *testing.T) {
 		bucket := objstore.NewInMemBucket()
 		seedPairs(t, bucket, "indexes/a", "indexes/b")

@@ -716,8 +716,8 @@ func TestLogSectionFolderSortPrefix(t *testing.T) {
 		second := folder.sortPrefix(row("logs/b"))
 
 		require.Equal(t, first, second)
-		require.Equal(t, unsafe.StringData(first.prefix.SchemaKey), unsafe.StringData(second.prefix.SchemaKey))
-		require.Equal(t, unsafe.SliceData(first.labels), unsafe.SliceData(second.labels))
+		require.Same(t, unsafe.StringData(first.prefix.SchemaKey), unsafe.StringData(second.prefix.SchemaKey))
+		require.Same(t, unsafe.SliceData(first.labels), unsafe.SliceData(second.labels))
 	})
 
 	t.Run("rows with different label values get different sort prefixes", func(t *testing.T) {

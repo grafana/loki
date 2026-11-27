@@ -636,8 +636,10 @@ func (f *logSectionFolder) refs() []v2.Section[logSortPrefix] {
 	refs := make([]v2.Section[logSortPrefix], 0, len(f.bySection))
 	for _, ref := range f.bySection {
 		// Trim the spare capacity that append left, because the planner can
-		// keep the keys for many scans.
-		ref.Keys = slices.Clone(ref.Keys)
+		// keep the keys for many scans. A small spare is not worth a copy.
+		if cap(ref.Keys) > len(ref.Keys)+len(ref.Keys)/4 {
+			ref.Keys = slices.Clone(ref.Keys)
+		}
 		refs = append(refs, *ref)
 	}
 	slices.SortFunc(refs, func(a, b v2.Section[logSortPrefix]) int {

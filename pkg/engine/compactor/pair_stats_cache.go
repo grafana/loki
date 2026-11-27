@@ -87,7 +87,14 @@ func (c *logSectionsCache) dropWindowsExcept(windows []time.Time) {
 // read returns the stats read of indexRun of window from the cache, or reads
 // it with readLogSections and caches the result. It returns the errors of
 // readLogSections, and caches nothing on an error.
+//
+// A cached read is only valid for the paths of indexRun, so read checks the
+// run length of the ToC entries on a hit too. The ToC can list the same paths
+// with another run length.
 func (c *logSectionsCache) read(ctx context.Context, bucket objstore.Bucket, window time.Time, indexRun indexRun) (logSectionsRead, error) {
+	if err := indexRun.checkLength(); err != nil {
+		return logSectionsRead{}, err
+	}
 	key := indexRunCacheKey(indexRun)
 	c.windowsMu.Lock()
 	entry, ok := c.windows[window][key]

@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"slices"
 	"strconv"
@@ -137,7 +138,7 @@ func (p *pairCompactor) run(ctx context.Context) {
 // does not stop the other windows.
 //
 // planAndStart sets the last plan timestamp of the tenant only if it planned
-// every index run of every window.
+// every index run of every window, from the bucket or from the stats cache.
 func (p *pairCompactor) planAndStart(ctx context.Context) int {
 	var (
 		started  int
@@ -228,6 +229,15 @@ func (p *pairCompactor) runJob(ctx context.Context, job pairJob, planOrder uint6
 		p.metrics.pairJobsTotal.WithLabelValues(p.tenant, job.kind(), pairJobOutcomeStale).Inc()
 		return
 	}
+	// Planning can take the stats of a source from the cache, which does not
+	// open its index objects. A source that the ToC lists but the bucket lost
+	// must not be swapped out, because no read reports it.
+	if err := p.requireSourcesExist(ctx, paths); err != nil {
+		if ctx.Err() == nil {
+			p.jobFailed(logger, job, err)
+		}
+		return
+	}
 
 	env := jobEnv{
 		tenant:           p.tenant,
@@ -260,6 +270,22 @@ func (p *pairCompactor) runJob(ctx context.Context, job pairJob, planOrder uint6
 	p.metrics.indexesRemovedTotal.WithLabelValues(p.tenant).Add(float64(len(scope.sources)))
 	p.metrics.indexesAddedTotal.WithLabelValues(p.tenant).Add(float64(len(newRuns)))
 	p.metrics.tasksTotal.WithLabelValues(p.tenant).Add(float64(tasks))
+}
+
+// requireSourcesExist returns an error that wraps errCorruptIndex if the
+// bucket holds no index object at a path in paths.
+func (p *pairCompactor) requireSourcesExist(ctx context.Context, paths []string) error {
+	for _, path := range paths {
+		exists, err := p.bucket.Exists(ctx, path)
+		if err != nil {
+			return fmt.Errorf("check source index %s exists: %w", path, err)
+		}
+		if !exists {
+			p.metrics.corruptIndexesTotal.WithLabelValues(p.tenant, phaseLabelPairMerge).Inc()
+			return fmt.Errorf("%w: the ToC lists source index %s, but the bucket holds no such object", errCorruptIndex, path)
+		}
+	}
+	return nil
 }
 
 func (p *pairCompactor) jobFailed(logger log.Logger, job pairJob, err error) {
