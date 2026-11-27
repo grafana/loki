@@ -1,3 +1,14 @@
+# Release (2026-11-24)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.28.10
+  * **Bug Fix**: Reduce JSON blob deserialization CPU time and allocations by decoding unescaped base64 directly from the input.
+  * **Bug Fix**: Return an error when encoding an event stream message too long for its 32-bit length field instead of writing a truncated length.
+  * **Bug Fix**: Validate event stream message prelude lengths when decoding.
+
 # Release (2026-11-09)
 
 ## General Highlights

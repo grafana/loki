@@ -28,7 +28,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.21
 	github.com/aws/aws-sdk-go-v2/credentials v1.21.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.116.0
-	github.com/aws/smithy-go v1.28.9
+	github.com/aws/smithy-go v1.28.10
 	github.com/axiomhq/hyperloglog v0.3.0
 	github.com/baidubce/bce-sdk-go v0.9.279
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3
