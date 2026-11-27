@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
-	lokimemory "github.com/grafana/loki/v3/pkg/memory"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 	"github.com/grafana/loki/v3/pkg/xcap"
 )
@@ -619,20 +618,23 @@ func TestReader_Read(t *testing.T) {
 
 	t.Run("reads every row in batches that do not exceed the batch size", func(t *testing.T) {
 		r := NewReader(ReaderOptions{
-			Columns: section.Columns(),
+			Columns:   section.Columns(),
+			Allocator: memory.DefaultAllocator,
 		})
 		require.NoError(t, r.Open(t.Context()))
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
 		var totalRows int64
 		for {
-			batch, err := r.Read(t.Context(), lokimemory.NewAllocator(nil), 2)
+			batch, err := r.Read(t.Context(), 2)
+			if batch != nil {
+				require.LessOrEqual(t, batch.NumRows(), int64(2), "batch should not exceed batchSize")
+				totalRows += batch.NumRows()
+			}
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			require.NoError(t, err)
-			require.LessOrEqual(t, batch.NumRows(), int64(2), "batch should not exceed batchSize")
-			totalRows += batch.NumRows()
 		}
 		require.Equal(t, int64(5), totalRows, "should read all 5 rows across batches")
 	})
@@ -647,7 +649,7 @@ func TestReader_Read(t *testing.T) {
 		require.NoError(t, r.Open(t.Context()))
 		t.Cleanup(func() { require.NoError(t, r.Close()) })
 
-		batch, err := readArrow(t.Context(), r, 10)
+		batch, err := r.Read(t.Context(), 10)
 		require.NoError(t, err)
 		require.Equal(t, int64(1), batch.NumRows())
 		require.Equal(t, int64(1), batch.NumCols())
@@ -951,13 +953,34 @@ func flushAndOpenSections(t *testing.T, b *Builder) []*Section {
 	return sections
 }
 
+// readTable drains a Reader into an arrow.Table, mirroring streams/reader_test.go.
+func readTable(ctx context.Context, r *Reader) (arrow.Table, error) {
+	var recs []arrow.RecordBatch
+	for {
+		rec, err := r.Read(ctx, 128)
+		if rec != nil && rec.NumRows() > 0 {
+			recs = append(recs, rec)
+		}
+		if err != nil && errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	if len(recs) == 0 {
+		return nil, io.EOF
+	}
+	return array.NewTableFromRecords(recs[0].Schema(), recs), nil
+}
+
 // readAllRows opens all columns from sec, reads them via the new columnar
 // Reader, and returns both the row maps and the underlying table (needed for
 // extractBinaryColumn calls on opaque columns).
 func readAllRows(t *testing.T, sec *Section) (arrowtest.Rows, arrow.Table) {
 	t.Helper()
 	r := NewReader(ReaderOptions{
-		Columns: sec.Columns(),
+		Columns:   sec.Columns(),
+		Allocator: memory.DefaultAllocator,
 	})
 	require.NoError(t, r.Open(context.Background()))
 	t.Cleanup(func() { _ = r.Close() })
