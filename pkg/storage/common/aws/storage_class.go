@@ -15,6 +15,8 @@ var (
 	SupportedStorageClasses = []s3_types.ObjectStorageClass{
 		s3_types.ObjectStorageClassStandard,
 		s3_types.ObjectStorageClassStandardIa,
+		s3_types.ObjectStorageClassGlacierIr,
+		s3_types.ObjectStorageClassIntelligentTiering,
 		s3_types.ObjectStorageClassReducedRedundancy,
 	}
 )
@@ -22,9 +24,14 @@ var (
 // StorageClassUsage returns the description of the supported storage classes for use in flag help texts.
 func StorageClassUsage() string {
 	return fmt.Sprintf(
-		"Supported values are: %s. %s is only intended for use with MinIO.",
+		"Supported values are: %s. %s is only intended for use with MinIO. "+
+			"Grafana Labs has only tested Loki with %s and %s; use %s and %s at your own risk.",
 		strings.Join(ToStringSlice(SupportedStorageClasses), ", "),
 		s3_types.ObjectStorageClassReducedRedundancy,
+		s3_types.ObjectStorageClassStandard,
+		s3_types.ObjectStorageClassStandardIa,
+		s3_types.ObjectStorageClassGlacierIr,
+		s3_types.ObjectStorageClassIntelligentTiering,
 	)
 }
 
