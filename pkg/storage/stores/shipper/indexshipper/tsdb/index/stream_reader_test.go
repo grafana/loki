@@ -884,35 +884,48 @@ func TestStreamReader_ConcurrentSeriesScans(t *testing.T) {
 }
 
 // BenchmarkSeriesIteration reads every series matched by a broad postings list.
+// Benchmarks with each of mmap and stream file readers, and with and without decoding labels.
 func BenchmarkSeriesIteration(b *testing.B) {
 	path := writeBenchmarkFixture(b, 200_000, 3)
-	r, err := NewStreamFileReader(path, DefaultStreamOptions())
-	require.NoError(b, err)
-	b.Cleanup(func() { require.NoError(b, r.Close()) })
 
-	postings, err := r.Postings("c", nil, "3")
-	require.NoError(b, err)
-	var refs []storage.SeriesRef
-	for postings.Next() {
-		refs = append(refs, postings.At())
-	}
-	require.NoError(b, postings.Err())
-	require.NotEmpty(b, refs)
+	for _, rc := range allReaderConstructors() {
+		reader, err := rc.open(path)
+		require.NoError(b, err)
+		b.Cleanup(func() { require.NoError(b, reader.Close()) })
 
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		scan := r.NewSeriesScan()
-		var lbls labels.Labels
-		chunks := make([]ChunkMeta, 0, 8)
-		for _, ref := range refs {
-			chunks = chunks[:0]
-			if _, err := scan.Series(ref, 0, math.MaxInt64, &lbls, &chunks, nil); err != nil {
-				b.Fatal(err)
-			}
+		postings, err := reader.Postings("c", nil, "3")
+		require.NoError(b, err)
+		var refs []storage.SeriesRef
+		for postings.Next() {
+			refs = append(refs, postings.At())
 		}
-		if err := scan.Close(); err != nil {
-			b.Fatal(err)
+		require.NoError(b, postings.Err())
+		require.NotEmpty(b, refs)
+
+		for _, withLabels := range []bool{true, false} {
+			b.Run(fmt.Sprintf("%s/labels=%t", rc.name, withLabels), func(b *testing.B) {
+				var lbls labels.Labels
+				lblsPtr := &lbls
+				if !withLabels {
+					lblsPtr = nil
+				}
+				chunks := make([]ChunkMeta, 0, 8)
+
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					scan := reader.NewSeriesScan()
+					for _, ref := range refs {
+						chunks = chunks[:0]
+						if _, err := scan.Series(ref, 0, math.MaxInt64, lblsPtr, &chunks, nil); err != nil {
+							b.Fatal(err)
+						}
+					}
+					if err := scan.Close(); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
 		}
 	}
 }
