@@ -135,7 +135,7 @@ require (
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	gotest.tools v2.2.0+incompatible
-	k8s.io/apimachinery v0.37.2
+	k8s.io/apimachinery v0.37.3
 	k8s.io/utils v0.0.0-20261023123148-ca04ba58ecab
 	zombiezen.com/go/sqlite v1.4.2
 )
