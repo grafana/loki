@@ -31,7 +31,6 @@ require (
 	github.com/aws/smithy-go v1.28.9
 	github.com/axiomhq/hyperloglog v0.3.0
 	github.com/baidubce/bce-sdk-go v0.9.279
-	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3
 	github.com/bits-and-blooms/bloom/v3 v3.7.2
 	github.com/buger/jsonparser v1.6.1
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
@@ -173,6 +172,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.39.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.44.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.53.0 // indirect
+	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.29.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
