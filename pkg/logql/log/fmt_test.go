@@ -735,6 +735,17 @@ func Test_labelsFormatter_Format(t *testing.T) {
 			),
 		},
 		{
+			"unixToTime unsupported length",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
+			labels.FromStrings("foo", "", "bar", "12345678"),
+			labels.FromStrings(
+				"bar", "12345678",
+				"foo", "",
+				"__error__", "TemplateFormatErr",
+				"__error_details__", "template: label:1:10: executing \"label\" at <unixToTime>: error calling unixToTime: unable to parse time '12345678'",
+			),
+		},
+		{
 			"unixToTime seconds",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
 			labels.FromStrings("foo", "", "bar", "1679577215"),
