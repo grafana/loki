@@ -217,9 +217,9 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		}
 		switch resp := resp.(type) {
 		case *LokiResponse:
-			addShardPlannedChunks(&resp.Statistics, resolver.plannedChunks.Load())
+			addShardPlanned(&resp.Statistics, resolver.plannedChunks.Load(), resolver.plannedBytes.Load())
 		case *LokiPromResponse:
-			addShardPlannedChunks(&resp.Statistics, resolver.plannedChunks.Load())
+			addShardPlanned(&resp.Statistics, resolver.plannedChunks.Load(), resolver.plannedBytes.Load())
 		}
 		return resp, nil
 	}
@@ -246,7 +246,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	// Merge index and volume stats result cache stats from shard resolver into the query stats.
 	res.Statistics.Merge(resolverStats.Result(0, 0, 0))
-	addShardPlannedChunks(&res.Statistics, resolver.plannedChunks.Load())
+	addShardPlanned(&res.Statistics, resolver.plannedChunks.Load(), resolver.plannedBytes.Load())
 	value, err := marshal.NewResultValue(res.Data)
 	if err != nil {
 		return nil, err
@@ -303,15 +303,21 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 }
 
-// addShardPlannedChunks records the chunks shard planning estimated for a
-// request together with the chunks scanned for it. Splits that bypass shard
-// planning add to neither, so the two stay comparable.
-func addShardPlannedChunks(s *stats.Result, planned int64) {
-	if planned <= 0 {
+// addShardPlanned records the chunks and bytes shard planning estimated for a
+// request together with the chunks and bytes scanned for it. Splits that
+// bypass shard planning add to none of them, so planned and scanned stay
+// comparable. The scanned bytes are summed per planned split, instead of read
+// from the query's total_bytes, because total_bytes also counts splits that
+// skipped planning.
+func addShardPlanned(s *stats.Result, plannedChunks, plannedBytes int64) {
+	// Bytes in the index stats imply chunks, so this gates both.
+	if plannedChunks <= 0 {
 		return
 	}
-	s.Index.ShardPlannedChunks += planned
+	s.Index.ShardPlannedChunks += plannedChunks
 	s.Index.ShardPlannedChunksScanned += s.TotalChunksScanned()
+	s.Index.ShardPlannedBytes += plannedBytes
+	s.Index.ShardPlannedBytesScanned += s.TotalBytesProcessed()
 }
 
 // shardSplitter middleware will only shard appropriate requests that do not extend past the MinShardingLookback interval.

@@ -3021,6 +3021,9 @@ func TestPrefetchFilter_LoglineOutcome(t *testing.T) {
 				resp := emptyStreamResponse()
 				resp.Statistics.Index.ShardPlannedChunks = tc.plannedChunks
 				resp.Statistics.Index.ShardPlannedChunksScanned = tc.scannedChunks
+				// Bytes follow the chunks, so the byte ratio equals the chunk ratio.
+				resp.Statistics.Index.ShardPlannedBytes = tc.plannedChunks * bytesPerTestChunk
+				resp.Statistics.Index.ShardPlannedBytesScanned = tc.scannedChunks * bytesPerTestChunk
 				return resp, nil
 			})
 			querier := buildStatsAwareQuerier(&logproto.IndexStatsResponse{Bytes: 100}, tc.indexStatsErr, nil, next)
@@ -3052,9 +3055,16 @@ func TestPrefetchFilter_LoglineOutcome(t *testing.T) {
 			require.Equal(t, tc.plannedChunks, loglineStats.PlannedChunks)
 			require.Equal(t, tc.scannedChunks, loglineStats.ScannedChunks)
 			require.InDelta(t, tc.wantRatio, loglineStats.ChunkFilterRatio, 1e-9)
+			require.Equal(t, tc.plannedChunks*bytesPerTestChunk, loglineStats.PlannedBytes)
+			require.Equal(t, tc.scannedChunks*bytesPerTestChunk, loglineStats.ScannedBytes)
+			require.InDelta(t, tc.wantRatio, loglineStats.ByteFilterRatio, 1e-9)
 		})
 	}
 }
+
+// bytesPerTestChunk is the size TestPrefetchFilter_LoglineOutcome gives every
+// planned and scanned chunk.
+const bytesPerTestChunk = 1 << 20
 
 func TestPrefetchFilter_LoglineLookupIOStats(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)

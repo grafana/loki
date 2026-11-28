@@ -73,6 +73,9 @@ type dynamicShardResolver struct {
 	// plannedChunks sums the chunks in the index stats and shards the
 	// resolver looked up, as an estimate of the chunks the request scans.
 	plannedChunks atomic.Int64
+	// plannedBytes sums the bytes in the same index stats and shards as
+	// plannedChunks, as an estimate of the bytes the request scans.
+	plannedBytes atomic.Int64
 
 	chunkPolicy   chunkShardingPolicy
 	dataObjPolicy *dataObjShardingPolicy
@@ -177,6 +180,7 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 
 	combined := stats.MergeStats(results...)
 	r.plannedChunks.Add(int64(combined.Chunks))
+	r.plannedBytes.Add(int64(combined.Bytes))
 
 	level.Debug(log).Log(
 		append(
@@ -299,6 +303,7 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	for _, shard := range casted.Response.Shards {
 		if shard.Stats != nil {
 			r.plannedChunks.Add(int64(shard.Stats.Chunks))
+			r.plannedBytes.Add(int64(shard.Stats.Bytes))
 		}
 	}
 

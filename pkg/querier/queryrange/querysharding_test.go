@@ -445,53 +445,66 @@ func Test_astMapper_TSDBShardingStrategyUsesContext(t *testing.T) {
 
 func Test_astMapper_ShardPlannedChunks(t *testing.T) {
 	for _, tc := range []struct {
-		desc            string
-		strategy        logql.ShardVersion
-		query           string
-		indexChunks     uint64
-		expectedPlanned int64
-		expectedScanned int64
+		desc                 string
+		strategy             logql.ShardVersion
+		query                string
+		indexChunks          uint64
+		expectedPlanned      int64
+		expectedScanned      int64
+		expectedPlannedBytes int64
+		expectedScannedBytes int64
 	}{
 		{
-			desc:            "power of two sharded query",
-			strategy:        logql.PowerOfTwoVersion,
-			query:           `{foo="bar"}`,
-			indexChunks:     40,
-			expectedPlanned: 40,
-			expectedScanned: 10, // 5 for each of the 2 shards
+			desc:                 "power of two sharded query",
+			strategy:             logql.PowerOfTwoVersion,
+			query:                `{foo="bar"}`,
+			indexChunks:          40,
+			expectedPlanned:      40,
+			expectedScanned:      10, // 5 for each of the 2 shards
+			expectedPlannedBytes: 1 << 40,
+			expectedScannedBytes: 2200, // 1100 for each of the 2 shards
 		},
 		{
-			desc:            "power of two unshardable query",
-			strategy:        logql.PowerOfTwoVersion,
-			query:           `quantile_over_time(0.99, {foo="bar"} | unwrap foo [1h])`,
-			indexChunks:     40,
-			expectedPlanned: 40,
-			expectedScanned: 5,
+			desc:                 "power of two unshardable query",
+			strategy:             logql.PowerOfTwoVersion,
+			query:                `quantile_over_time(0.99, {foo="bar"} | unwrap foo [1h])`,
+			indexChunks:          40,
+			expectedPlanned:      40,
+			expectedScanned:      5,
+			expectedPlannedBytes: 1 << 40,
+			expectedScannedBytes: 1100,
 		},
 		{
-			desc:            "bounded sharded query",
-			strategy:        logql.BoundedVersion,
-			query:           `{foo="bar"}`,
-			indexChunks:     40,
-			expectedPlanned: 35, // 15 + 20 from the shards, the index stats aren't looked up
-			expectedScanned: 10,
+			desc:                 "bounded sharded query",
+			strategy:             logql.BoundedVersion,
+			query:                `{foo="bar"}`,
+			indexChunks:          40,
+			expectedPlanned:      35, // 15 + 20 from the shards, the index stats aren't looked up
+			expectedScanned:      10,
+			expectedPlannedBytes: 3500, // 1500 + 2000 from the shards
+			expectedScannedBytes: 2200,
 		},
 		{
+			// The index stats return bytes but no chunks, so the split is not
+			// counted as planned and its bytes are left out too.
 			desc:     "nothing planned",
 			strategy: logql.PowerOfTwoVersion,
 			query:    `quantile_over_time(0.99, {foo="bar"} | unwrap foo [1h])`,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			queried := stats.Result{Querier: stats.Querier{Store: stats.Store{TotalChunksScanned: 5}}}
+			queried := stats.Result{Querier: stats.Querier{Store: stats.Store{
+				TotalChunksScanned: 5,
+				Chunk:              stats.Chunk{DecompressedBytes: 1000, HeadChunkBytes: 100},
+			}}}
 			handler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 				switch r := req.(type) {
 				case *logproto.IndexStatsRequest:
 					return &IndexStatsResponse{Response: &logproto.IndexStatsResponse{Bytes: 1 << 40, Chunks: tc.indexChunks}}, nil
 				case *logproto.ShardsRequest:
 					return &ShardsResponse{Response: &logproto.ShardsResponse{Shards: []logproto.Shard{
-						{Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64 / 2}, Stats: &logproto.IndexStatsResponse{Chunks: 15}},
-						{Bounds: logproto.FPBounds{Min: math.MaxUint64/2 + 1, Max: math.MaxUint64}, Stats: &logproto.IndexStatsResponse{Chunks: 20}},
+						{Bounds: logproto.FPBounds{Min: 0, Max: math.MaxUint64 / 2}, Stats: &logproto.IndexStatsResponse{Chunks: 15, Bytes: 1500}},
+						{Bounds: logproto.FPBounds{Min: math.MaxUint64/2 + 1, Max: math.MaxUint64}, Stats: &logproto.IndexStatsResponse{Chunks: 20, Bytes: 2000}},
 					}}}, nil
 				case *LokiRequest:
 					if _, ok := r.Plan.AST.(syntax.SampleExpr); ok {
@@ -556,6 +569,8 @@ func Test_astMapper_ShardPlannedChunks(t *testing.T) {
 			}
 			require.Equal(t, tc.expectedPlanned, idx.ShardPlannedChunks)
 			require.Equal(t, tc.expectedScanned, idx.ShardPlannedChunksScanned)
+			require.Equal(t, tc.expectedPlannedBytes, idx.ShardPlannedBytes)
+			require.Equal(t, tc.expectedScannedBytes, idx.ShardPlannedBytesScanned)
 		})
 	}
 }

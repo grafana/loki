@@ -553,11 +553,16 @@ func appendLoglineStats(logValues []interface{}, stats logql_stats.Result) []int
 		"logline_io_wait", time.Duration(l.IOWait),
 		"shard_planned_chunks", l.PlannedChunks,
 		"logline_scanned_chunks", l.ScannedChunks,
+		"shard_planned_bytes", util.HumanizeBytes(uint64(l.PlannedBytes)),
+		"logline_scanned_bytes", util.HumanizeBytes(uint64(l.ScannedBytes)),
 	)
 	// Missing when no split went through shard planning, for example when the
 	// results cache answered the whole query.
 	if l.PlannedChunks > 0 {
 		logValues = append(logValues, "logline_chunk_filter_ratio", fmt.Sprintf("%.2f", l.ChunkFilterRatio))
+	}
+	if l.PlannedBytes > 0 {
+		logValues = append(logValues, "logline_byte_filter_ratio", fmt.Sprintf("%.2f", l.ByteFilterRatio))
 	}
 	return logValues
 }
