@@ -4939,6 +4939,12 @@ otlp_config:
 # bloom filter in the data object index. An empty value denies no column.
 # CLI flag: -limits.dataobj-bloom-deny-list
 [dataobj_bloom_deny_list: <string> | default = "observed_timestamp"]
+
+# Experimental: Age of a log line, measured from the time its Kafka record was
+# written, above which the dataobj-builder writes the line to a separate data
+# object. 0 turns the separation off.
+# CLI flag: -limits.dataobj-late-logs-threshold
+[dataobj_late_logs_threshold: <duration> | default = 0s]
 ```
 
 ### local_storage_config

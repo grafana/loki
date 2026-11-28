@@ -212,35 +212,68 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, tenant string, e
 	return m.writeEntry(ctx, tenant, entry, nil)
 }
 
-// WriteEntryWithWatermark does what [TableOfContentsWriter.WriteEntry] does,
-// and in the same conditional write raises a watermark of the ToC.
+// WriteEntryWithWatermark does what [TableOfContentsWriter.WriteEntriesWithWatermark]
+// does for one entry.
+func (m *TableOfContentsWriter) WriteEntryWithWatermark(ctx context.Context, tenant string, entry TableOfContentsEntry, update WatermarkUpdate) error {
+	return m.WriteEntriesWithWatermark(ctx, tenant, []TableOfContentsEntry{entry}, update)
+}
+
+// WriteEntriesWithWatermark does what [TableOfContentsWriter.WriteEntry] does
+// for several entries, and in the same conditional write raises a watermark of
+// the ToC. A reader of the ToC sees all entries and the watermark, or none.
+//
+// The caller must pass every entry that its records produced for the ToC. If
+// it wrote the entries one by one, a crash after the first write would leave a
+// watermark that covers records whose index is not in the ToC yet. A restart
+// would then drop those records as already written.
+//
+// Each entry becomes one index run. All entries must lie in the same
+// window, and entries is not empty. Entries with the same path count once.
 //
 // The write applies only if the watermark of the ToC equals update.Expected.
 // Otherwise it writes nothing and returns [ErrWatermarkMismatch], without
 // retrying. A watermark belongs to one ToC, so update.Expected must come from
 // the ToC of this tenant and window.
 //
-// If the ToC already holds the entry and a watermark at or above
+// If the ToC already holds every entry and a watermark at or above
 // update.EndOffset, the call writes nothing and returns nil. A nil return does
 // not show that this call wrote the watermark.
 //
-// A mismatch can follow a lost response. If an earlier attempt wrote the entry
-// and a replace removed its pointer, the ToC holds update.EndOffset.
-func (m *TableOfContentsWriter) WriteEntryWithWatermark(ctx context.Context, tenant string, entry TableOfContentsEntry, update WatermarkUpdate) error {
+// A lost response can lead to a mismatch error although the write succeeded. If
+// an earlier attempt wrote the entries and a replace then removed their
+// pointers, the ToC holds update.EndOffset instead of update.Expected.
+func (m *TableOfContentsWriter) WriteEntriesWithWatermark(ctx context.Context, tenant string, entries []TableOfContentsEntry, update WatermarkUpdate) error {
 	if err := update.validate(); err != nil {
-		return fmt.Errorf("ToC entry %s: %w", entry.Path, err)
+		return fmt.Errorf("ToC entries: %w", err)
 	}
-	return m.writeEntry(ctx, tenant, entry, &update)
+	return m.writeEntries(ctx, tenant, entries, &update)
 }
 
 func (m *TableOfContentsWriter) writeEntry(ctx context.Context, tenant string, entry TableOfContentsEntry, watermark *WatermarkUpdate) error {
-	window, err := entry.TimeWindow()
-	if err != nil {
-		return err
+	return m.writeEntries(ctx, tenant, []TableOfContentsEntry{entry}, watermark)
+}
+
+func (m *TableOfContentsWriter) writeEntries(ctx context.Context, tenant string, entries []TableOfContentsEntry, watermark *WatermarkUpdate) error {
+	if len(entries) == 0 {
+		return errors.New("no ToC entries to write")
 	}
 
-	err = m.applyChange(ctx, opWriteEntry, tenant, window, tocChange{
-		add:       []IndexRunEntries{{entry}},
+	var window time.Time
+	runs := make([]IndexRunEntries, 0, len(entries))
+	for i, entry := range entries {
+		w, err := entry.TimeWindow()
+		if err != nil {
+			return err
+		}
+		if i > 0 && !w.Equal(window) {
+			return fmt.Errorf("ToC entries %s and %s lie in different windows: %s and %s", entries[0].Path, entry.Path, window.Format(time.RFC3339), w.Format(time.RFC3339))
+		}
+		window = w
+		runs = append(runs, IndexRunEntries{entry})
+	}
+
+	err := m.applyChange(ctx, opWriteEntry, tenant, window, tocChange{
+		add:       runs,
 		watermark: watermark,
 	})
 	if errors.Is(err, errChangeAlreadyApplied) {

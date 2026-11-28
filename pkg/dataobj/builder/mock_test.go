@@ -63,8 +63,6 @@ func (m *mockBuilder) Append(stream logproto.Stream, recTime time.Time) error {
 	return m.builder.Append(stream, recTime)
 }
 
-func (m *mockBuilder) InitialWatermark() *int64 { return nil }
-
 func (m *mockBuilder) GetEarliestRecordTime() time.Time {
 	return m.builder.GetEarliestRecordTime()
 }
@@ -128,10 +126,10 @@ type mockFlusher struct {
 	// lock, so it must be safe for concurrent use.
 	onFlush func()
 	// builders holds the builder of each Flush call, in call order.
-	builders []builder
+	builders []logsBuilder
 }
 
-func (m *mockFlusher) Flush(_ context.Context, b builder, _ string) (*dataobj.Object, io.Closer, string, error) {
+func (m *mockFlusher) Flush(_ context.Context, b logsBuilder, _ string) (*dataobj.Object, io.Closer, string, error) {
 	m.mtx.Lock()
 	m.flushes++
 	m.builders = append(m.builders, b)
@@ -201,9 +199,13 @@ type mockTOCWriter struct {
 	tenants      []string
 	shardBuckets []indexpointers.ShardBuckets
 	// updates holds the watermark updates of the successful
-	// WriteEntryWithWatermark calls.
+	// WriteEntriesWithWatermark calls.
 	updates []metastore.WatermarkUpdate
-	err     error
+	// writes counts the successful WriteEntriesWithWatermark calls, and calls
+	// holds the entry paths of each of them.
+	writes int
+	calls  [][]string
+	err    error
 	// afterWrite, if set, runs after an entry is recorded, letting tests act
 	// between updating the ToC and committing the offset.
 	afterWrite func()
@@ -224,14 +226,23 @@ func (m *mockTOCWriter) WriteEntry(_ context.Context, tenant string, entry metas
 	return nil
 }
 
-// WriteEntryWithWatermark records the entry like WriteEntry, and the update.
-func (m *mockTOCWriter) WriteEntryWithWatermark(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry, update metastore.WatermarkUpdate) error {
-	if err := m.WriteEntry(ctx, tenant, entry); err != nil {
-		return err
+// WriteEntriesWithWatermark records the entries like WriteEntry, and the
+// update once.
+func (m *mockTOCWriter) WriteEntriesWithWatermark(ctx context.Context, tenant string, entries []metastore.TableOfContentsEntry, update metastore.WatermarkUpdate) error {
+	for _, entry := range entries {
+		if err := m.WriteEntry(ctx, tenant, entry); err != nil {
+			return err
+		}
 	}
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.updates = append(m.updates, update)
+	m.writes++
+	paths := make([]string, len(entries))
+	for i, entry := range entries {
+		paths[i] = entry.Path
+	}
+	m.calls = append(m.calls, paths)
 	return nil
 }
 
@@ -245,7 +256,7 @@ type mockFlushCommitter struct {
 	lastOffset       int64
 }
 
-func (m *mockFlushCommitter) Flush(_ context.Context, builders []builder, reason string, offset int64) error {
+func (m *mockFlushCommitter) Flush(_ context.Context, builders []*tocScopedBuilders, reason string, offset int64) error {
 	m.flushes++
 	m.lastBuilderCount = len(builders)
 	m.lastReason = reason
@@ -264,7 +275,7 @@ type gatedFlushCommitter struct {
 	mtx        sync.Mutex
 	offsets    []int64
 	reasons    []string
-	builders   [][]builder
+	builders   [][]*tocScopedBuilders
 	running    int
 	maxRunning int
 }
@@ -273,7 +284,7 @@ func newGatedFlushCommitter() *gatedFlushCommitter {
 	return &gatedFlushCommitter{results: make(chan error)}
 }
 
-func (m *gatedFlushCommitter) Flush(ctx context.Context, builders []builder, reason string, offset int64) error {
+func (m *gatedFlushCommitter) Flush(ctx context.Context, builders []*tocScopedBuilders, reason string, offset int64) error {
 	m.mtx.Lock()
 	m.offsets = append(m.offsets, offset)
 	m.reasons = append(m.reasons, reason)
@@ -311,7 +322,7 @@ func (m *gatedFlushCommitter) startedReasons() []string {
 }
 
 // startedBuilders returns the builders of the flushes that started, in order.
-func (m *gatedFlushCommitter) startedBuilders() [][]builder {
+func (m *gatedFlushCommitter) startedBuilders() [][]*tocScopedBuilders {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	return slices.Clone(m.builders)
@@ -332,7 +343,7 @@ func (m *gatedFlushCommitter) maxConcurrentFlushes() int {
 type testBuilderFactory struct {
 	metrics *logsobj.BuilderMetrics
 	// created counts how many builders have been handed out. Tests use it to
-	// assert that builders are reused per scope rather than recreated.
+	// assert that builders are reused per ToC rather than recreated.
 	created int
 	// failAt, when non-negative, makes NewBuilder fail once created reaches
 	// this value. A value of -1 (the default) never fails.
@@ -390,11 +401,11 @@ func (m *fixedCountMultiBuilder) Reset(flushOffset int64) {
 	m.MultiObjectBuilder.Reset(flushOffset)
 }
 
-// newTestMultiBuilder returns a multiBuilder backed by real per-scope
+// newTestMultiBuilder returns a multiBuilder backed by real per-ToC
 // builders, suitable for driving the processor in tests.
 func newTestMultiBuilder() *mockMultiBuilder {
 	return &mockMultiBuilder{
-		MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newTestWatermarks()),
+		MultiObjectBuilder: NewMultiObjectBuilder(newTestBuilderFactory(), int(testBuilderCfg.TargetObjectSize), newTestWatermarks(), testOverrides{}),
 	}
 }
 

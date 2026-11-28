@@ -71,7 +71,7 @@ func newFlusher(uploader uploader, logger log.Logger, r prometheus.Registerer) *
 }
 
 // Flush flushes the data object builder. It returns an error if the flush fails.
-func (f *flusherImpl) Flush(ctx context.Context, builder builder, reason string) (*dataobj.Object, io.Closer, string, error) {
+func (f *flusherImpl) Flush(ctx context.Context, builder logsBuilder, reason string) (*dataobj.Object, io.Closer, string, error) {
 	f.flushes.WithLabelValues(reason).Inc()
 	timer := prometheus.NewTimer(f.flushDuration)
 	defer timer.ObserveDuration()
@@ -85,7 +85,7 @@ func (f *flusherImpl) Flush(ctx context.Context, builder builder, reason string)
 // flush builds a sorted data object from the builder and uploads it.
 // On success the caller owns the returned [io.Closer]; reads of the object fail
 // once it is closed. If an error is returned the closer is always nil.
-func (f *flusherImpl) flush(ctx context.Context, builder builder) (*dataobj.Object, io.Closer, string, error) {
+func (f *flusherImpl) flush(ctx context.Context, builder logsBuilder) (*dataobj.Object, io.Closer, string, error) {
 	sortedObj, sortedObjCloser, err := builder.FlushAndSort(ctx)
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("failed to flush data object builder: %w", err)

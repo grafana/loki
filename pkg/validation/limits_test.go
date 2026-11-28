@@ -1751,3 +1751,41 @@ func TestOverrides_DataObjBloomDenyList(t *testing.T) {
 		require.Empty(t, ov.DataObjBloomDenyList("custom"))
 	})
 }
+
+func TestLimits_DataObjLateLogsThreshold(t *testing.T) {
+	newDefaults := func() Limits {
+		var defaults Limits
+		defaults.RegisterFlags(flag.NewFlagSet("test", flag.PanicOnError))
+		return defaults
+	}
+
+	t.Run("is off by default", func(t *testing.T) {
+		ov, err := NewOverrides(newDefaults(), nil)
+		require.NoError(t, err)
+		require.Zero(t, ov.DataObjLateLogsThreshold("any-tenant"))
+	})
+
+	t.Run("reads the flag", func(t *testing.T) {
+		var l Limits
+		fs := flag.NewFlagSet("test", flag.ContinueOnError)
+		l.RegisterFlags(fs)
+		require.NoError(t, fs.Parse([]string{"-limits.dataobj-late-logs-threshold=45m"}))
+		require.NoError(t, l.Validate())
+		require.Equal(t, 45*time.Minute, time.Duration(l.DataObjLateLogsThreshold))
+	})
+
+	t.Run("returns the threshold of the tenant's own override", func(t *testing.T) {
+		tenantLimits := newDefaults()
+		tenantLimits.DataObjLateLogsThreshold = model.Duration(time.Hour)
+		ov, err := NewOverrides(newDefaults(), newMockTenantLimits(map[string]*Limits{"custom": &tenantLimits}))
+		require.NoError(t, err)
+		require.Equal(t, time.Hour, ov.DataObjLateLogsThreshold("custom"))
+		require.Zero(t, ov.DataObjLateLogsThreshold("other"))
+	})
+
+	t.Run("validation rejects a negative threshold", func(t *testing.T) {
+		l := newDefaults()
+		l.DataObjLateLogsThreshold = model.Duration(-time.Minute)
+		require.ErrorContains(t, l.Validate(), "dataobj_late_logs_threshold")
+	})
+}

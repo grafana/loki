@@ -68,6 +68,10 @@ func logsobjBuilderConfig(cfg Config) logsobj.BuilderBaseConfig {
 // TenantOverrides provides the per-tenant settings that the [Service] reads.
 type TenantOverrides interface {
 	logsobj.TenantOverrides
+	// DataObjLateLogsThreshold returns the age of a log line, at the time its
+	// Kafka record was written, above which the builder puts the line in a
+	// separate data object. Zero keeps all lines of the tenant in-time.
+	DataObjLateLogsThreshold(tenant string) time.Duration
 	// DataObjBloomDenyList returns the columns of the tenant that get no bloom
 	// filter in the index.
 	DataObjBloomDenyList(tenant string) []string
@@ -182,7 +186,7 @@ func New(kafkaCfg kafka.Config, cfg Config, uploaderCfg dataobj_uploader.Config,
 	)
 	watermarks := newWatermarkCache(cfg.Topic, partitionID, idxBucket, NewWatermarkMetrics(reg))
 	processor := newProcessor(
-		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize), watermarks),
+		NewMultiObjectBuilder(builderFactory, int(cfg.LogsobjBuilder.TargetObjectSize), watermarks, overrides),
 		records,
 		flushCommitter,
 		cfg.IdleFlushTimeout,

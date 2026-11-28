@@ -35,7 +35,9 @@ type indexer interface {
 // A tocWriter allows mocking of [metastore.TableOfContentsWriter] in tests.
 // Implementations must be safe for concurrent use.
 type tocWriter interface {
-	WriteEntryWithWatermark(ctx context.Context, tenant string, entry metastore.TableOfContentsEntry, update metastore.WatermarkUpdate) error
+	// WriteEntriesWithWatermark adds all entries and raises the watermark in
+	// one write.
+	WriteEntriesWithWatermark(ctx context.Context, tenant string, entries []metastore.TableOfContentsEntry, update metastore.WatermarkUpdate) error
 }
 
 // A flusher allows mocking of flushes in tests. Implementations must be safe
@@ -45,7 +47,7 @@ type flusher interface {
 	// caller owns the returned [io.Closer] and must close it once it is done
 	// reading the object; reads of the object fail after that. If an error is
 	// returned the closer is always nil.
-	Flush(ctx context.Context, builder builder, reason string) (*dataobj.Object, io.Closer, string, error)
+	Flush(ctx context.Context, builder logsBuilder, reason string) (*dataobj.Object, io.Closer, string, error)
 }
 
 // A flushCommitterImpl manages the flushing of data objects and commits.
@@ -58,10 +60,10 @@ type flushCommitterImpl struct {
 	partition int32
 	logger    log.Logger
 
-	// concurrency is the maximum number of builders that one flush has in
-	// progress. Each builder in progress holds its sorted object until the ToC
-	// records its index, so concurrency also bounds the sorted objects in
-	// memory. It is at least 1.
+	// concurrency is the maximum number of ToC windows that one flush has in
+	// progress. A ToC window in progress holds the sorted object of one builder at a
+	// time, so concurrency also bounds the sorted objects in memory. It is at
+	// least 1.
 	concurrency int
 
 	metrics *flushCommitterMetrics
@@ -129,15 +131,15 @@ func newFlushCommitter(
 
 // Flush flushes the data object builders, adds their indexes to the ToCs with
 // the ToC watermark raised to offset, and then commits offset.
-func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reason string, offset int64) (returnErr error) {
+func (c *flushCommitterImpl) Flush(ctx context.Context, scopedBuilders []*tocScopedBuilders, reason string, offset int64) (returnErr error) {
 	start := time.Now()
 	defer func() { c.observeResult(time.Since(start), returnErr) }()
 
 	// Read before flushing: flushing resets the builders, which clears their
 	// earliest record times.
-	earliest := earliestRecordTime(builders)
+	earliest := earliestRecordTime(scopedBuilders)
 
-	if err := c.flushAll(ctx, builders, reason, offset); err != nil {
+	if err := c.flushAll(ctx, scopedBuilders, reason, offset); err != nil {
 		return err
 	}
 
@@ -154,60 +156,80 @@ func (c *flushCommitterImpl) Flush(ctx context.Context, builders []builder, reas
 	return nil
 }
 
-// flushAll flushes and indexes each builder and records each index in the
-// ToC, with at most c.concurrency builders in progress. It returns once every
-// started builder is done and has released its object.
+// flushAll flushes and indexes the builders of each ToC and records the indexes
+// in the ToCs, with at most c.concurrency ToCs in progress. It returns once
+// every started ToC is done and has released its objects.
 //
-// The first failure cancels the builders in progress and skips the builders
-// not yet started. flushAll returns that first failure, not the cancellation
-// errors that it causes in the other builders.
-func (c *flushCommitterImpl) flushAll(ctx context.Context, builders []builder, reason string, offset int64) error {
+// The builders of one ToC share one ToC write for their indexes and the
+// watermark. With one write for each builder, a crash after the first write
+// would leave a watermark that covers the lines of the other builder. The
+// restart would then drop those lines.
+//
+// The first failure cancels the ToCs in progress and skips the ToCs not yet
+// started. flushAll returns that first failure, not the cancellation errors
+// that it causes in the other ToCs.
+func (c *flushCommitterImpl) flushAll(ctx context.Context, scopedBuilders []*tocScopedBuilders, reason string, offset int64) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(c.concurrency)
 
-	ordered := builders
+	ordered := scopedBuilders
 	if c.concurrency > 1 {
-		// One large builder can take most of the flush time. If it starts
-		// last, it runs alone after the small builders. If it starts first,
-		// the small builders run beside it, and the flush ends sooner.
+		// One ToC can have a large builder that takes most of the flush time. If it starts last, it runs alone after the small ones. If it
+		// starts first, the small ones run beside it, and the flush ends sooner.
 		//
 		// With one slot, the order does not change the flush time. Largest
-		// first would only delay the ToC entries of the small builders.
+		// first would only delay the ToC entries of the small ToCs.
 		//
 		// Largest first also builds the largest sorted objects at the same
 		// time, which raises peak memory.
-		ordered = largestFirst(builders)
+		ordered = slices.Clone(scopedBuilders)
+		slices.SortStableFunc(ordered, func(a, b *tocScopedBuilders) int {
+			return cmp.Compare(b.estimatedSize(), a.estimatedSize())
+		})
 	}
-	for _, b := range ordered {
+	for _, sb := range ordered {
 		g.Go(func() error {
-			// Skip the builder if the flush was canceled or another builder
+			// Skip the ToC if the flush was canceled or another ToC
 			// failed while this one waited for a slot. FlushAndSort ignores ctx
-			// while it builds, so it would build the whole object before the
-			// sort sees the cancellation.
+			// while it builds. It would build the whole object before the sort
+			// sees the cancellation.
 			if err := gctx.Err(); err != nil {
 				return err
 			}
-			return c.flushOne(gctx, b, reason, offset)
+			return c.flushTOC(gctx, sb, reason, offset)
 		})
 	}
 	return g.Wait()
 }
 
-// largestFirst returns a new slice with the builders sorted by estimated size,
-// largest first. Builders of equal size keep their order. largestFirst does
-// not modify the given slice.
-func largestFirst(builders []builder) []builder {
-	ordered := slices.Clone(builders)
-	slices.SortStableFunc(ordered, func(a, b builder) int {
-		return cmp.Compare(b.GetEstimatedSize(), a.GetEstimatedSize())
-	})
-	return ordered
+// flushTOC flushes and indexes the builders of one ToC, one at a time. Then it
+// adds all their indexes to the ToC with the watermark raised to offset, in
+// one write.
+func (c *flushCommitterImpl) flushTOC(ctx context.Context, sb *tocScopedBuilders, reason string, offset int64) error {
+	var entries []metastore.TableOfContentsEntry
+	for _, b := range sb.all() {
+		entry, err := c.flushLogsAndIndex(ctx, b, reason)
+		if err != nil {
+			return fmt.Errorf("ToC %s: %w", sb.toc, err)
+		}
+		entries = append(entries, entry)
+	}
+
+	// A ToC write error fails the flush, so the offset is not committed and
+	// the records are read again.
+	if err := c.writeToC(ctx, sb.toc, sb.initialWatermark, entries, offset); err != nil {
+		return fmt.Errorf("failed to update metastore ToC %s: %w", sb.toc, err)
+	}
+	return nil
 }
 
-func (c *flushCommitterImpl) flushOne(ctx context.Context, b builder, reason string, offset int64) error {
+// flushLogsAndIndex uploads and indexes the object of one builder. It returns
+// the ToC entry of the index. It releases the object before it returns. The
+// entry holds all the data that the ToC write needs.
+func (c *flushCommitterImpl) flushLogsAndIndex(ctx context.Context, b logsBuilder, reason string) (metastore.TableOfContentsEntry, error) {
 	obj, objCloser, objPath, err := c.flusher.Flush(ctx, b, reason)
 	if err != nil {
-		return fmt.Errorf("failed to flush data object: %w", err)
+		return metastore.TableOfContentsEntry{}, fmt.Errorf("failed to flush data object: %w", err)
 	}
 	// Releasing the object never fails the flush: it is already uploaded, and
 	// the flusher counts and logs any failure.
@@ -217,30 +239,21 @@ func (c *flushCommitterImpl) flushOne(ctx context.Context, b builder, reason str
 	// be processed. It retries every other error indefinitely.
 	res, err := c.index(ctx, obj, objPath)
 	if err != nil {
-		return fmt.Errorf("failed to index data object: %w", err)
+		return metastore.TableOfContentsEntry{}, fmt.Errorf("failed to index data object: %w", err)
 	}
-
-	// A ToC write error fails the flush, so the offset is not committed and
-	// the records are read again.
-	scope := builderScope{tenant: res.TimeRange.Tenant, window: res.TimeRange.MinTime.UTC().Truncate(metastore.MetastoreWindowSize)}
-	if err := c.writeToC(ctx, scope, b.InitialWatermark(), res, offset); err != nil {
-		return fmt.Errorf("failed to update metastore ToC: %w", err)
-	}
-
-	return nil
-}
-
-// writeToC adds the index to the ToC of the scope and raises the watermark of
-// the partition to offset in the same write. The write applies only if the ToC
-// holds the initial watermark of the builder.
-func (c *flushCommitterImpl) writeToC(ctx context.Context, scope builderScope, initialWatermark *int64, res index.Result, offset int64) error {
-	entry := metastore.TableOfContentsEntry{
+	return metastore.TableOfContentsEntry{
 		Path:         res.Path,
 		StartTime:    res.TimeRange.MinTime,
 		EndTime:      res.TimeRange.MaxTime,
 		ShardBuckets: res.ShardBuckets,
-	}
-	return c.tocWriter.WriteEntryWithWatermark(ctx, scope.tenant, entry, metastore.WatermarkUpdate{
+	}, nil
+}
+
+// writeToC adds the indexes to the ToC that toc identifies. In the same write,
+// it raises the watermark of the partition to offset. The write applies only if
+// the ToC holds the initial watermark of the builders.
+func (c *flushCommitterImpl) writeToC(ctx context.Context, toc tocKey, initialWatermark *int64, entries []metastore.TableOfContentsEntry, offset int64) error {
+	return c.tocWriter.WriteEntriesWithWatermark(ctx, toc.tenant, entries, metastore.WatermarkUpdate{
 		Topic:     c.topic,
 		Partition: c.partition,
 		EndOffset: offset,
@@ -248,18 +261,20 @@ func (c *flushCommitterImpl) writeToC(ctx context.Context, scope builderScope, i
 	})
 }
 
-// earliestRecordTime returns the oldest record time across builders, or the
-// zero time if none of them hold any records. It must be called before the
+// earliestRecordTime returns the oldest record time of all builders, or the
+// zero time if no builder holds a record. It must be called before the
 // builders are flushed, as flushing resets them.
-func earliestRecordTime(builders []builder) time.Time {
+func earliestRecordTime(scopedBuilders []*tocScopedBuilders) time.Time {
 	var earliest time.Time
-	for _, b := range builders {
-		t := b.GetEarliestRecordTime()
-		if t.IsZero() {
-			continue
-		}
-		if earliest.IsZero() || t.Before(earliest) {
-			earliest = t
+	for _, sb := range scopedBuilders {
+		for _, b := range sb.all() {
+			t := b.GetEarliestRecordTime()
+			if t.IsZero() {
+				continue
+			}
+			if earliest.IsZero() || t.Before(earliest) {
+				earliest = t
+			}
 		}
 	}
 	return earliest

@@ -40,6 +40,7 @@ type CombinedLimits interface {
 	SortSchemaLabels(userID string) []string
 	DataObjShardLayout(userID string) streams.ShardLayout
 	DataObjBloomDenyList(userID string) []string
+	DataObjLateLogsThreshold(userID string) time.Duration
 	CompactionPhases(userID string) (runIndex, runLog bool)
 	DeletionSweepEnabled(userID string) bool
 	MaxLogsRunSizeUncompressedBytes(userID string) uint64

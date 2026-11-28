@@ -12,8 +12,9 @@ Queries use these pointers to find the log objects.
 
 A flush in the builder has three steps.
 
-1. It uploads one log object for each tenant and ToC window.
-2. It adds an index pointer for each log object to the ToC of that tenant and window.
+1. It uploads the log objects of each tenant and ToC window.
+   A window usually gets one log object. A tenant that separates late logs can get a second one (see Late logs).
+2. It adds the index pointers of these log objects to the ToC of that tenant and window.
 3. It commits the Kafka offset of the last record.
 
 The builder can stop between step 2 and step 3.
@@ -34,7 +35,7 @@ The builder follows two rules.
   The builder drops a record when its offset is at or below the watermark of its tenant and window.
   It still counts the record as read, so the commit moves past it.
 - **Write rule.**
-  The builder raises the watermark in the same write that adds the index pointer.
+  The builder raises the watermark in the same write that adds the index pointers of the tenant and window.
   The write works only if the ToC still holds the watermark that the builder expected.
 
 The first rule removes the duplicates.
@@ -50,19 +51,19 @@ A ToC never has the pointer without the watermark, and never has the watermark w
    See `watermarkCache` in `pkg/dataobj/builder/watermarks.go`.
 2. **Each record.**
    The builder compares the record offset with the watermark.
-   It drops the record or appends it to the builder of its tenant and window.
+   It drops the record or appends it to the builders of its tenant and window.
    See `MultiObjectBuilder.Append` in `pkg/dataobj/builder/multi_builder.go`.
 3. **Initial watermark.**
-   The first record of a tenant and window decides the watermark of its builder.
-   The builder keeps it as the _initial watermark_ until its flush ends.
-   See `WatermarkedBuilder` in `pkg/dataobj/builder/multi_builder.go`.
+   The first record of a tenant and window decides the watermark of its builders.
+   The builders keep it as the _initial watermark_ until their flush ends.
+   See `tocScopedBuilders` in `pkg/dataobj/builder/multi_builder.go`.
 4. **Flush.**
-   The flush adds the index pointer and sets the watermark to the offset of the last record of the flush.
-   It expects the ToC to hold the initial watermark of the builder.
+   The flush adds the index pointers and sets the watermark to the offset of the last record of the flush.
+   It expects the ToC to hold the initial watermark of the builders.
    If it does not, the write fails.
-   See `writeToC` in `pkg/dataobj/builder/flush_committer.go` and `WriteEntryWithWatermark` in `pkg/dataobj/metastore/toc_writer.go`.
+   See `writeToC` in `pkg/dataobj/builder/flush_committer.go` and `WriteEntriesWithWatermark` in `pkg/dataobj/metastore/toc_writer.go`.
 5. **After a flush.**
-   The cache stores the flush offset, so the next builder of the same tenant and window starts from it.
+   The cache stores the flush offset, so the next builders of the same tenant and window start from it.
    See `MultiObjectBuilder.Reset` in `pkg/dataobj/builder/multi_builder.go`.
 
 When a write fails because the watermark is not the expected one, the builder stops and restarts.
@@ -167,6 +168,35 @@ The builder checks each window on its own.
 It drops the part for window 1, and it keeps the part for window 2.
 
 **Result:** no line appears twice, and no line is lost.
+
+### Scenario 8: a tenant with late logs
+
+The tenant has a late log threshold.
+A record at offset 9 holds lines of the window that are older than the threshold, and newer lines.
+The builder puts the old lines in the late builder and the new lines in the in-time builder.
+The flush uploads two log objects for the window, one for each builder.
+It adds both index pointers and the watermark 12 in one write.
+
+Suppose the builder stops after it uploaded both objects and before the write.
+The ToC holds neither pointer and still holds the watermark 8.
+After the restart, the builder reads the record at offset 9 again and keeps it.
+It can build other objects from the records. The first two objects have no pointer, so nothing finds them.
+
+If the write were one for each object, a stop after the first write would leave the watermark 12 and one pointer.
+The restart would then drop the record and lose the lines of the second object.
+One write for all pointers of a window prevents this.
+
+**Result:** every line appears once.
+
+## Late logs
+
+A tenant with a late log threshold gets one builder for in-time lines and one for late lines in each window. A window gets a builder only for a class that has lines.
+A line is late if its Kafka record was written more than the threshold after the line timestamp.
+The setting is the limit `dataobj_late_logs_threshold`. Zero turns the separation off.
+
+The watermark belongs to the window, not to a builder.
+The builders of one window share the initial watermark, and the builder drops or keeps a record as a whole for the window.
+The flush writes the pointers of both builders and the watermark in one ToC write.
 
 ## What the watermark does not cover
 

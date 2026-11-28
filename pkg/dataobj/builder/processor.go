@@ -26,7 +26,7 @@ type multiBuilder interface {
 	// still use the builders that getBuilders returned. flushOffset is the offset
 	// that the flush of these builders raises the ToC watermarks to.
 	Reset(flushOffset int64)
-	getBuilders() []builder
+	getBuilders() []*tocScopedBuilders
 }
 
 // A logsBuilder allows mocking of [logsobj.Builder] in tests.
@@ -39,18 +39,9 @@ type logsBuilder interface {
 	GetEarliestRecordTime() time.Time
 }
 
-// A builder is a logsBuilder that knows the ToC watermark its first record was
-// checked against.
-type builder interface {
-	logsBuilder
-	// InitialWatermark returns the ToC watermark that the first record of the
-	// builder was checked against. Nil means the ToC held no watermark.
-	InitialWatermark() *int64
-}
-
 // A flushCommitter allows mocking of flushes in tests.
 type flushCommitter interface {
-	Flush(ctx context.Context, builder []builder, reason string, offset int64) error
+	Flush(ctx context.Context, scopedBuilders []*tocScopedBuilders, reason string, offset int64) error
 }
 
 // A processor receives records and builds data objects from them.
@@ -108,7 +99,7 @@ type processor struct {
 
 // A flushRequest asks the flush loop to flush builders and commit offset.
 type flushRequest struct {
-	builders []builder
+	builders []*tocScopedBuilders
 	reason   string
 	// offset is the offset of the last record that the processor processed. The
 	// flush commits it and raises the ToC watermarks to it. The builders can be
