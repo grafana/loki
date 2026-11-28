@@ -60,6 +60,7 @@ import (
 	loglinebuilder "github.com/grafana/loki/v3/pkg/logline/builder"
 	loglinecompactor "github.com/grafana/loki/v3/pkg/logline/compactor"
 	loglinecorrectness "github.com/grafana/loki/v3/pkg/logline/correctness"
+	"github.com/grafana/loki/v3/pkg/logline/hintprovider"
 	loglinelimits "github.com/grafana/loki/v3/pkg/logline/limits"
 	loglinequeryfrontend "github.com/grafana/loki/v3/pkg/logline/queryfrontend"
 	loglinescheduler "github.com/grafana/loki/v3/pkg/logline/scheduler"
@@ -589,6 +590,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		loglineStore,
 		t.Cfg.Logline.Index.NgramLength,
 		t.Cfg.Logline.Query.MaxHintParallel,
+		hintprovider.WithMetadataCacheMaxBytes(uint64(t.Cfg.Logline.Query.MetadataCacheMaxBytes)),
 	)
 	if err != nil {
 		return nil, err

@@ -23,6 +23,19 @@ const (
 	defaultHintParallel = 64
 )
 
+type options struct {
+	metadataCacheMaxBytes uint64
+}
+
+// Option configures a LoglineHintProvider.
+type Option func(*options)
+
+// WithMetadataCacheMaxBytes sets the byte budget of the metadata cache. 0
+// leaves the cache bounded by entry count only.
+func WithMetadataCacheMaxBytes(n uint64) Option {
+	return func(o *options) { o.metadataCacheMaxBytes = n }
+}
+
 // LoglineHintProvider resolves query hints from logline index files in store.
 type LoglineHintProvider struct {
 	store       *store.Store
@@ -48,6 +61,7 @@ func NewLoglineHintProvider(
 	queryMultipleObserver func(reason string, termBatchesProcessed int),
 	logger log.Logger,
 	cacheReg prometheus.Registerer,
+	opts ...Option,
 ) (*LoglineHintProvider, error) {
 	if indexStore == nil {
 		return nil, fmt.Errorf("indexStore cannot be nil")
@@ -70,9 +84,13 @@ func NewLoglineHintProvider(
 		queryMultipleObserver: queryMultipleObserver,
 		logger:                logger,
 	}
+	o := options{metadataCacheMaxBytes: DefaultMetadataCacheMaxBytes}
+	for _, opt := range opts {
+		opt(&o)
+	}
 	// Only create a metadata cache on queriers
 	if cacheReg != nil {
-		p.cache = newMetadataCache(defaultMetadataCacheEntries, cacheReg)
+		p.cache = newMetadataCache(defaultMetadataCacheEntries, o.metadataCacheMaxBytes, cacheReg)
 		p.startCacheInvalidationLoop()
 	}
 	return p, nil

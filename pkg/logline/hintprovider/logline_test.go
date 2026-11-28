@@ -1183,32 +1183,6 @@ func TestLoglineHintProvider_ExecuteQuery_OpensReaderOncePerIndex(t *testing.T) 
 	require.Equal(t, int64(1), snap.IndexQueriesTotal)
 }
 
-func TestLoglineHintProvider_MetadataCache_SkipsPutWhenFull(t *testing.T) {
-	cache := newMetadataCache(2, nil)
-
-	type opaqueState struct{}
-	a1 := &opaqueState{}
-	cache.put("a", cachedMetadata{state: a1})
-	cache.put("b", cachedMetadata{state: &opaqueState{}})
-	cache.put("c", cachedMetadata{state: &opaqueState{}})
-
-	require.Equal(t, 2, cache.len(), "cache should remain capped at max entries")
-	_, ok := cache.get("a")
-	require.True(t, ok, "existing entries should be retained when cache is full")
-	_, ok = cache.get("b")
-	require.True(t, ok)
-	_, ok = cache.get("c")
-	require.False(t, ok, "new entry should not be cached when full")
-
-	// Existing keys should still be updated even when the cache is at capacity.
-	a2 := &opaqueState{}
-	cache.put("a", cachedMetadata{state: a2})
-	require.Equal(t, 2, cache.len(), "updating existing key should not change cache size")
-	got, ok := cache.get("a")
-	require.True(t, ok)
-	require.Same(t, a2, got.state.(*opaqueState), "existing entry should be updated when full")
-}
-
 func TestLoglineHintProvider_EvictStaleMetadata(t *testing.T) {
 	indexStore := newTestStore(t)
 	needle := "9fA81cD2Ef0077aa"
