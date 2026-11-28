@@ -6,11 +6,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
     local dashboards = self,
     'loki-chunks.json': {
                           local cfg = self,
-                          labelsSelector:: $._config.per_cluster_label + '="$cluster", job=~"$namespace/%s"' % (
+                          labelsSelector:: $._config.per_cluster_label + '="$cluster", %s=~"%s%s"' % [
+                            $._config.per_job_label,
+                            $._config.job_prefix,
                             if $._config.meta_monitoring.enabled
                             then '(.*ingester.*|loki-single-binary)'
-                            else '(.*ingester.*)'
-                          ),
+                            else '(.*ingester.*)',
+                          ],
                         } +
                         $.dashboard('Loki / Chunks', uid='chunks')
                         .addCluster()

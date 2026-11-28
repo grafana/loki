@@ -23,19 +23,19 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                hiddenPanels:: [],
 
                                jobMatchers:: {
-                                 cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
+                                 cortexgateway: [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'cortex-gw(-internal)?')],
                                  distributor: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(distributor|loki-single-binary)')]
-                                 else [utils.selector.re('job', '($namespace)/distributor')],
+                                 then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(distributor|loki-single-binary)')]
+                                 else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'distributor')],
                                  ingester: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|loki-single-binary)')]
-                                 else [utils.selector.re('job', '($namespace)/(ingester.*|partition-ingester.*)')],
+                                 then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(partition-ingester.*|ingester.*|loki-single-binary)')]
+                                 else [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(ingester.*|partition-ingester.*)')],
                                  querier: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(querier|loki-single-binary)')]
-                                 else [utils.selector.re('job', '($namespace)/querier')],
+                                 then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(querier|loki-single-binary)')]
+                                 else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'querier')],
                                  queryFrontend: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(query-frontend|loki-single-binary)')]
-                                 else [utils.selector.re('job', '($namespace)/query-frontend')],
+                                 then [utils.selector.re($._config.per_job_label, $._config.job_prefix + '(query-frontend|loki-single-binary)')]
+                                 else [utils.selector.re($._config.per_job_label, $._config.job_prefix + 'query-frontend')],
                                },
 
                                podMatchers:: {
@@ -121,6 +121,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    std.rstripChars(matcherStr('querier'), ',')
                                  ),
 
+                               // The distributor's =~ selector is replaced once, without the trailing comma, and before its
+                               // = selectors, because a replaced selector such as scrape_job=~"($namespace)/distributor" contains it.
                                local replaceMatchers(expr) =
                                  std.strReplace(
                                    std.strReplace(
@@ -133,33 +135,29 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                                  std.strReplace(
                                                    std.strReplace(
                                                      std.strReplace(
-                                                       std.strReplace(
-                                                         expr,
-                                                         $._config.per_instance_label + '=~"ingester.*"',
-                                                         matcherStr('ingester', matcher='pod', sep='')
-                                                       ),
-                                                       $._config.per_instance_label + '=~"distributor.*"',
-                                                       matcherStr('distributor', matcher='pod', sep='')
+                                                       expr,
+                                                       $._config.per_instance_label + '=~"ingester.*"',
+                                                       matcherStr('ingester', matcher='pod', sep='')
                                                      ),
-                                                     'job="$namespace/cortex-gw",',
-                                                     matcherStr('cortexgateway')
+                                                     $._config.per_instance_label + '=~"distributor.*"',
+                                                     matcherStr('distributor', matcher='pod', sep='')
                                                    ),
-                                                   'job="$namespace/cortex-gw"',
-                                                   std.rstripChars(matcherStr('cortexgateway'), ',')
+                                                   'job="$namespace/cortex-gw",',
+                                                   matcherStr('cortexgateway')
                                                  ),
-                                                 'job=~"($namespace)/cortex-gw",',
-                                                 matcherStr('cortexgateway')
+                                                 'job="$namespace/cortex-gw"',
+                                                 std.rstripChars(matcherStr('cortexgateway'), ',')
                                                ),
-                                               'job="$namespace/distributor",',
-                                               matcherStr('distributor')
+                                               'job=~"($namespace)/cortex-gw",',
+                                               matcherStr('cortexgateway')
                                              ),
-                                             'job="$namespace/distributor"',
+                                             'job=~"($namespace)/distributor"',
                                              std.rstripChars(matcherStr('distributor'), ',')
                                            ),
-                                           'job=~"($namespace)/distributor",',
+                                           'job="$namespace/distributor",',
                                            matcherStr('distributor')
                                          ),
-                                         'job=~"($namespace)/distributor"',
+                                         'job="$namespace/distributor"',
                                          std.rstripChars(matcherStr('distributor'), ',')
                                        ),
                                        'job="$namespace/ingester",',

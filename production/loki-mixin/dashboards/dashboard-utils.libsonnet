@@ -82,7 +82,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     },
 
   jobMatcher(job)::
-    $._config.per_cluster_label + '=~"$cluster", job=~"($namespace)/%s"' % job,
+    $._config.per_cluster_label + '=~"$cluster", %s=~"%s%s"' % [$._config.per_job_label, $._config.job_prefix, job],
 
   namespaceMatcher()::
     $._config.per_cluster_label + '=~"$cluster", ' + $._config.per_namespace_label + '=~"$namespace"',
