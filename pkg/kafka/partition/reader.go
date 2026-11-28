@@ -106,6 +106,7 @@ type KafkaReader struct {
 	partitionState           string
 	logger                   log.Logger
 	headerToContextExtractor func(context.Context, []kgo.RecordHeader) context.Context
+	highWatermarkObserver    func(int64)
 }
 
 // ReaderOption is a functional option for configuring a KafkaReader.
@@ -116,6 +117,11 @@ func WithHeaderToContextExtractor(extractor func(context.Context, []kgo.RecordHe
 	return func(r *KafkaReader) {
 		r.headerToContextExtractor = extractor
 	}
+}
+
+// WithHighWatermarkObserver reports Kafka's next offset from successful partition fetches.
+func WithHighWatermarkObserver(observer func(int64)) ReaderOption {
+	return func(r *KafkaReader) { r.highWatermarkObserver = observer }
 }
 
 func NewKafkaReader(
@@ -210,6 +216,14 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 	if len(errs) > 0 {
 		r.metrics.fetchesErrors.Add(float64(len(errs)))
 		return nil, fmt.Errorf("fetch errors: %v", errs.Err())
+	}
+
+	if r.highWatermarkObserver != nil {
+		fetches.EachPartition(func(p kgo.FetchTopicPartition) {
+			if p.Partition == r.partitionID && p.Err == nil {
+				r.highWatermarkObserver(p.HighWatermark)
+			}
+		})
 	}
 
 	// Build records slice

@@ -54,6 +54,22 @@ message StreamRatesRequest {}
 
 message StreamRatesResponse {
   repeated StreamRate streamRates = 1;
+  KafkaRateSnapshot kafka = 2;
+}
+
+// Progress and rates are published together for one partition replica.
+message KafkaRateSnapshot {
+  int32 partitionID = 1;
+  string instanceID = 2;
+  // Identifies one run of the ingester instance.
+  string sessionID = 3;
+  // Processing includes terminal rejections; these are not Kafka commit offsets.
+  int64 startOffset = 4;
+  int64 endOffset = 5;
+  // The last record offset known from Kafka's fetch high watermark.
+  int64 highWatermark = 6;
+  bool ready = 7; // The entire interval follows startup catch-up.
+  bool progressValid = 8; // No retry, undecodable record, or untracked push contaminated this interval.
 }
 
 message StreamRate {

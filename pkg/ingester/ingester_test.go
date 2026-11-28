@@ -165,7 +165,7 @@ func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 
 	for idx := 0; idx < 100; idx++ {
 		// push 100 different streams.
-		i.streamRateCalculator.Record("fake", uint64(idx), uint64(idx), 10)
+		i.streamRateCalculator.Record(context.Background(), "fake", uint64(idx), uint64(idx), 10)
 	}
 
 	i.streamRateCalculator.updateRates()
@@ -194,7 +194,7 @@ func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	for idx := 0; idx < 1000; idx++ {
-		i.streamRateCalculator.Record("fake", uint64(idx), uint64(idx), 10)
+		i.streamRateCalculator.Record(context.Background(), "fake", uint64(idx), uint64(idx), 10)
 	}
 	i.streamRateCalculator.updateRates()
 

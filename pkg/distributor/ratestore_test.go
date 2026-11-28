@@ -434,7 +434,7 @@ func setupWithOverrides(overrides *fakeOverrides) *testContext {
 	return &testContext{
 		ring:       ring,
 		clientPool: cp,
-		rateStore:  NewRateStore(cfg, ring, cp, overrides, reg),
+		rateStore:  NewRateStore(cfg, false, ring, cp, overrides, reg),
 		reg:        reg,
 	}
 }

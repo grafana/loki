@@ -114,7 +114,7 @@ func TestConsumerPassesRecordTimestamp(t *testing.T) {
 	recordTime := time.Date(2026, 10, 23, 10, 0, 0, 0, time.UTC)
 
 	pusher := &fakePusher{t: t}
-	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), 1)(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
+	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), 1, newManualKafkaStreamRateCalculator())(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
 	require.NoError(t, err)
 
 	var toPush []partition.Record
@@ -159,7 +159,7 @@ func consume(t *testing.T, encode func(*testing.T, logproto.Stream) []*kgo.Recor
 	)
 
 	// Set the number of workers to 1 to test the consumer
-	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), numWorkers)(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
+	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), numWorkers, newManualKafkaStreamRateCalculator())(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
 	require.NoError(t, err)
 
 	for _, stream := range streams {
@@ -245,7 +245,7 @@ func TestConsumer_CommitsHighestOffsetBeforeGap(t *testing.T) {
 			}
 
 			committer := &recordingCommitter{}
-			consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), 4)(committer, log.NewNopLogger())
+			consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), 4, newManualKafkaStreamRateCalculator())(committer, log.NewNopLogger())
 			require.NoError(t, err)
 			recordsCh := make(chan []partition.Record, 1)
 			recordsCh <- records
@@ -353,7 +353,9 @@ func TestConsumer_ReplicasBuildIdenticalChunks(t *testing.T) {
 		cfg.TargetChunkSize = 1024
 		store, ing := newTestStore(t, cfg, nil)
 
-		consumer, err := NewKafkaConsumerFactory(wrap(ing), prometheus.NewRegistry(), numWorkers)(&noopCommitter{}, log.NewNopLogger())
+		ing.streamRateCalculator.Stop()
+		ing.streamRateCalculator = newKafkaStreamRateCalculator(0, "test-ingester")
+		consumer, err := NewKafkaConsumerFactory(wrap(ing), prometheus.NewRegistry(), numWorkers, ing.streamRateCalculator)(&noopCommitter{}, log.NewNopLogger())
 		require.NoError(t, err)
 		recordsCh := make(chan []partition.Record, 1)
 		recordsCh <- records
@@ -547,7 +549,7 @@ func TestConsumer_AppliesStreamsInOffsetOrder(t *testing.T) {
 	records := interleaveRecords(t, specs)
 
 	pusher := &orderPusher{}
-	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), 8)(&noopCommitter{}, log.NewNopLogger())
+	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry(), 8, newManualKafkaStreamRateCalculator())(&noopCommitter{}, log.NewNopLogger())
 	require.NoError(t, err)
 	recordsCh := make(chan []partition.Record, 1)
 	recordsCh <- records
@@ -584,7 +586,9 @@ func BenchmarkConsume(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			_, ing := newTestStore(b, defaultIngesterTestConfig(b), nil)
 			defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
-			consumer, err := NewKafkaConsumerFactory(ing, prometheus.NewRegistry(), numWorkers)(&noopCommitter{}, log.NewNopLogger())
+			ing.streamRateCalculator.Stop()
+			ing.streamRateCalculator = newKafkaStreamRateCalculator(0, "test-ingester")
+			consumer, err := NewKafkaConsumerFactory(ing, prometheus.NewRegistry(), numWorkers, ing.streamRateCalculator)(&noopCommitter{}, log.NewNopLogger())
 			require.NoError(b, err)
 			kc := consumer.(*kafkaConsumer)
 
@@ -627,6 +631,7 @@ func BenchmarkConsume(b *testing.B) {
 				b.StartTimer()
 				kc.consume(context.Background(), records)
 			}
+			b.StopTimer() // Exclude deferred ingester shutdown and flushing.
 			b.ReportMetric(float64(b.N*batchSize)/b.Elapsed().Seconds(), "records/s")
 		})
 	}
