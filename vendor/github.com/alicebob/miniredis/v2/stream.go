@@ -96,7 +96,14 @@ func (s *streamKey) copy() *streamKey {
 	defer s.mu.Unlock()
 
 	cpy := &streamKey{
-		entries: s.entries,
+		entries:         make([]StreamEntry, len(s.entries)),
+		lastAllocatedID: s.lastAllocatedID,
+	}
+	for i, entry := range s.entries {
+		cpy.entries[i] = StreamEntry{
+			ID:     entry.ID,
+			Values: append([]string(nil), entry.Values...),
+		}
 	}
 	groups := map[string]*streamGroup{}
 	for k, v := range s.groups {
@@ -379,12 +386,17 @@ func (g *streamGroup) readGroup(
 	msgs := g.pendingAfter(id)
 	var res []StreamEntry
 	for i, p := range msgs {
+		if count > 0 && len(res) >= count {
+			break
+		}
 		if p.consumer != consumerID {
 			continue
 		}
 		_, entry := g.stream.get(p.id)
-		// not found. Weird?
 		if entry == nil {
+			// deleted with XDEL, but still pending. Redis returns the ID
+			// with nil values.
+			res = append(res, StreamEntry{ID: p.id})
 			continue
 		}
 		p.deliveryCount += 1
@@ -421,10 +433,6 @@ func (g *streamGroup) ack(ids []string) (int, error) {
 		consumer.numPendingEntries--
 
 		g.pending = append(g.pending[:pos], g.pending[pos+1:]...)
-		// don't count deleted entries
-		if _, e := g.stream.get(id); e == nil {
-			continue
-		}
 		count++
 	}
 	return count, nil
@@ -464,26 +472,12 @@ func (g *streamGroup) pendingAfter(id string) []pendingEntry {
 
 func (g *streamGroup) pendingCount(consumer string) int {
 	n := 0
-	for _, p := range g.activePending() {
+	for _, p := range g.pending {
 		if p.consumer == consumer {
 			n++
 		}
 	}
 	return n
-}
-
-// pending entries without the entries deleted from the group
-func (g *streamGroup) activePending() []pendingEntry {
-	var pe []pendingEntry
-	for _, p := range g.pending {
-		// drop deleted ones
-		if _, e := g.stream.get(p.id); e == nil {
-			continue
-		}
-		p := p
-		pe = append(pe, p)
-	}
-	return pe
 }
 
 func (g *streamGroup) copy() *streamGroup {
@@ -495,7 +489,7 @@ func (g *streamGroup) copy() *streamGroup {
 	return &streamGroup{
 		// don't copy stream
 		lastID:    g.lastID,
-		pending:   g.pending,
+		pending:   append([]pendingEntry(nil), g.pending...),
 		consumers: cns,
 	}
 }

@@ -29,6 +29,11 @@ func Int(n int) string {
 	return fmt.Sprintf(":%d\r\n", n)
 }
 
+// Int64
+func Int64(n int64) string {
+	return fmt.Sprintf(":%d\r\n", n)
+}
+
 // Float
 func Float(n float64) string {
 	return fmt.Sprintf(",%g\r\n", n)

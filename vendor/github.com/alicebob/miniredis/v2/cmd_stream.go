@@ -24,6 +24,7 @@ func commandsStream(m *Miniredis) {
 	m.srv.Register("XINFO", m.cmdXinfo)
 	m.srv.Register("XREADGROUP", m.cmdXreadgroup)
 	m.srv.Register("XACK", m.cmdXack)
+	m.srv.Register("XACKDEL", m.cmdXackdel)
 	m.srv.Register("XDEL", m.cmdXdel)
 	m.srv.Register("XPENDING", m.cmdXpending, server.ReadOnlyOption())
 	m.srv.Register("XTRIM", m.cmdXtrim)
@@ -141,6 +142,7 @@ func (m *Miniredis) cmdXlen(c *server.Peer, cmd string, args []string) {
 		s, err := db.stream(key)
 		if err != nil {
 			c.WriteError(err.Error())
+			return
 		}
 		if s == nil {
 			// No such key. That's zero length.
@@ -194,7 +196,7 @@ func (m *Miniredis) makeCmdXrange(reverse bool) server.Cmd {
 			}
 		}
 
-		countArg := "0"
+		countArg := ""
 		if len(args) == 5 {
 			if strings.ToLower(args[3]) != "count" {
 				setDirty(c)
@@ -215,10 +217,16 @@ func (m *Miniredis) makeCmdXrange(reverse bool) server.Cmd {
 				c.WriteError(msgInvalidStreamID)
 				return
 			}
-			count, err := strconv.Atoi(countArg)
-			if err != nil {
-				c.WriteError(msgInvalidInt)
-				return
+			count := -1 // no COUNT: return everything
+			if countArg != "" {
+				count, err = strconv.Atoi(countArg)
+				if err != nil {
+					c.WriteError(msgInvalidInt)
+					return
+				}
+				if count < 0 {
+					count = 0
+				}
 			}
 
 			db := m.db(ctx.selectedDB)
@@ -233,11 +241,17 @@ func (m *Miniredis) makeCmdXrange(reverse bool) server.Cmd {
 				return
 			}
 
+			if count == 0 {
+				// Redis replies with a null array for COUNT 0 or less
+				c.WriteNullArray()
+				return
+			}
+
 			var entries = db.streamKeys[opts.key].entries
 			if reverse {
 				entries = reversedStreamEntries(entries)
 			}
-			if count == 0 {
+			if count == -1 {
 				count = len(entries)
 			}
 
@@ -568,7 +582,7 @@ func (m *Miniredis) cmdXinfoGroups(c *server.Peer, args []string) {
 			c.WriteBulk("consumers")
 			c.WriteInt(len(g.consumers))
 			c.WriteBulk("pending")
-			c.WriteInt(len(g.activePending()))
+			c.WriteInt(len(g.pending))
 			c.WriteBulk("last-delivered-id")
 			c.WriteBulk(g.lastID)
 			c.WriteBulk("entries-read")
@@ -777,7 +791,7 @@ parsing:
 			return true
 		},
 		func(c *server.Peer) { // timeout
-			c.WriteLen(-1)
+			c.WriteNullArray()
 		},
 	)
 }
@@ -815,6 +829,91 @@ func xreadgroup(
 		res[key] = entries
 	}
 	return res, nil
+}
+
+// XACKDEL acknowledges pending entries and applies a deletion policy.
+func (m *Miniredis) cmdXackdel(c *server.Peer, cmd string, args []string) {
+	if !m.isValidCMD(c, cmd, args, atLeast(5)) {
+		return
+	}
+	key, group := args[0], args[1]
+	strategy := "KEEPREF"
+	pos := 2
+	switch strings.ToUpper(args[pos]) {
+	case "KEEPREF", "DELREF", "ACKED":
+		strategy = strings.ToUpper(args[pos])
+		pos++
+	}
+	if len(args) < pos+2 || !strings.EqualFold(args[pos], "IDS") {
+		c.WriteError(msgSyntaxError)
+		return
+	}
+	n, err := strconv.Atoi(args[pos+1])
+	if err != nil || n <= 0 {
+		c.WriteError("ERR Number of IDs must be a positive integer")
+		return
+	}
+	ids := args[pos+2:]
+	if n != len(ids) {
+		c.WriteError("ERR The `numids` parameter must match the number of arguments")
+		return
+	}
+	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+		s, err := db.stream(key)
+		if err != nil {
+			c.WriteError(err.Error())
+			return
+		}
+		var g *streamGroup
+		if s != nil {
+			g = s.groups[group]
+		}
+		if g == nil {
+			c.WriteLen(n)
+			for range ids {
+				c.WriteInt(-1)
+			}
+			return
+		}
+		normalized := make([]string, len(ids))
+		for i, id := range ids {
+			var err error
+			normalized[i], err = formatStreamID(id)
+			if err != nil {
+				c.WriteError(msgInvalidStreamID)
+				return
+			}
+		}
+		c.WriteLen(n)
+		for _, id := range normalized {
+			_, pending := g.searchPending(id)
+			if pending == nil {
+				c.WriteInt(-1)
+				continue
+			}
+			g.ack([]string{id})
+			canDelete := true
+			for _, other := range s.groups {
+				if strategy == "DELREF" {
+					other.ack([]string{id})
+				}
+				if strategy == "ACKED" {
+					_, p := other.searchPending(id)
+					if p != nil || streamCmp(other.lastID, id) < 0 {
+						canDelete = false
+					}
+				}
+			}
+			if canDelete {
+				s.delete([]string{id})
+				db.incr(key)
+				c.WriteInt(1)
+			} else {
+				c.WriteInt(2)
+			}
+		}
+	})
 }
 
 // XACK
@@ -871,7 +970,9 @@ func (m *Miniredis) cmdXdel(c *server.Peer, cmd string, args []string) {
 			c.WriteError(err.Error())
 			return
 		}
-		db.incr(stream)
+		if n > 0 {
+			db.incr(stream)
+		}
 		c.WriteInt(n)
 	})
 }
@@ -922,21 +1023,11 @@ parsing:
 			}
 
 			opts.streams, opts.ids = args[0:len(args)/2], args[len(args)/2:]
-			for i, id := range opts.ids {
+			for _, id := range opts.ids {
 				if _, err := parseStreamID(id); id != `$` && err != nil {
 					setDirty(c)
 					c.WriteError(msgInvalidStreamID)
 					return
-				} else if id == "$" {
-					withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-						db := m.db(getCtx(c).selectedDB)
-						stream, ok := db.streamKeys[opts.streams[i]]
-						if ok {
-							opts.ids[i] = stream.lastID()
-						} else {
-							opts.ids[i] = "0-0"
-						}
-					})
 				}
 			}
 			args = nil
@@ -966,6 +1057,16 @@ parsing:
 		opts.blockTimeout,
 		func(c *server.Peer, ctx *connCtx) bool {
 			db := m.db(ctx.selectedDB)
+			// '$' is the last ID when the command starts. Replace it on the
+			// first run, so the next runs wait for entries after that ID.
+			for i, id := range opts.ids {
+				if id == "$" {
+					opts.ids[i] = "0-0"
+					if stream, ok := db.streamKeys[opts.streams[i]]; ok {
+						opts.ids[i] = stream.lastID()
+					}
+				}
+			}
 			res := xread(db, opts.streams, opts.ids, opts.count)
 			if len(res) == 0 {
 				return false
@@ -974,7 +1075,7 @@ parsing:
 			return true
 		},
 		func(c *server.Peer) { // timeout
-			c.WriteLen(-1)
+			c.WriteNullArray()
 		},
 	)
 }
@@ -1021,21 +1122,33 @@ func xread(db *RedisDB, streams []string, ids []string, count int) map[string][]
 
 func writeXread(c *server.Peer, streams []string, res map[string][]StreamEntry) {
 	if len(res) == 0 {
-		c.WriteLen(-1)
+		c.WriteNullArray()
 		return
 	}
-	c.WriteLen(len(res))
+	// RESP3 has a map of the streams, RESP2 an array of [stream, entries] pairs.
+	if c.Resp3 {
+		c.WriteMapLen(len(res))
+	} else {
+		c.WriteLen(len(res))
+	}
 	for _, stream := range streams {
 		entries, ok := res[stream]
 		if !ok {
 			continue
 		}
-		c.WriteLen(2)
+		if !c.Resp3 {
+			c.WriteLen(2)
+		}
 		c.WriteBulk(stream)
 		c.WriteLen(len(entries))
 		for _, entry := range entries {
 			c.WriteLen(2)
 			c.WriteBulk(entry.ID)
+			if entry.Values == nil {
+				// pending entry which was deleted from the stream
+				c.WriteNullArray()
+				continue
+			}
 			c.WriteLen(len(entry.Values))
 			for _, v := range entry.Values {
 				c.WriteBulk(v)
@@ -1134,13 +1247,13 @@ func (m *Miniredis) cmdXpending(c *server.Peer, cmd string, args []string) {
 }
 
 func writeXpendingSummary(c *server.Peer, g streamGroup) {
-	pend := g.activePending()
+	pend := g.pending
 	if len(pend) == 0 {
 		c.WriteLen(4)
 		c.WriteInt(0)
 		c.WriteNull()
 		c.WriteNull()
-		c.WriteLen(-1)
+		c.WriteNullArray()
 		return
 	}
 
@@ -1275,6 +1388,11 @@ func (m *Miniredis) cmdXtrim(c *server.Peer, cmd string, args []string) {
 			c.WriteError(msgXtrimInvalidMaxLen)
 			return
 		}
+		if maxLen < 0 {
+			setDirty(c)
+			c.WriteError("ERR The MAXLEN argument must be >= 0.")
+			return
+		}
 		opts.maxLen = maxLen
 	case "MINID":
 		opts.threshold = args[0]
@@ -1318,15 +1436,19 @@ func (m *Miniredis) cmdXtrim(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
+		var n int
 		switch opts.strategy {
 		case "MAXLEN":
 			entriesBefore := len(s.entries)
 			s.trim(opts.maxLen)
-			c.WriteInt(entriesBefore - len(s.entries))
+			n = entriesBefore - len(s.entries)
 		case "MINID":
-			n := s.trimBefore(opts.threshold)
-			c.WriteInt(n)
+			n = s.trimBefore(opts.threshold)
 		}
+		if n > 0 {
+			db.incr(opts.stream)
+		}
+		c.WriteInt(n)
 	})
 }
 
@@ -1408,27 +1530,37 @@ parsing:
 			return
 		}
 
-		nextCallId, entries := xautoclaim(m.effectiveNow(), *g, opts.minIdleTime, opts.start, opts.count, opts.consumer)
-		writeXautoclaim(c, nextCallId, entries, opts.justId)
+		nextCallId, entries, deleted := xautoclaim(m.effectiveNow(), g, opts.minIdleTime, opts.start, opts.count, opts.consumer)
+		writeXautoclaim(c, nextCallId, entries, deleted, opts.justId)
 	})
 }
 
 func xautoclaim(
 	now time.Time,
-	g streamGroup,
+	g *streamGroup,
 	minIdleTime time.Duration,
 	start string,
 	count int,
 	consumerID string,
-) (string, []StreamEntry) {
+) (string, []StreamEntry, []string) {
 	nextCallId := "0-0"
 	if len(g.pending) == 0 || count < 0 {
-		return nextCallId, nil
+		return nextCallId, nil, nil
 	}
 
-	msgs := g.pendingAfterOrEqual(start)
+	// Removing deleted entries changes the pending slice while it is scanned.
+	msgs := append([]pendingEntry(nil), g.pendingAfterOrEqual(start)...)
 	var res []StreamEntry
+	var deleted []string
 	for i, p := range msgs {
+		_, entry := g.stream.get(p.id)
+		if entry == nil {
+			g.consumers[p.consumer].numPendingEntries--
+			pos, _ := g.searchPending(p.id)
+			g.pending = append(g.pending[:pos], g.pending[pos+1:]...)
+			deleted = append(deleted, p.id)
+			continue
+		}
 		if minIdleTime > 0 && now.Before(p.lastDelivery.Add(minIdleTime)) {
 			continue
 		}
@@ -1438,23 +1570,14 @@ func xautoclaim(
 			g.consumers[consumerID] = &consumer{}
 		}
 		p.consumer = consumerID
-
-		_, entry := g.stream.get(p.id)
-		// not found. Weird?
-		if entry == nil {
-			// TODO: support third element of return from XAUTOCLAIM, which
-			// should delete entries not found in the PEL during XAUTOCLAIM.
-			// (Introduced in Redis 7.0)
-			continue
-		}
-
 		p.deliveryCount += 1
 		p.lastDelivery = now
 
 		g.consumers[prevConsumerID].numPendingEntries--
 		g.consumers[consumerID].numPendingEntries++
 
-		msgs[i] = p
+		_, pending := g.searchPending(p.id)
+		*pending = p
 		res = append(res, *entry)
 
 		if len(res) >= count {
@@ -1464,10 +1587,10 @@ func xautoclaim(
 			break
 		}
 	}
-	return nextCallId, res
+	return nextCallId, res, deleted
 }
 
-func writeXautoclaim(c *server.Peer, nextCallId string, res []StreamEntry, justId bool) {
+func writeXautoclaim(c *server.Peer, nextCallId string, res []StreamEntry, deleted []string, justId bool) {
 	c.WriteLen(3)
 	c.WriteBulk(nextCallId)
 	c.WriteLen(len(res))
@@ -1484,8 +1607,10 @@ func writeXautoclaim(c *server.Peer, nextCallId string, res []StreamEntry, justI
 			c.WriteBulk(v)
 		}
 	}
-	// TODO: see "Redis 7" note
-	c.WriteLen(0)
+	c.WriteLen(len(deleted))
+	for _, id := range deleted {
+		c.WriteBulk(id)
+	}
 }
 
 // XCLAIM
@@ -1608,6 +1733,13 @@ func (m *Miniredis) xclaim(
 ) (claimedEntryIDs []string) {
 	for _, id := range ids {
 		pelPos, pelEntry := group.searchPending(id)
+		if _, entry := group.stream.get(id); entry == nil {
+			if pelEntry != nil {
+				group.consumers[pelEntry.consumer].numPendingEntries--
+				group.pending = append(group.pending[:pelPos], group.pending[pelPos+1:]...)
+			}
+			continue
+		}
 		if pelEntry == nil {
 			group.setLastSeen(consumerName, m.effectiveNow())
 			if !force {
@@ -1628,6 +1760,9 @@ func (m *Miniredis) xclaim(
 			}
 			group.setLastSuccess(consumerName, m.effectiveNow())
 		} else {
+			if minIdleTime > 0 && m.effectiveNow().Before(pelEntry.lastDelivery.Add(minIdleTime)) {
+				continue
+			}
 			group.consumers[pelEntry.consumer].numPendingEntries--
 			pelEntry.consumer = consumerName
 		}
@@ -1638,11 +1773,6 @@ func (m *Miniredis) xclaim(
 			pelEntry.deliveryCount++
 		}
 		pelEntry.lastDelivery = newLastDelivery
-
-		// redis7: don't report entries which are deleted by now
-		if _, e := group.stream.get(id); e == nil {
-			continue
-		}
 
 		claimedEntryIDs = append(claimedEntryIDs, id)
 	}

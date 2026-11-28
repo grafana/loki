@@ -2,6 +2,9 @@
 test: ### Run unit tests
 	go test ./...
 
+test32:
+	GOOS=linux GOARCH=386 go test ./...
+
 .PHONY: testrace
 testrace: ### Run unit tests with race detector
 	go test -race ./...
@@ -13,6 +16,7 @@ int: ### Run integration tests (doesn't download redis server)
 .PHONY: ci
 ci: ### Run full tests suite (including download and compilation of proper redis server)
 	${MAKE} test
+	${MAKE} test32
 	${MAKE} -C integration redis_src/redis-server int
 	${MAKE} testrace
 

@@ -488,6 +488,10 @@ func (db *RedisDB) HSet(k string, fv ...string) {
 	defer db.master.signal.Broadcast()
 
 	db.hashSet(k, fv...)
+	// Setting a field removes its TTL, as with HSET.
+	for i := 0; i < len(fv)-1; i += 2 {
+		delete(db.hashTTLs[k], fv[i])
+	}
 }
 
 // HExpire sets a TTL on a hash field. Returns true if the field exists.
@@ -592,6 +596,7 @@ func (db *RedisDB) hdel(k, f string) {
 		return
 	}
 	delete(db.hashKeys[k], f)
+	delete(db.hashTTLs[k], f)
 	db.incr(k)
 }
 

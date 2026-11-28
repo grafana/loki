@@ -19,6 +19,7 @@ const (
 
 // commandsList handles list commands (mostly L*)
 func commandsList(m *Miniredis) {
+	m.srv.Register("BLMPOP", m.cmdBlmpop)
 	m.srv.Register("BLPOP", m.cmdBlpop)
 	m.srv.Register("BRPOP", m.cmdBrpop)
 	m.srv.Register("BRPOPLPUSH", m.cmdBrpoplpush)
@@ -101,7 +102,7 @@ func (m *Miniredis) cmdBXpop(c *server.Peer, cmd string, args []string, lr leftr
 		},
 		func(c *server.Peer) {
 			// timeout
-			c.WriteLen(-1)
+			c.WriteNullArray()
 		},
 	)
 }
@@ -387,11 +388,7 @@ func (m *Miniredis) cmdLmpop(c *server.Peer, cmd string, args []string) {
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		if !m.lmpop(c, ctx, keys, lr, count) {
-			if c.Resp3 {
-				c.WriteNull()
-			} else {
-				c.WriteLen(-1)
-			}
+			writeLmpopNil(c)
 		}
 	})
 }
@@ -477,6 +474,54 @@ func (m *Miniredis) lmpop(c *server.Peer, ctx *connCtx, keys []string, lr leftri
 		return true
 	}
 	return false
+}
+
+// writeLmpopNil is the (B)LMPOP reply when there is nothing to pop.
+func writeLmpopNil(c *server.Peer) {
+	if c.Resp3 {
+		c.WriteNull()
+	} else {
+		c.WriteLen(-1)
+	}
+}
+
+// BLMPOP
+func (m *Miniredis) cmdBlmpop(c *server.Peer, cmd string, args []string) {
+	if !m.isValidCMD(c, cmd, args, atLeast(4)) {
+		return
+	}
+
+	// Redis checks the timeout after the other arguments.
+	keys, lr, count, ok := parseLmpop(c, args[1:])
+	if !ok {
+		return
+	}
+	var timeout time.Duration
+	if ok := optDuration(c, args[0], &timeout); !ok {
+		return
+	}
+
+	ctx := getCtx(c)
+	if ctx.nested {
+		// never blocks from Lua
+		if !m.lmpop(c, ctx, keys, lr, count) {
+			writeLmpopNil(c)
+		}
+		return
+	}
+
+	blocking(
+		m,
+		c,
+		timeout,
+		func(c *server.Peer, ctx *connCtx) bool {
+			return m.lmpop(c, ctx, keys, lr, count)
+		},
+		func(c *server.Peer) {
+			// timeout
+			writeLmpopNil(c)
+		},
+	)
 }
 
 // LPOP
@@ -744,7 +789,9 @@ func (m *Miniredis) cmdLrem(c *server.Peer, cmd string, args []string) {
 			db.del(opts.key, true)
 		} else {
 			db.listKeys[opts.key] = newL
-			db.incr(opts.key)
+			if deleted > 0 {
+				db.incr(opts.key)
+			}
 		}
 
 		c.WriteInt(deleted)
@@ -908,7 +955,7 @@ func (m *Miniredis) cmdBrpoplpush(c *server.Peer, cmd string, args []string) {
 		},
 		func(c *server.Peer) {
 			// timeout
-			c.WriteLen(-1)
+			c.WriteNullArray()
 		},
 	)
 }
@@ -930,6 +977,11 @@ func (m *Miniredis) cmdLmove(c *server.Peer, cmd string, args []string) {
 		srcDir: strings.ToLower(args[2]),
 		dstDir: strings.ToLower(args[3]),
 	}
+	if (opts.srcDir != "left" && opts.srcDir != "right") || (opts.dstDir != "left" && opts.dstDir != "right") {
+		setDirty(c)
+		c.WriteError(msgSyntaxError)
+		return
+	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
@@ -948,9 +1000,6 @@ func (m *Miniredis) cmdLmove(c *server.Peer, cmd string, args []string) {
 			elem = db.listLpop(opts.src)
 		case "right":
 			elem = db.listPop(opts.src)
-		default:
-			c.WriteError(msgSyntaxError)
-			return
 		}
 
 		switch opts.dstDir {
@@ -958,9 +1007,6 @@ func (m *Miniredis) cmdLmove(c *server.Peer, cmd string, args []string) {
 			db.listLpush(opts.dst, elem)
 		case "right":
 			db.listPush(opts.dst, elem)
-		default:
-			c.WriteError(msgSyntaxError)
-			return
 		}
 		c.WriteBulk(elem)
 	})
@@ -985,6 +1031,11 @@ func (m *Miniredis) cmdBlmove(c *server.Peer, cmd string, args []string) {
 		dstDir: strings.ToLower(args[3]),
 	}
 	if ok := optDuration(c, args[len(args)-1], &opts.timeout); !ok {
+		return
+	}
+	if (opts.srcDir != "left" && opts.srcDir != "right") || (opts.dstDir != "left" && opts.dstDir != "right") {
+		setDirty(c)
+		c.WriteError(msgSyntaxError)
 		return
 	}
 
@@ -1012,9 +1063,6 @@ func (m *Miniredis) cmdBlmove(c *server.Peer, cmd string, args []string) {
 				elem = db.listLpop(opts.src)
 			case "right":
 				elem = db.listPop(opts.src)
-			default:
-				c.WriteError(msgSyntaxError)
-				return true
 			}
 
 			switch opts.dstDir {
@@ -1022,9 +1070,6 @@ func (m *Miniredis) cmdBlmove(c *server.Peer, cmd string, args []string) {
 				db.listLpush(opts.dst, elem)
 			case "right":
 				db.listPush(opts.dst, elem)
-			default:
-				c.WriteError(msgSyntaxError)
-				return true
 			}
 			if ttl > 0 {
 				db.ttl[opts.dst] = ttl
@@ -1035,7 +1080,7 @@ func (m *Miniredis) cmdBlmove(c *server.Peer, cmd string, args []string) {
 		},
 		func(c *server.Peer) {
 			// timeout
-			c.WriteLen(-1)
+			c.WriteNullArray()
 		},
 	)
 }
