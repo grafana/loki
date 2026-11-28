@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/sasl/plain"
+	"github.com/twmb/franz-go/pkg/sasl/scram"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
@@ -93,13 +93,23 @@ func (s *Service) createKafkaClient() (*kgo.Client, error) {
 	}
 
 	if s.cfg.Kafka.SASLUsername != "" && s.cfg.Kafka.SASLPassword.String() != "" {
-		level.Info(s.logger).Log("msg", "enabling SASL PLAIN authentication", "username", s.cfg.Kafka.SASLUsername)
-		opts = append(opts, kgo.SASL(plain.Plain(func(_ context.Context) (plain.Auth, error) {
-			return plain.Auth{
+		switch s.cfg.Kafka.SASLMechanism {
+		case kafka.SASLMechanismScramSHA256:
+			opts = append(opts, kgo.SASL(scram.Auth{
 				User: s.cfg.Kafka.SASLUsername,
 				Pass: s.cfg.Kafka.SASLPassword.String(),
-			}, nil
-		})))
+			}.AsSha256Mechanism()))
+		case kafka.SASLMechanismScramSHA512:
+			opts = append(opts, kgo.SASL(scram.Auth{
+				User: s.cfg.Kafka.SASLUsername,
+				Pass: s.cfg.Kafka.SASLPassword.String(),
+			}.AsSha512Mechanism()))
+		default:
+			opts = append(opts, kgo.SASL(plain.Auth{
+				User: s.cfg.Kafka.SASLUsername,
+				Pass: s.cfg.Kafka.SASLPassword.String(),
+			}.AsMechanism()))
+		}
 	}
 
 	client, err := kgo.NewClient(opts...)

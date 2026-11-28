@@ -7,14 +7,66 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
+	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
+
+// TestKafkaClientSASLAuthentication verifies authentication with the mechanism
+// and credentials inherited from the root Kafka config.
+func TestKafkaClientSASLAuthentication(t *testing.T) {
+	tests := []struct {
+		name      string
+		mechanism string
+		broker    string
+		override  string
+	}{
+		{name: "default PLAIN", broker: kafka.SASLMechanismPlain},
+		{name: "explicit PLAIN", mechanism: kafka.SASLMechanismPlain, broker: kafka.SASLMechanismPlain},
+		{name: "SCRAM-SHA-256", mechanism: kafka.SASLMechanismScramSHA256, broker: kafka.SASLMechanismScramSHA256},
+		{name: "SCRAM-SHA-512", mechanism: kafka.SASLMechanismScramSHA512, broker: kafka.SASLMechanismScramSHA512},
+		{name: "override with SCRAM", mechanism: kafka.SASLMechanismScramSHA512, override: kafka.SASLMechanismScramSHA256, broker: kafka.SASLMechanismScramSHA256},
+		{name: "override with PLAIN", mechanism: kafka.SASLMechanismScramSHA256, override: kafka.SASLMechanismPlain, broker: kafka.SASLMechanismPlain},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cluster, err := kfake.NewCluster(
+				kfake.NumBrokers(1),
+				kfake.SeedTopics(1, testTopic),
+				kfake.EnableSASL(),
+				kfake.Superuser(tt.broker, "user", "password"),
+			)
+			require.NoError(t, err)
+			t.Cleanup(cluster.Close)
+
+			cfg := Config{disableStaticMembership: true, ScratchDir: t.TempDir()}
+			cfg.Kafka.SASLMechanism = tt.override
+			cfg.Kafka.ApplyDefaultsFrom(kafka.Config{
+				ReaderConfig:  kafka.ClientConfig{Address: cluster.ListenAddrs()[0]},
+				Topic:         testTopic,
+				SASLUsername:  "user",
+				SASLPassword:  flagext.SecretWithValue("password"),
+				SASLMechanism: tt.mechanism,
+			})
+			_, indexStore := newTestStore(t)
+			svc, err := New(indexStore, cfg, "2026-01-01", newDefaultFakePartitionRing(), log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(t, err)
+			client, err := svc.createKafkaClient()
+			require.NoError(t, err)
+			t.Cleanup(client.Close)
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			require.NoError(t, client.Ping(ctx))
+		})
+	}
+}
 
 // TestKafkaClientCapsAPIVersions checks that the logline builder's Kafka client sends
 // ApiVersions at the configured cap.

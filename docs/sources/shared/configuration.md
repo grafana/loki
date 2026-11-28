@@ -879,15 +879,20 @@ kafka_config:
     # CLI flag: -kafka.writer.client-id
     [client_id: <string> | default = ""]
 
-  # The SASL username for authentication to Kafka using the PLAIN mechanism.
-  # Both username and password must be set.
+  # The SASL username for authentication to Kafka. Both username and password
+  # must be set.
   # CLI flag: -kafka.sasl-username
   [sasl_username: <string> | default = ""]
 
-  # The SASL password for authentication to Kafka using the PLAIN mechanism.
-  # Both username and password must be set.
+  # The SASL password for authentication to Kafka. Both username and password
+  # must be set.
   # CLI flag: -kafka.sasl-password
   [sasl_password: <string> | default = ""]
+
+  # The SASL mechanism for authentication to Kafka. Supported values: "PLAIN",
+  # "SCRAM-SHA-256", "SCRAM-SHA-512".
+  # CLI flag: -kafka.sasl-mechanism
+  [sasl_mechanism: <string> | default = "PLAIN"]
 
   # The consumer group used by the consumer to track the last consumed offset.
   # The consumer group must be different for each ingester zone.When empty, Loki
@@ -5032,6 +5037,12 @@ builder:
     # Kafka SASL password. Defaults to the root kafka_config password.
     # CLI flag: -logline-builder.kafka.sasl-password
     [sasl_password: <string> | default = ""]
+
+    # Kafka SASL mechanism. Supported values: "PLAIN", "SCRAM-SHA-256",
+    # "SCRAM-SHA-512". Defaults to the root kafka_config mechanism, then to
+    # PLAIN.
+    # CLI flag: -logline-builder.kafka.sasl-mechanism
+    [sasl_mechanism: <string> | default = ""]
 
     # Kafka consumer group every builder replica joins. Deliberately not
     # inherited from kafka_config.consumer_group: that is the ingesters'

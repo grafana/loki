@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -466,4 +468,68 @@ func TestKafkaReaderWithHeaderExtractor(t *testing.T) {
 		policy := validation.ExtractIngestionPolicyContext(polledRecords[0].Ctx)
 		require.Empty(t, policy)
 	})
+}
+
+// TestReaderService_SASLAuthentication verifies the ReaderService can start when
+// the Kafka broker requires PLAIN, SCRAM-SHA-256, or SCRAM-SHA-512 authentication.
+func TestReaderService_SASLAuthentication(t *testing.T) {
+	tests := []struct {
+		name           string
+		mechanism      string
+		kfakeMechanism string
+	}{
+		{
+			name:           "PLAIN mechanism",
+			mechanism:      kafka.SASLMechanismPlain,
+			kfakeMechanism: "PLAIN",
+		},
+		{
+			name:           "SCRAM-SHA-256 mechanism",
+			mechanism:      kafka.SASLMechanismScramSHA256,
+			kfakeMechanism: "SCRAM-SHA-256",
+		},
+		{
+			name:           "SCRAM-SHA-512 mechanism",
+			mechanism:      kafka.SASLMechanismScramSHA512,
+			kfakeMechanism: "SCRAM-SHA-512",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// CreateCluster sets up consumer group support; SASL opts are forwarded
+			// to the underlying kfake cluster.
+			_, kafkaCfg := testkafka.CreateCluster(
+				t, 1, "test-topic",
+				kfake.EnableSASL(),
+				kfake.Superuser(tt.kfakeMechanism, "user", "password"),
+			)
+			kafkaCfg.SASLUsername = "user"
+			kafkaCfg.SASLPassword = flagext.SecretWithValue("password")
+			kafkaCfg.SASLMechanism = tt.mechanism
+
+			consumer := newMockConsumer()
+			consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
+				return consumer, nil
+			}
+
+			// Start the ReaderService; if SASL negotiation fails the service
+			// transitions to Failed before reaching Running.
+			partitionReader, err := NewReaderService(
+				kafkaCfg,
+				0,
+				"test-consumer",
+				consumerFactory,
+				log.NewNopLogger(),
+				prometheus.NewRegistry(),
+				nil,
+			)
+			require.NoError(t, err)
+
+			require.NoError(t, services.StartAndAwaitRunning(t.Context(), partitionReader))
+			t.Cleanup(func() {
+				require.NoError(t, services.StopAndAwaitTerminated(context.Background(), partitionReader))
+			})
+		})
+	}
 }

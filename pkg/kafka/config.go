@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"runtime"
+	"slices"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -33,6 +34,18 @@ var (
 	ErrInvalidMaxDecompressBatchBytes              = fmt.Errorf("the configured max decompress batch bytes must be between 0 and %d (0 uses the Kafka client default of 1 GiB)", DefaultMaxDecompressBatchBytes)
 )
 
+const (
+	// SASLMechanismPlain is the SASL PLAIN authentication mechanism.
+	SASLMechanismPlain = "PLAIN"
+	// SASLMechanismScramSHA256 is the SASL SCRAM-SHA-256 authentication mechanism.
+	SASLMechanismScramSHA256 = "SCRAM-SHA-256"
+	// SASLMechanismScramSHA512 is the SASL SCRAM-SHA-512 authentication mechanism.
+	SASLMechanismScramSHA512 = "SCRAM-SHA-512"
+)
+
+// ErrUnsupportedSASLMechanism is returned when an unknown SASL mechanism is configured.
+var ErrUnsupportedSASLMechanism = fmt.Errorf("unsupported sasl_mechanism: must be one of %q, %q, or %q", SASLMechanismPlain, SASLMechanismScramSHA256, SASLMechanismScramSHA512)
+
 // Config holds the generic config for the Kafka backend.
 type Config struct {
 	Address      string        `yaml:"address" doc:"hidden|deprecated"`
@@ -44,8 +57,9 @@ type Config struct {
 	ReaderConfig ClientConfig `yaml:"reader_config"`
 	WriterConfig ClientConfig `yaml:"writer_config"`
 
-	SASLUsername string         `yaml:"sasl_username"`
-	SASLPassword flagext.Secret `yaml:"sasl_password"`
+	SASLUsername  string         `yaml:"sasl_username"`
+	SASLPassword  flagext.Secret `yaml:"sasl_password"`
+	SASLMechanism string         `yaml:"sasl_mechanism"`
 
 	ConsumerGroup                     string        `yaml:"consumer_group"`
 	ConsumerGroupOffsetCommitInterval time.Duration `yaml:"consumer_group_offset_commit_interval"`
@@ -96,8 +110,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.APIVersionsMaxVersion, prefix+".api-versions-max-version", DefaultAPIVersionsMaxVersion, apiVersionsMaxVersionUsage)
 	f.IntVar(&cfg.MaxDecompressBatchBytes, prefix+".max-decompress-batch-bytes", DefaultMaxDecompressBatchBytes, maxDecompressBatchBytesUsage)
 
-	f.StringVar(&cfg.SASLUsername, prefix+".sasl-username", "", "The SASL username for authentication to Kafka using the PLAIN mechanism. Both username and password must be set.")
-	f.Var(&cfg.SASLPassword, prefix+".sasl-password", "The SASL password for authentication to Kafka using the PLAIN mechanism. Both username and password must be set.")
+	f.StringVar(&cfg.SASLUsername, prefix+".sasl-username", "", "The SASL username for authentication to Kafka. Both username and password must be set.")
+	f.Var(&cfg.SASLPassword, prefix+".sasl-password", "The SASL password for authentication to Kafka. Both username and password must be set.")
+	f.StringVar(&cfg.SASLMechanism, prefix+".sasl-mechanism", SASLMechanismPlain, `The SASL mechanism for authentication to Kafka. Supported values: "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512".`)
 
 	f.StringVar(&cfg.ConsumerGroup, prefix+".consumer-group", "", "The consumer group used by the consumer to track the last consumed offset. The consumer group must be different for each ingester zone.When empty, Loki uses the ingester instance ID.")
 	f.DurationVar(&cfg.ConsumerGroupOffsetCommitInterval, prefix+".consumer-group-offset-commit-interval", time.Second, "How frequently a consumer should commit the consumed offset to Kafka. The last committed offset is used at startup to continue the consumption from where it was left.")
@@ -160,6 +175,11 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.MaxDecompressBatchBytes < 0 || cfg.MaxDecompressBatchBytes > DefaultMaxDecompressBatchBytes {
 		return ErrInvalidMaxDecompressBatchBytes
+	}
+
+	if cfg.SASLMechanism != "" &&
+		!slices.Contains([]string{SASLMechanismPlain, SASLMechanismScramSHA256, SASLMechanismScramSHA512}, cfg.SASLMechanism) {
+		return ErrUnsupportedSASLMechanism
 	}
 
 	return nil
