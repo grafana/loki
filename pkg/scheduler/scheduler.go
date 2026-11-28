@@ -729,8 +729,10 @@ func (s *Scheduler) notifyFrontendsShuttingDown() {
 
 // Close the Scheduler.
 func (s *Scheduler) stopping(_ error) error {
-	// Wake every FrontendLoop() so it returns and ends its stream, including those of idle frontends.
-	s.stopOnce.Do(func() {
+	// Wake every FrontendLoop() so it returns and ends its stream, including those of idle frontends. This must happen
+	// after the subservices have stopped: closing it earlier ends the streams, which cancels the contexts of enqueued
+	// requests before the queriers have dispatched them.
+	defer s.stopOnce.Do(func() {
 		if s.stopCh != nil {
 			close(s.stopCh)
 		}

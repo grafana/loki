@@ -182,6 +182,44 @@ func TestSchedulerStoppingEndsIdleFrontendStreams(t *testing.T) {
 	require.NoError(t, s.AwaitTerminated(t.Context()))
 }
 
+// Enqueued requests are dispatched to connected queriers while the scheduler is stopping. Ending the frontend streams
+// cancels the contexts of those requests, so it must only happen once the subservices (the request queue) have stopped.
+func TestSchedulerStopsFrontendStreamsAfterSubservices(t *testing.T) {
+	s := &Scheduler{
+		log:                util_log.Logger,
+		connectedFrontends: map[string]*connectedFrontend{},
+		stopCh:             make(chan struct{}),
+	}
+	subserviceStopping := make(chan struct{})
+	releaseSubservice := make(chan struct{})
+	var err error
+	s.subservices, err = services.NewManager(services.NewIdleService(nil, func(error) error {
+		close(subserviceStopping)
+		<-releaseSubservice
+		return nil
+	}))
+	require.NoError(t, err)
+	require.NoError(t, services.StartManagerAndAwaitHealthy(t.Context(), s.subservices))
+
+	stopped := make(chan error, 1)
+	go func() { stopped <- s.stopping(nil) }()
+
+	<-subserviceStopping
+	select {
+	case <-s.stopCh:
+		t.Fatal("frontend streams were ended while a subservice was still stopping")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseSubservice)
+	require.NoError(t, <-stopped)
+	select {
+	case <-s.stopCh:
+	default:
+		t.Fatal("frontend streams were not ended after the subservices stopped")
+	}
+}
+
 // idleFrontendLoopServer plays a stream of a frontend that sent INIT and then stays idle. Like a real gRPC stream, its
 // Recv() only fails once the handler has returned (finish), never because of anything the scheduler sends.
 type idleFrontendLoopServer struct {
