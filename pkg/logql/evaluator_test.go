@@ -1340,6 +1340,26 @@ func TestVectorAggEvaluator_ShouldFailOnGroupsPastSeriesLimit(t *testing.T) {
 	})
 }
 
+func TestVectorAggEvaluator_UnsupportedOperationReturnsError(t *testing.T) {
+	expr, err := syntax.ParseSampleExpr(`approx_topk(5, sum by (a) (count_over_time({app="foo"}[1m])))`)
+	require.NoError(t, err)
+	vec := promql.Vector{
+		{F: 1, Metric: labels.FromStrings("a", "1")},
+		{F: 2, Metric: labels.FromStrings("a", "2")},
+	}
+	nextEvFactory := SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params, NodeContext) (StepEvaluator, error) {
+		return &returnVectorEvaluator{vec: vec}, nil
+	})
+	ev, err := newVectorAggEvaluator(t.Context(), nextEvFactory, expr.(*syntax.VectorAggregationExpr), nil, 0, NodeContext{})
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		ok, _, _ := ev.Next()
+		require.False(t, ok)
+	})
+	require.EqualError(t, ev.Error(), `expected aggregation operator but got "approx_topk"`)
+}
+
 func TestVectorAggEvaluator_Precision(t *testing.T) {
 	// newAggEvaluator builds the evaluator with newVectorAggEvaluator and
 	// returns next as the wrapped evaluator. A VectorAggEvaluator built by

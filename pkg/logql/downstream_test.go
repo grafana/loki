@@ -480,6 +480,34 @@ func TestApproxTopkSketches(t *testing.T) {
 	}
 }
 
+func TestApproxTopkInBinOpWithRangeSplitting(t *testing.T) {
+	query := `approx_topk(3, sum by (a) (sum_over_time({a=~".+"} | logfmt | unwrap value [3s]))) / on() group_left() sum(sum_over_time({a=~".+"} | logfmt | unwrap value [3s])) * 100`
+
+	streams := randomStreams(20, 5, 2, []string{"a", "b"}, true)
+	q := NewMockQuerier(2, streams)
+	opts := EngineOpts{MaxCountMinSketchHeapSize: 10_000}
+	regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
+	downstream := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+	ctx := user.InjectOrgID(context.Background(), "fake")
+
+	params, err := NewLiteralParams(query, time.Unix(4, 0), time.Unix(4, 0), 0, 0, logproto.FORWARD, 100, nil, nil)
+	require.NoError(t, err)
+
+	rangeMapper, err := NewRangeMapper(time.Second, nilRangeMetrics, NewMapperStats())
+	require.NoError(t, err)
+	noop, _, err := rangeMapper.Parse(params.GetExpression())
+	require.NoError(t, err)
+	require.True(t, noop)
+
+	shardMapper := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, []string{SupportApproxTopk})
+	_, _, mapped, err := shardMapper.Parse(params.GetExpression())
+	require.NoError(t, err)
+
+	res, err := downstream.Query(ctx, ParamsWithExpressionOverride{Params: params, ExpressionOverride: mapped}).Exec(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, res.Data.(promql.Vector))
+}
+
 func TestShardCounter(t *testing.T) {
 	var (
 		shards   = 3
