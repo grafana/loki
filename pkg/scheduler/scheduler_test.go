@@ -2,8 +2,11 @@ package scheduler
 
 import (
 	"context"
+	"io"
 	"os"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/services"
@@ -110,6 +113,148 @@ func TestFrontendConnectsToRunningSchedulerButBeforeShouldRun(t *testing.T) {
 	// so the frontend will retry connecting now that the scheduler and is not waiting for an INIT response
 	assert.Equal(t, schedulerpb.ERROR, mock.msg.Status)
 
+}
+
+// Idle frontends never read from their stream, so telling them that the scheduler is stopping cannot make them
+// disconnect. Every FrontendLoop() has to return by itself when the scheduler stops, one per stream, otherwise the gRPC
+// server cannot stop gracefully.
+func TestSchedulerStoppingEndsIdleFrontendStreams(t *testing.T) {
+	s := &Scheduler{
+		log: util_log.Logger,
+		schedulerRunning: promauto.With(nil).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_query_scheduler_running",
+			Help: "Value will be 1 if the scheduler is in the ReplicationSet and actively receiving/processing requests",
+		}),
+		connectedFrontends: map[string]*connectedFrontend{},
+		stopCh:             make(chan struct{}),
+	}
+	var err error
+	s.subservices, err = services.NewManager(services.NewIdleService(nil, nil))
+	require.NoError(t, err)
+	s.Service = services.NewBasicService(func(_ context.Context) error {
+		return nil
+	}, func(serviceContext context.Context) error {
+		<-serviceContext.Done()
+		return nil
+	}, s.stopping)
+	s.shouldRun.Store(true)
+	require.NoError(t, s.StartAsync(t.Context()))
+	require.NoError(t, s.AwaitRunning(t.Context()))
+
+	// A frontend opens several streams (scheduler_worker_concurrency) from the same address.
+	const streams = 3
+	frontends := make([]*idleFrontendLoopServer, streams)
+	loopDone := make(chan error, streams)
+	for i := range frontends {
+		frontends[i] = newIdleFrontendLoopServer("127.0.0.1:9095")
+		go func(f *idleFrontendLoopServer) { loopDone <- s.FrontendLoop(f) }(frontends[i])
+	}
+	t.Cleanup(func() {
+		for _, f := range frontends {
+			f.finish()
+		}
+	})
+
+	// Wait for the INIT response of every stream, after which they are all idle.
+	for _, f := range frontends {
+		select {
+		case msg := <-f.sent:
+			require.Equal(t, schedulerpb.OK, msg.Status)
+		case <-time.After(5 * time.Second):
+			t.Fatal("scheduler did not answer INIT")
+		}
+	}
+
+	s.StopAsync()
+
+	for range frontends {
+		select {
+		case err := <-loopDone:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("FrontendLoop of an idle frontend did not return after the scheduler stopped")
+		}
+	}
+	for _, f := range frontends {
+		msg := <-f.sent
+		require.Equal(t, schedulerpb.SHUTTING_DOWN, msg.Status)
+	}
+	require.NoError(t, s.AwaitTerminated(t.Context()))
+}
+
+// Enqueued requests are dispatched to connected queriers while the scheduler is stopping. Ending the frontend streams
+// cancels the contexts of those requests, so it must only happen once the subservices (the request queue) have stopped.
+func TestSchedulerStopsFrontendStreamsAfterSubservices(t *testing.T) {
+	s := &Scheduler{
+		log:                util_log.Logger,
+		connectedFrontends: map[string]*connectedFrontend{},
+		stopCh:             make(chan struct{}),
+	}
+	subserviceStopping := make(chan struct{})
+	releaseSubservice := make(chan struct{})
+	var err error
+	s.subservices, err = services.NewManager(services.NewIdleService(nil, func(error) error {
+		close(subserviceStopping)
+		<-releaseSubservice
+		return nil
+	}))
+	require.NoError(t, err)
+	require.NoError(t, services.StartManagerAndAwaitHealthy(t.Context(), s.subservices))
+
+	stopped := make(chan error, 1)
+	go func() { stopped <- s.stopping(nil) }()
+
+	<-subserviceStopping
+	select {
+	case <-s.stopCh:
+		t.Fatal("frontend streams were ended while a subservice was still stopping")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseSubservice)
+	require.NoError(t, <-stopped)
+	select {
+	case <-s.stopCh:
+	default:
+		t.Fatal("frontend streams were not ended after the subservices stopped")
+	}
+}
+
+// idleFrontendLoopServer plays a stream of a frontend that sent INIT and then stays idle. Like a real gRPC stream, its
+// Recv() only fails once the handler has returned (finish), never because of anything the scheduler sends.
+type idleFrontendLoopServer struct {
+	mockSchedulerForFrontendFrontendLoopServer
+	sent chan *schedulerpb.SchedulerToFrontend
+	init chan struct{}
+	done chan struct{}
+	once sync.Once
+}
+
+func newIdleFrontendLoopServer(addr string) *idleFrontendLoopServer {
+	b := &idleFrontendLoopServer{
+		sent: make(chan *schedulerpb.SchedulerToFrontend, 10),
+		init: make(chan struct{}, 1),
+		done: make(chan struct{}),
+	}
+	b.init <- struct{}{}
+	b.recvFn = func() (*schedulerpb.FrontendToScheduler, error) {
+		select {
+		case <-b.init:
+			return &schedulerpb.FrontendToScheduler{Type: schedulerpb.INIT, FrontendAddress: addr}, nil
+		case <-b.done:
+			return nil, io.EOF
+		}
+	}
+	return b
+}
+
+func (b *idleFrontendLoopServer) Send(msg *schedulerpb.SchedulerToFrontend) error {
+	b.sent <- msg
+	return nil
+}
+
+func (b *idleFrontendLoopServer) finish() {
+	b.once.Do(func() { close(b.done) })
 }
 
 func TestProtobufBackwardsCompatibility(t *testing.T) {
