@@ -811,13 +811,13 @@ func (m *Miniredis) effectiveNow() time.Time {
 
 // convert a unixtimestamp to a duration, to use an absolute time as TTL.
 // d can be either time.Second or time.Millisecond.
-func (m *Miniredis) at(i int, d time.Duration) time.Duration {
+func (m *Miniredis) at(i int64, d time.Duration) time.Duration {
 	var ts time.Time
 	switch d {
 	case time.Millisecond:
-		ts = time.Unix(int64(i/1000), 1000000*int64(i%1000))
+		ts = time.Unix(i/1000, 1000000*(i%1000))
 	case time.Second:
-		ts = time.Unix(int64(i), 0)
+		ts = time.Unix(i, 0)
 	default:
 		panic("invalid time unit (d). Fixme!")
 	}

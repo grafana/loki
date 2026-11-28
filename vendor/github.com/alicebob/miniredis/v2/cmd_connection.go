@@ -47,7 +47,7 @@ func (m *Miniredis) cmdPing(c *server.Peer, cmd string, args []string) {
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		if payload == "" {
+		if len(args) == 0 {
 			c.WriteInline("PONG")
 			return
 		}

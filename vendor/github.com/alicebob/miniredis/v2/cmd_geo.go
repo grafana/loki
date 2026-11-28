@@ -4,6 +4,7 @@ package miniredis
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -50,12 +51,12 @@ func (m *Miniredis) cmdGeoadd(c *server.Peer, cmd string, args []string) {
 			rawLong, rawLat, name := args[0], args[1], args[2]
 			args = args[3:]
 			longitude, err := strconv.ParseFloat(rawLong, 64)
-			if err != nil {
+			if err != nil || math.IsNaN(longitude) {
 				c.WriteError("ERR value is not a valid float")
 				return
 			}
 			latitude, err := strconv.ParseFloat(rawLat, 64)
-			if err != nil {
+			if err != nil || math.IsNaN(latitude) {
 				c.WriteError("ERR value is not a valid float")
 				return
 			}
@@ -150,7 +151,7 @@ func (m *Miniredis) cmdGeopos(c *server.Peer, cmd string, args []string) {
 		c.WriteLen(len(args))
 		for _, l := range args {
 			if !db.ssetExists(key, l) {
-				c.WriteLen(-1)
+				c.WriteNullArray()
 				continue
 			}
 			score := db.ssetScore(key, l)

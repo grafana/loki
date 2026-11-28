@@ -27,9 +27,35 @@ func optIntErr(c *server.Peer, src string, dest *int, errMsg string) bool {
 	return true
 }
 
+// optInt64 parses an int64 option in a command.
+func optInt64(c *server.Peer, src string, dest *int64) bool {
+	return optInt64Err(c, src, dest, msgInvalidInt)
+}
+
+func optInt64Err(c *server.Peer, src string, dest *int64, errMsg string) bool {
+	n, err := strconv.ParseInt(src, 10, 64)
+	if err != nil {
+		setDirty(c)
+		c.WriteError(errMsg)
+		return false
+	}
+	*dest = n
+	return true
+}
+
 // optIntSimple sets dest or returns an error
 func optIntSimple(src string, dest *int) error {
 	n, err := strconv.Atoi(src)
+	if err != nil {
+		return errors.New(msgInvalidInt)
+	}
+	*dest = n
+	return nil
+}
+
+// optInt64Simple sets dest or returns an error
+func optInt64Simple(src string, dest *int64) error {
+	n, err := strconv.ParseInt(src, 10, 64)
 	if err != nil {
 		return errors.New(msgInvalidInt)
 	}

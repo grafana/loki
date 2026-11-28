@@ -3,6 +3,7 @@
 package miniredis
 
 import (
+	"math"
 	"math/big"
 	"math/bits"
 	"strconv"
@@ -11,6 +12,10 @@ import (
 
 	"github.com/alicebob/miniredis/v2/server"
 )
+
+// maxStringLength is the size limit of a string in Redis, the default of the
+// proto-max-bulk-len config.
+const maxStringLength = 512 * 1024 * 1024
 
 // commandsString handles all string value operations.
 func commandsString(m *Miniredis) {
@@ -90,7 +95,7 @@ func (m *Miniredis) cmdSet(c *server.Peer, cmd string, args []string) {
 				c.WriteError(msgSyntaxError)
 				return
 			}
-			expire, err := strconv.Atoi(args[1])
+			expire, err := strconv.ParseInt(args[1], 10, 64)
 			if err != nil {
 				setDirty(c)
 				c.WriteError(msgInvalidInt)
@@ -123,6 +128,10 @@ func (m *Miniredis) cmdSet(c *server.Peer, cmd string, args []string) {
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		if (opts.nx && opts.xx) || (opts.keepttl && opts.ttlSet) {
+			c.WriteError(msgSyntaxError)
+			return
+		}
 		db := m.db(ctx.selectedDB)
 
 		readonly := false
@@ -390,7 +399,7 @@ func (m *Miniredis) cmdGetex(c *server.Peer, cmd string, args []string) {
 				c.WriteError(msgSyntaxError)
 				return
 			}
-			expire, err := strconv.Atoi(args[1])
+			expire, err := strconv.ParseInt(args[1], 10, 64)
 			if err != nil {
 				setDirty(c)
 				c.WriteError(msgInvalidInt)
@@ -421,16 +430,20 @@ func (m *Miniredis) cmdGetex(c *server.Peer, cmd string, args []string) {
 			c.WriteNull()
 			return
 		}
-		switch {
-		case opts.persist:
-			delete(db.ttl, opts.key)
-		case opts.ttl != 0:
-			db.ttl[opts.key] = opts.ttl
-		}
-
 		if db.t(opts.key) != keyTypeString {
 			c.WriteError(msgWrongType)
 			return
+		}
+
+		switch {
+		case opts.persist:
+			if _, ok := db.ttl[opts.key]; ok {
+				delete(db.ttl, opts.key)
+				db.incr(opts.key)
+			}
+		case opts.ttl != 0:
+			db.ttl[opts.key] = opts.ttl
+			db.incr(opts.key)
 		}
 
 		c.WriteBulk(db.stringGet(opts.key))
@@ -533,13 +546,13 @@ func (m *Miniredis) cmdIncr(c *server.Peer, cmd string, args []string) {
 			c.WriteError(msgWrongType)
 			return
 		}
-		v, err := db.stringIncr(key, +1)
+		v, err := db.stringIncr64(key, +1)
 		if err != nil {
 			c.WriteError(err.Error())
 			return
 		}
 		// Don't touch TTL
-		c.WriteInt(v)
+		c.WriteInt64(v)
 	})
 }
 
@@ -551,10 +564,10 @@ func (m *Miniredis) cmdIncrby(c *server.Peer, cmd string, args []string) {
 
 	var opts struct {
 		key   string
-		delta int
+		delta int64
 	}
 	opts.key = args[0]
-	if ok := optInt(c, args[1], &opts.delta); !ok {
+	if ok := optInt64(c, args[1], &opts.delta); !ok {
 		return
 	}
 
@@ -566,13 +579,13 @@ func (m *Miniredis) cmdIncrby(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		v, err := db.stringIncr(opts.key, opts.delta)
+		v, err := db.stringIncr64(opts.key, opts.delta)
 		if err != nil {
 			c.WriteError(err.Error())
 			return
 		}
 		// Don't touch TTL
-		c.WriteInt(v)
+		c.WriteInt64(v)
 	})
 }
 
@@ -622,13 +635,13 @@ func (m *Miniredis) cmdDecr(c *server.Peer, cmd string, args []string) {
 			c.WriteError(msgWrongType)
 			return
 		}
-		v, err := db.stringIncr(key, -1)
+		v, err := db.stringIncr64(key, -1)
 		if err != nil {
 			c.WriteError(err.Error())
 			return
 		}
 		// Don't touch TTL
-		c.WriteInt(v)
+		c.WriteInt64(v)
 	})
 }
 
@@ -640,14 +653,19 @@ func (m *Miniredis) cmdDecrby(c *server.Peer, cmd string, args []string) {
 
 	var opts struct {
 		key   string
-		delta int
+		delta int64
 	}
 	opts.key = args[0]
-	if ok := optInt(c, args[1], &opts.delta); !ok {
+	if ok := optInt64(c, args[1], &opts.delta); !ok {
 		return
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		if opts.delta == math.MinInt64 {
+			c.WriteError("ERR decrement would overflow")
+			return
+		}
+
 		db := m.db(ctx.selectedDB)
 
 		if t, ok := db.keys[opts.key]; ok && t != keyTypeString {
@@ -655,13 +673,13 @@ func (m *Miniredis) cmdDecrby(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		v, err := db.stringIncr(opts.key, -opts.delta)
+		v, err := db.stringIncr64(opts.key, -opts.delta)
 		if err != nil {
 			c.WriteError(err.Error())
 			return
 		}
 		// Don't touch TTL
-		c.WriteInt(v)
+		c.WriteInt64(v)
 	})
 }
 
@@ -748,11 +766,11 @@ func (m *Miniredis) cmdSetrange(c *server.Peer, cmd string, args []string) {
 
 	var opts struct {
 		key   string
-		pos   int
+		pos   int64
 		subst string
 	}
 	opts.key = args[0]
-	if ok := optInt(c, args[1], &opts.pos); !ok {
+	if ok := optInt64(c, args[1], &opts.pos); !ok {
 		return
 	}
 	if opts.pos < 0 {
@@ -770,14 +788,25 @@ func (m *Miniredis) cmdSetrange(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
+		if opts.subst == "" {
+			// Like Redis: nothing changes, and a missing key isn't created.
+			c.WriteInt(len(db.stringKeys[opts.key]))
+			return
+		}
+		if opts.pos > int64(maxStringLength)-int64(len(opts.subst)) {
+			c.WriteError(msgStringTooLong)
+			return
+		}
+
 		v := []byte(db.stringKeys[opts.key])
-		end := opts.pos + len(opts.subst)
+		pos := int(opts.pos)
+		end := pos + len(opts.subst)
 		if len(v) < end {
 			newV := make([]byte, end)
 			copy(newV, v)
 			v = newV
 		}
-		copy(v[opts.pos:end], opts.subst)
+		copy(v[pos:end], opts.subst)
 		db.stringSet(opts.key, string(v))
 		c.WriteInt(len(v))
 	})
@@ -878,7 +907,7 @@ func (m *Miniredis) cmdBitop(c *server.Peer, cmd string, args []string) {
 				}[opts.op]
 				res = sliceBinOp(cb, res, []byte(v))
 			}
-			db.del(opts.target, false) // Keep TTL
+			db.del(opts.target, true)
 			if len(res) == 0 {
 				db.del(opts.target, true)
 			} else {
@@ -900,7 +929,7 @@ func (m *Miniredis) cmdBitop(c *server.Peer, cmd string, args []string) {
 			for i := range value {
 				value[i] = ^value[i]
 			}
-			db.del(opts.target, false) // Keep TTL
+			db.del(opts.target, true)
 			if len(value) == 0 {
 				db.del(opts.target, true)
 			} else {
@@ -944,6 +973,11 @@ func (m *Miniredis) cmdBitpos(c *server.Peer, cmd string, args []string) {
 	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
+		if opts.Bit != 0 && opts.Bit != 1 {
+			c.WriteError("ERR The bit argument must be 1 or 0.")
+			return
+		}
+
 		db := m.db(ctx.selectedDB)
 
 		if t, ok := db.keys[opts.Key]; ok && t != keyTypeString {
@@ -1020,7 +1054,7 @@ func (m *Miniredis) cmdGetbit(c *server.Peer, cmd string, args []string) {
 	if ok := optIntErr(c, args[1], &opts.bit, "ERR bit offset is not an integer or out of range"); !ok {
 		return
 	}
-	if opts.bit < 0 {
+	if opts.bit < 0 || opts.bit/8 >= maxStringLength {
 		setDirty(c)
 		c.WriteError("ERR bit offset is not an integer or out of range")
 		return
@@ -1065,7 +1099,7 @@ func (m *Miniredis) cmdSetbit(c *server.Peer, cmd string, args []string) {
 	if ok := optIntErr(c, args[1], &opts.bit, "ERR bit offset is not an integer or out of range"); !ok {
 		return
 	}
-	if opts.bit < 0 {
+	if opts.bit < 0 || opts.bit/8 >= maxStringLength {
 		setDirty(c)
 		c.WriteError("ERR bit offset is not an integer or out of range")
 		return

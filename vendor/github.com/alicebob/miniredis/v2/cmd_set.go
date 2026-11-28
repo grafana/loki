@@ -120,7 +120,9 @@ func (m *Miniredis) cmdSdiffstore(c *server.Peer, cmd string, args []string) {
 		}
 
 		db.del(dest, true)
-		db.setSet(dest, set)
+		if len(set) > 0 {
+			db.setSet(dest, set)
+		}
 		c.WriteInt(len(set))
 	})
 }
@@ -167,7 +169,9 @@ func (m *Miniredis) cmdSinterstore(c *server.Peer, cmd string, args []string) {
 		}
 
 		db.del(dest, true)
-		db.setSet(dest, set)
+		if len(set) > 0 {
+			db.setSet(dest, set)
+		}
 		c.WriteInt(len(set))
 	})
 }
@@ -358,6 +362,10 @@ func (m *Miniredis) cmdSmove(c *server.Peer, cmd string, args []string) {
 
 		if !db.setIsMember(src, member) {
 			c.WriteInt(0)
+			return
+		}
+		if src == dst {
+			c.WriteInt(1)
 			return
 		}
 		db.setRem(src, member)
@@ -587,7 +595,9 @@ func (m *Miniredis) cmdSunionstore(c *server.Peer, cmd string, args []string) {
 		}
 
 		db.del(dest, true)
-		db.setSet(dest, set)
+		if len(set) > 0 {
+			db.setSet(dest, set)
+		}
 		c.WriteInt(len(set))
 	})
 }

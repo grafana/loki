@@ -11,7 +11,7 @@ func commandsHll(m *Miniredis) {
 
 // PFADD
 func (m *Miniredis) cmdPfadd(c *server.Peer, cmd string, args []string) {
-	if !m.isValidCMD(c, cmd, args, atLeast(2)) {
+	if !m.isValidCMD(c, cmd, args, atLeast(1)) {
 		return
 	}
 

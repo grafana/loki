@@ -370,6 +370,13 @@ func (c *Peer) WriteNull() {
 	})
 }
 
+// WriteNullArray writes a redis Null array: "*-1" in RESP2, and a Null in RESP3
+func (c *Peer) WriteNullArray() {
+	c.Block(func(w *Writer) {
+		w.WriteNullArray()
+	})
+}
+
 // WriteLen starts an array with the given length
 func (c *Peer) WriteLen(n int) {
 	c.Block(func(w *Writer) {
@@ -402,6 +409,13 @@ func (c *Peer) WritePushLen(n int) {
 func (c *Peer) WriteInt(n int) {
 	c.Block(func(w *Writer) {
 		w.WriteInt(n)
+	})
+}
+
+// WriteInt64 writes a 64-bit integer
+func (c *Peer) WriteInt64(n int64) {
+	c.Block(func(w *Writer) {
+		w.WriteInt64(n)
 	})
 }
 
@@ -492,6 +506,11 @@ func (w *Writer) WriteInt(n int) {
 	fmt.Fprintf(w.w, ":%d\r\n", n)
 }
 
+// WriteInt64 writes a 64-bit integer
+func (w *Writer) WriteInt64(n int64) {
+	fmt.Fprintf(w.w, ":%d\r\n", n)
+}
+
 // WriteFloat writes a float
 func (w *Writer) WriteFloat(n float64) {
 	if w.resp3 {
@@ -508,6 +527,15 @@ func (w *Writer) WriteNull() {
 		return
 	}
 	fmt.Fprintf(w.w, "$-1\r\n")
+}
+
+// WriteNullArray writes a redis Null array: "*-1" in RESP2, and a Null in RESP3
+func (w *Writer) WriteNullArray() {
+	if w.resp3 {
+		w.WriteNull()
+		return
+	}
+	w.WriteLen(-1)
 }
 
 // WriteInline writes a redis inline string
