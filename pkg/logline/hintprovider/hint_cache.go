@@ -136,7 +136,7 @@ func (p *CachingHintProvider) fetchDays(
 			if err != nil {
 				return err
 			}
-			results[i] = *res
+			results[i] = res
 			return res.err
 		})
 	}
@@ -163,6 +163,8 @@ const maxSharedLookupAttempts = 3
 // call runs with the context of the caller that started it, so a caller that
 // only joined it retries when that context ends and its own is still live.
 // Retrying starts a new shared call under the retrying caller's context.
+// A caller that only joined the call gets the leader's stats with IO wait
+// cleared. A caller that ran the call itself, retries included, keeps its own.
 func (p *CachingHintProvider) fetchDay(
 	gCtx, ctx context.Context,
 	tenant string,
@@ -170,7 +172,7 @@ func (p *CachingHintProvider) fetchDay(
 	queryString string,
 	day dayWindow,
 	writeCache bool,
-) (*provideHintsResult, error) {
+) (provideHintsResult, error) {
 	dayFrom := model.TimeFromUnixNano(day.start.UnixNano())
 	dayThrough := model.TimeFromUnixNano(day.endExclusive.Add(-time.Nanosecond).UnixNano())
 	sfKey := singleflightKey(tenant, queryString, day.day)
@@ -196,17 +198,29 @@ func (p *CachingHintProvider) fetchDay(
 		select {
 		case call = <-ch:
 		case <-gCtx.Done():
-			return &provideHintsResult{err: gCtx.Err()}, nil
+			return provideHintsResult{err: gCtx.Err()}, nil
 		}
 		if call.Shared {
 			p.singleflightDedupedTot.Inc()
 		}
 
-		res, ok := call.Val.(*provideHintsResult)
+		shared, ok := call.Val.(*provideHintsResult)
 		if !ok {
-			return nil, fmt.Errorf("unexpected singleflight result type %T", call.Val)
+			return provideHintsResult{}, fmt.Errorf("unexpected singleflight result type %T", call.Val)
 		}
+		// Copy the result: shared, and the stats it points to, belong to the
+		// leader and every joiner.
+		res := *shared
 		if led || !isContextErr(res.err) || gCtx.Err() != nil || attempt == maxSharedLookupAttempts {
+			if !led {
+				// This caller did none of the leader's reads, so the leader's ReadAt
+				// time is not its IO. Keep the read counts and bytes, so it still
+				// reports what the lookup cost, and drop the IO wait.
+				stats := NewQueryStats()
+				stats.Merge(res.stats) // Merge ignores nil.
+				stats.totalIOWaitNanos.Store(0)
+				res.stats = stats
+			}
 			return res, nil
 		}
 		p.singleflightRetriesTot.Inc()
